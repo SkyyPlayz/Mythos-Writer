@@ -24,15 +24,12 @@ import TimelineRoot from './TimelineRoot';
 import type { Story } from './types';
 import type { TimelinesStore } from './timelinesTypes';
 import { dispatchTimelineFromNote } from './timeline2/notesToTimeline';
-import { HIDDEN_TIMELINE_MODES, type TimelineMode } from './timelineAeon';
+import { TIMELINE_HIDDEN_MODES_OVERRIDE_KEY } from './timelineAeon';
 
-/** Skip while these modes sit in HIDDEN_TIMELINE_MODES. Emptying the set re-runs the test. */
-function skipHidden(
-  ctx: { skip: (condition: boolean, note?: string) => void },
-  modes: readonly TimelineMode[],
-): void {
-  const hidden = modes.filter((mode) => HIDDEN_TIMELINE_MODES.has(mode));
-  ctx.skip(hidden.length > 0, `HIDDEN_BY_TIMELINE_HIDE_FLAG: ${hidden.join(',')}`);
+/** Force the hidden timeline views on for this test. The product set stays
+ *  hidden; an empty override is the only thing this test writes. */
+function forceHiddenTimelineViewsOn(): void {
+  localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '[]');
 }
 
 // ─── Child-view mocks ───
@@ -204,8 +201,8 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.queryByTestId('mock-subway')).toBeNull();
   });
 
-  it('offers the seven prototype modes, exact labels (tlModeSeg 6559)', async (ctx) => {
-    skipHidden(ctx, ['plot', 'spreadsheet', 'tension', 'relations', 'subway']);
+  it('offers the seven prototype modes, exact labels (tlModeSeg 6559)', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     const toggle = screen.getByTestId('view-mode-toggle');
     const labels = Array.from(toggle.querySelectorAll('button')).map(b => b.textContent);
@@ -220,8 +217,8 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
   });
 
-  it('Plotlines renders the Plottr grid; Tension renders the SVG curve (M24)', async (ctx) => {
-    skipHidden(ctx, ['plot', 'tension']);
+  it('Plotlines renders the Plottr grid; Tension renders the SVG curve (M24)', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-plot'));
     expect(screen.getByTestId('mock-plotlines')).toBeInTheDocument();
@@ -230,8 +227,8 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.getByTestId('mock-tension')).toBeInTheDocument();
   });
 
-  it('switches to the spreadsheet / relationships / subway surfaces', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet', 'relations', 'subway']);
+  it('switches to the spreadsheet / relationships / subway surfaces', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     expect(screen.getByTestId('mock-spreadsheet')).toBeInTheDocument();
@@ -242,8 +239,8 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.queryByTestId('mock-axis')).toBeNull();
   });
 
-  it('sets aria-pressed on the active mode button only', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('sets aria-pressed on the active mode button only', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     expect(screen.getByTestId('view-mode-structure')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'false');
@@ -322,16 +319,16 @@ describe('TimelineRoot — legend', () => {
 // ─── View / Show filter selects (prototype tlFilterSel) ───
 
 describe('TimelineRoot — filter selects', () => {
-  it('View → World Chronology jumps to the spreadsheet and toasts', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('View → World Chronology jumps to the spreadsheet and toasts', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.change(screen.getByTestId('tl-view-filter'), { target: { value: 'World Chronology' } });
     expect(screen.getByTestId('mock-spreadsheet')).toBeInTheDocument();
     expect(screen.getByTestId('app-toast')).toHaveTextContent('View → World Chronology');
   });
 
-  it('View → Per Character jumps to the subway', async (ctx) => {
-    skipHidden(ctx, ['subway']);
+  it('View → Per Character jumps to the subway', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.change(screen.getByTestId('tl-view-filter'), { target: { value: 'Per Character' } });
     expect(await screen.findByTestId('mock-subway')).toBeInTheDocument();
@@ -414,8 +411,8 @@ describe('TimelineRoot — plot structure templates', () => {
     expect(screen.getByTestId('app-toast')).toHaveTextContent('Plotline added');
   });
 
-  it('hides the plotline tools in the sheet / relations / subway modes', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet', 'plot']);
+  it('hides the plotline tools in the sheet / relations / subway modes', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     expect(screen.getByTestId('tl-templates-btn')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
@@ -483,8 +480,8 @@ describe('TimelineRoot — Today jump', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-today-signal', '1');
   });
 
-  it('keeps the sheet / relations / subway modes unchanged', async (ctx) => {
-    skipHidden(ctx, ['subway', 'spreadsheet', 'relations']);
+  it('keeps the sheet / relations / subway modes unchanged', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-subway'));
     fireEvent.click(screen.getByTestId('tl-today-btn'));
@@ -496,8 +493,8 @@ describe('TimelineRoot — Today jump', () => {
 // ─── localStorage persistence ───
 
 describe('TimelineRoot — persistence', () => {
-  it('persists viewMode to localStorage on switch', async (ctx) => {
-    skipHidden(ctx, ['subway', 'spreadsheet']);
+  it('persists viewMode to localStorage on switch', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-subway'));
     expect(localStorage.getItem('timeline:viewMode')).toBe('subway');
@@ -505,8 +502,8 @@ describe('TimelineRoot — persistence', () => {
     expect(localStorage.getItem('timeline:viewMode')).toBe('spreadsheet');
   });
 
-  it('restores viewMode from localStorage on mount', async (ctx) => {
-    skipHidden(ctx, ['relations']);
+  it('restores viewMode from localStorage on mount', async () => {
+    forceHiddenTimelineViewsOn();
     localStorage.setItem('timeline:viewMode', 'relations');
     await renderRoot();
     expect(await screen.findByTestId('mock-relationships')).toBeInTheDocument();
@@ -524,8 +521,8 @@ describe('TimelineRoot — persistence', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'progress');
   });
 
-  it('migrates the legacy Beta-2 "track" mode to the subway view', async (ctx) => {
-    skipHidden(ctx, ['subway']);
+  it('migrates the legacy Beta-2 "track" mode to the subway view', async () => {
+    forceHiddenTimelineViewsOn();
     localStorage.setItem('timeline:viewMode', 'track');
     await renderRoot();
     expect(await screen.findByTestId('mock-subway')).toBeInTheDocument();
@@ -537,8 +534,8 @@ describe('TimelineRoot — persistence', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
   });
 
-  it('persists groupBy to localStorage on change', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('persists groupBy to localStorage on change', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     // SKY-10510: the select only accepts input in Spreadsheet mode.
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
@@ -546,8 +543,8 @@ describe('TimelineRoot — persistence', () => {
     expect(localStorage.getItem('timeline:groupBy')).toBe('chapter');
   });
 
-  it('restores groupBy from localStorage on mount', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('restores groupBy from localStorage on mount', async () => {
+    forceHiddenTimelineViewsOn();
     localStorage.setItem('timeline:groupBy', 'character');
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
@@ -555,8 +552,8 @@ describe('TimelineRoot — persistence', () => {
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'character');
   });
 
-  it('falls back to none for an invalid stored groupBy', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('falls back to none for an invalid stored groupBy', async () => {
+    forceHiddenTimelineViewsOn();
     localStorage.setItem('timeline:groupBy', 'mood');
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
@@ -568,8 +565,8 @@ describe('TimelineRoot — persistence', () => {
 // ─── Grouping passthrough ───
 
 describe('TimelineRoot — grouping', () => {
-  it('passes the selected groupBy down to the spreadsheet view', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('passes the selected groupBy down to the spreadsheet view', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'none');
@@ -577,8 +574,8 @@ describe('TimelineRoot — grouping', () => {
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'arc');
   });
 
-  it('offers all five grouping options', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('offers all five grouping options', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     const options = Array.from(
       screen.getByTestId('groupby-select').querySelectorAll('option'),
@@ -586,8 +583,8 @@ describe('TimelineRoot — grouping', () => {
     expect(options).toEqual(['none', 'arc', 'chapter', 'character', 'location']);
   });
 
-  it('keeps groupBy when switching views', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('keeps groupBy when switching views', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'location' } });
@@ -599,8 +596,8 @@ describe('TimelineRoot — grouping', () => {
   // SKY-10510: Group By regroups the Spreadsheet only (FULL-SPEC toolbar:
   // "Group By regroups the sheet") — in every other mode the control used to
   // render fully interactive while changing nothing. It is disabled there now.
-  it('disables the Group By select outside Spreadsheet mode', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet', 'subway']);
+  it('disables the Group By select outside Spreadsheet mode', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     expect(screen.getByTestId('groupby-select')).toBeDisabled(); // progress (default)
     fireEvent.click(screen.getByTestId('view-mode-structure'));
@@ -615,16 +612,16 @@ describe('TimelineRoot — grouping', () => {
 // ─── Selection sync ───
 
 describe('TimelineRoot — selection', () => {
-  it('lifts the child selection into TimelineRoot', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('lifts the child selection into TimelineRoot', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     fireEvent.click(screen.getByTestId('mock-select-scene'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-selected-count', '1');
   });
 
-  it('clears the selection when the view mode switches', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('clears the selection when the view mode switches', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     fireEvent.click(screen.getByTestId('mock-select-scene'));
@@ -650,8 +647,8 @@ describe('TimelineRoot — null story', () => {
     expect(screen.queryByTestId('tlr-no-story')).toBeNull();
   });
 
-  it('shows the no-story state for the relations/subway views', async (ctx) => {
-    skipHidden(ctx, ['relations', 'subway']);
+  it('shows the no-story state for the relations/subway views', async () => {
+    forceHiddenTimelineViewsOn();
     await renderRoot(null);
     fireEvent.click(screen.getByTestId('view-mode-relations'));
     expect(screen.getByTestId('tlr-no-story')).toBeInTheDocument();
@@ -867,8 +864,8 @@ describe('TimelineRoot — M25 right panel', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-selection', 'event:ev-1');
   });
 
-  it('a spreadsheet row click resolves to the store event and opens Inspector (AC1)', async (ctx) => {
-    skipHidden(ctx, ['spreadsheet']);
+  it('a spreadsheet row click resolves to the store event and opens Inspector (AC1)', async () => {
+    forceHiddenTimelineViewsOn();
     const store = makeM21Store();
     store.events.push({ id: 'ev-scene', timelineId: 'tl-story', name: 'The Summons', when: 250, sceneId: 'sc-1' });
     setupApi(store);

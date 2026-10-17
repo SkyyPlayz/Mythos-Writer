@@ -16,6 +16,7 @@ import {
   resolveVisibleTimelineMode,
   isTimelineModeVisible,
   HIDDEN_TIMELINE_MODES,
+  TIMELINE_HIDDEN_MODES_OVERRIDE_KEY,
   VISIBLE_TIMELINE_MODES,
   VALID_TIMELINE_MODES,
   hexA,
@@ -126,6 +127,36 @@ describe('resolveVisibleTimelineMode', () => {
     expect(resolveVisibleTimelineMode('kanban-nonsense')).toBe('structure');
     expect(resolveVisibleTimelineMode(null)).toBe('structure');
     expect(resolveVisibleTimelineMode('')).toBe('structure');
+  });
+
+  it('an empty storage override forces every mode on without changing the product set', () => {
+    localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '[]');
+    try {
+      expect([...HIDDEN_TIMELINE_MODES].sort()).toEqual(
+        ['plot', 'relations', 'spreadsheet', 'subway', 'tension'],
+      );
+      for (const mode of VALID_TIMELINE_MODES) {
+        expect(isTimelineModeVisible(mode)).toBe(true);
+      }
+      expect(resolveVisibleTimelineMode('spreadsheet')).toBe('spreadsheet');
+      expect(resolveVisibleTimelineMode('track')).toBe('subway');
+    } finally {
+      localStorage.removeItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
+    }
+    expect(isTimelineModeVisible('plot')).toBe(false);
+    expect(resolveVisibleTimelineMode('spreadsheet')).toBe('structure');
+    expect(resolveVisibleTimelineMode('track')).toBe('structure');
+  });
+
+  it('a non-array storage override is ignored', () => {
+    try {
+      localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '"plot"');
+      expect(isTimelineModeVisible('plot')).toBe(false);
+      localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '{');
+      expect(isTimelineModeVisible('spreadsheet')).toBe(false);
+    } finally {
+      localStorage.removeItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
+    }
   });
 });
 

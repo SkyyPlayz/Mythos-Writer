@@ -26,7 +26,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { HIDDEN_TIMELINE_MODES } from '../frontend/src/timelineAeon';
+import { TIMELINE_HIDDEN_MODES_OVERRIDE_KEY } from '../frontend/src/timelineAeon';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -236,6 +236,9 @@ async function activateStorySection(pg: Page): Promise<void> {
  *  mode (§8.5 M24 seven-mode segment). */
 async function openTensionView(pg: Page): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  await pg.evaluate((key) => {
+    localStorage.setItem(key, '[]');
+  }, TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
 
   const sceneRow = pg.locator('.nav-scene-row', { hasText: ANCHOR_SCENE.title }).first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
@@ -260,7 +263,6 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  if (HIDDEN_TIMELINE_MODES.has('tension')) return;
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-tension-open-chapter-user-'));
   vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-tension-open-chapter-vault-'));
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-tension-open-chapter-notes-'));
@@ -273,7 +275,6 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  if (HIDDEN_TIMELINE_MODES.has('tension')) return;
   await app?.close().catch(() => {});
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
@@ -281,7 +282,6 @@ test.afterAll(async () => {
 });
 
 test('TC-TOE-01: Enter on a focused chapter tension point navigates to that chapter\'s scene', async () => {
-  test.skip(HIDDEN_TIMELINE_MODES.has('tension'), 'HIDDEN_BY_TIMELINE_HIDE_FLAG: tension');
   // Sanity: the Timeline view is showing (DesktopShell's `view === 'timeline'`
   // gate hides the shell's editor pane — and with it the workspace tab strip —
   // while Timeline is active), and no editor tab strip is present yet.
