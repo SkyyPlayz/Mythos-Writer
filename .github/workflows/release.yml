@@ -142,13 +142,15 @@ jobs:
       # land in the same CurrentUser module path it will autoload from.
       - name: Pin TrustedSigning PowerShell module to 0.5.8
         shell: pwsh
+        env:
+          PIN_VERSION: '0.5.8'
         run: |
           $ErrorActionPreference = 'Stop'
-          Install-Module TrustedSigning -RequiredVersion 0.5.8 -Scope CurrentUser -Force
+          Install-Module TrustedSigning -RequiredVersion $env:PIN_VERSION -Scope CurrentUser -Force
           $versions = @(Get-Module -ListAvailable TrustedSigning | ForEach-Object { $_.Version.ToString() })
           Write-Host "TrustedSigning versions available after pin: [$($versions -join ', ')]"
-          if ($versions -notcontains '0.5.8') {
-            throw "TrustedSigning 0.5.8 is not installed (found: [$($versions -join ', ')])."
+          if ($versions -notcontains $env:PIN_VERSION) {
+            throw "TrustedSigning $env:PIN_VERSION is not installed (found: [$($versions -join ', ')])."
           }
 
       # Shield S-2: with PSGallery gone, electron-builder's own
@@ -207,12 +209,14 @@ jobs:
       # and it must be the pinned 0.5.8 — otherwise a different module ran during signing.
       - name: Check TrustedSigning module is exactly 0.5.8 (Shield S-1)
         shell: pwsh
+        env:
+          PIN_VERSION: '0.5.8'
         run: |
           $ErrorActionPreference = 'Stop'
           $versions = @(Get-Module -ListAvailable TrustedSigning | ForEach-Object { $_.Version.ToString() })
           Write-Host "TrustedSigning versions available after build: [$($versions -join ', ')]"
-          if ($versions.Count -ne 1 -or $versions[0] -ne '0.5.8') {
-            throw "Expected exactly one TrustedSigning module version, 0.5.8; found [$($versions -join ', ')]. A different module may have run while the Azure session was live — STOP and re-plan (PLAN-SIGN)."
+          if ($versions.Count -ne 1 -or $versions[0] -ne $env:PIN_VERSION) {
+            throw "Expected exactly one TrustedSigning module version, $env:PIN_VERSION; found [$($versions -join ', ')]. A different module may have run while the Azure session was live — STOP and re-plan (PLAN-SIGN)."
           }
 
       # Fail closed: every installer exe plus the unpacked app exe must carry a Valid
