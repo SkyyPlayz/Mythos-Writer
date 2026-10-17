@@ -321,13 +321,18 @@ jobs:
 
       # The updater feed must describe the exact bytes we upload: every `files[].url`
       # ending in .exe, and the top-level `path`, must sha512-match a local file.
-      # electron-builder writes GitHub-safe names (spaces -> '-') into the yml, so
-      # local files are matched on that same transform.
+      # electron-builder writes the GitHub asset name into the yml (`Mythos-Writer-<v>.exe`)
+      # while the file on disk is `Mythos Writer-<v>.exe`. Mapping is exactly that one
+      # rename of the `Mythos-Writer-` prefix — no glob, no partial match — and the
+      # entry must resolve to exactly one file: zero is a missing artifact, more than
+      # one (e.g. both spellings on disk) would collide on upload.
       - name: Check installer sha512 against the updater yml
         shell: pwsh
         env:
           DIST_DIR: dist-electron
           CHANNEL_YML: ${{ needs.determine-release.outputs.is-beta == 'true' && 'beta.yml' || 'latest.yml' }}
+          YML_PREFIX: 'Mythos-Writer-'
+          DISK_PREFIX: 'Mythos Writer-'
         run: |
           $ErrorActionPreference = 'Stop'
           $ymlPath = Join-Path $env:DIST_DIR $env:CHANNEL_YML
@@ -349,20 +354,19 @@ jobs:
           if ($null -eq $topPath -or $null -eq $topSha) { throw "Updater feed has no top-level path/sha512." }
           $checks += @{ name = $topPath; sha512 = $topSha }
           if (@($checks | Where-Object { $_.name -like '*.exe' }).Count -eq 0) { throw "Updater feed lists no .exe entries." }
-          $local = @{}
-          foreach ($f in Get-ChildItem -LiteralPath $env:DIST_DIR -File) {
-            foreach ($key in @($f.Name, ($f.Name -replace ' ', '-'))) {
-              if ($local.ContainsKey($key) -and $local[$key] -ne $f.FullName) { throw "Ambiguous local match for '$key'." }
-              $local[$key] = $f.FullName
-            }
-          }
+          $localFiles = @(Get-ChildItem -LiteralPath $env:DIST_DIR -File)
           $sha = [System.Security.Cryptography.SHA512]::Create()
           $failures = 0
           foreach ($c in $checks) {
             $name = [System.Uri]::UnescapeDataString($c.name)
-            if (-not $local.ContainsKey($name)) { Write-Host "::error::'$name' is listed in $env:CHANNEL_YML but no such file exists in '$env:DIST_DIR'."; $failures++; continue }
+            if (-not $name.StartsWith($env:YML_PREFIX, [System.StringComparison]::Ordinal)) { Write-Host "::error::'$name' in $env:CHANNEL_YML does not start with '$env:YML_PREFIX'; refusing to guess a local file."; $failures++; continue }
+            $diskName = $env:DISK_PREFIX + $name.Substring($env:YML_PREFIX.Length)
+            $found = @($localFiles | Where-Object { $_.Name -ceq $diskName -or $_.Name -ceq $name })
+            if ($found.Count -eq 0) { Write-Host "::error::'$name' is listed in $env:CHANNEL_YML but neither '$diskName' nor '$name' exists in '$env:DIST_DIR'."; $failures++; continue }
+            if ($found.Count -gt 1) { Write-Host "::error::'$name' in $env:CHANNEL_YML maps to $($found.Count) files in '$env:DIST_DIR' ($(($found | ForEach-Object Name) -join ', ')); expected exactly one."; $failures++; continue }
             if ([string]::IsNullOrWhiteSpace($c.sha512)) { Write-Host "::error::'$name' has no sha512 in $env:CHANNEL_YML."; $failures++; continue }
-            $stream = [System.IO.File]::OpenRead($local[$name])
+            Write-Host "     $name -> $($found[0].Name)"
+            $stream = [System.IO.File]::OpenRead($found[0].FullName)
             try { $actual = [Convert]::ToBase64String($sha.ComputeHash($stream)) } finally { $stream.Dispose() }
             if ($actual -eq $c.sha512) { Write-Host "OK   $name sha512 matches." }
             else { Write-Host "::error::sha512 mismatch for '$name': yml=$($c.sha512) actual=$actual"; $failures++ }
