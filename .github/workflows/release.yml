@@ -24,25 +24,58 @@ jobs:
       is-beta: ${{ steps.check.outputs.is-beta }}
       version: ${{ steps.check.outputs.version }}
     steps:
+      # Dispatch inputs reach the shell only through `env:` (never interpolated into
+      # the script) and are validated before any use. The tag must match the strict
+      # release form exactly — no normalisation, no other characters — and is-beta
+      # must be exactly true/false AND agree with the tag, so neither the version nor
+      # the channel the signed build-windows job uses can be steered by a dispatcher.
       - name: Determine release type
         id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_IS_BETA: ${{ inputs.is-beta }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
+          set -euo pipefail
+          TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[0-9]+)?)?$'
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+            SOURCE="inputs.tag"
           else
-            TAG="${{ github.ref }}"
-            TAG="${TAG#refs/tags/}"
+            if [ -n "$INPUT_TAG" ] || [ -n "$INPUT_IS_BETA" ]; then
+              echo "::error::unexpected dispatch inputs on a '$EVENT' event; refusing."
+              exit 1
+            fi
+            if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+              echo "::error::release runs must be triggered by a tag; got ref_type '$GITHUB_REF_TYPE' for '$GITHUB_REF'."
+              exit 1
+            fi
+            TAG="${GITHUB_REF#refs/tags/}"
+            SOURCE="github.ref"
           fi
-          # Normalize: strip optional leading v/V, then always prepend lowercase v
-          # so dispatch with "0.5.3", "v0.5.3", or "V0.5.3" all become "v0.5.3".
-          TAG="${TAG#[vV]}"
-          TAG="v${TAG}"
-          if [[ "$TAG" =~ ^v.*-beta ]] || [ "${{ inputs.is-beta }}" = "true" ]; then
-            echo "is-beta=true" >> $GITHUB_OUTPUT
-          else
-            echo "is-beta=false" >> $GITHUB_OUTPUT
+          # %q prints the rejected value escaped on one line so a payload cannot smuggle
+          # a second workflow command through this error output.
+          if ! [[ "$TAG" =~ $TAG_RE ]]; then
+            printf '::error::%s %q is not a valid release tag; expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-beta[.N] exactly (lowercase v, digits only, nothing else).\n' "$SOURCE" "$TAG"
+            exit 1
           fi
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+          if [[ "$TAG" == *-beta* ]]; then TAG_IS_BETA=true; else TAG_IS_BETA=false; fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$INPUT_IS_BETA" in
+              true|false) ;;
+              *)
+                printf '::error::inputs.is-beta must be exactly true or false; got %q.\n' "$INPUT_IS_BETA"
+                exit 1
+                ;;
+            esac
+            if [ "$INPUT_IS_BETA" != "$TAG_IS_BETA" ]; then
+              echo "::error::inputs.is-beta=$INPUT_IS_BETA does not match tag $TAG: a -beta tag must be dispatched with is-beta=true and a stable tag with is-beta=false."
+              exit 1
+            fi
+          fi
+          echo "is-beta=$TAG_IS_BETA" >> "$GITHUB_OUTPUT"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release: version=$TAG is-beta=$TAG_IS_BETA (from $SOURCE on $EVENT)"
 
   # Guard: the release tag must match the version already committed to
   # package.json. This workflow never pushes a version bump itself (SKY-10762 —

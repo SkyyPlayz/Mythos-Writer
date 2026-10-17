@@ -39,7 +39,7 @@ gh workflow run release.yml \
 
 `--ref <tag>` is required: `build-windows` refuses to sign unless the run is on the tag ref itself (`github.ref_type == tag`), the dispatched `tag` input equals that ref, and the commit is on `main`.
 
-Both `v0.5.3` and `0.5.3` are accepted — the workflow normalizes the tag to the `v`-prefix form automatically.
+The tag must be exactly `vMAJOR.MINOR.PATCH` or `vMAJOR.MINOR.PATCH-beta[.N]` (lowercase `v`; no normalisation), and `is-beta` must be `false` for a stable tag and `true` for a `-beta` tag — `determine-release` fails closed on anything else.
 
 (Pushing an annotated tag `v*` to the bumped commit triggers the same workflow;
 dispatch is preferred because a tag pushed by another workflow's `GITHUB_TOKEN`
