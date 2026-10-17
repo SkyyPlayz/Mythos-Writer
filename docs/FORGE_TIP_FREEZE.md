@@ -15,9 +15,8 @@ Cross-links: [MERGE_GATE.md](./MERGE_GATE.md) · [FORGE_E2E_KEEPALIVE.md](./FORG
 3. Wait for that tip’s CI. Do **not** stream many small fix tips.
 
 Label `tip-freeze` (or document TIP FREEZE in the PR) means: stop tip pushes
-except as allowed below. The Mythos PR hygiene auto-rebase job **skips** PRs
-with `tip-freeze` so mid-gate rebase cannot fight the freeze
-(see `.github/workflows/mythos-pr-hygiene.yml`).
+except as allowed below. `.github/workflows/mythos-pr-hygiene.yml` no longer
+calls `gh` update-branch (#1703), so it does not rebase a frozen tip.
 
 ## Soft cap — one emergency single-fix tip
 

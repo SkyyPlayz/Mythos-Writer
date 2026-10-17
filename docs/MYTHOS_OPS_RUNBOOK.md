@@ -29,7 +29,7 @@ Health canary (weekday mornings + after audit/hygiene completes). Sticky marker:
 | Circuit breaker | `MYTHOS_WAKE_CIRCUIT_BREAKER` | Grok Bot `mythos-pr-ci-watch` / Forge must stay SILENT while ISO future |
 | Shadow / autofix | `MYTHOS_AUTOFIX_MODE`, `MYTHOS_AUTOFIX_SHADOW_UNTIL` | [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md) |
 | Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE`, allow-listed tip-window / batch / circuit / retry vars | Wed audit proposes one tweak; shadow 1w; APPLY or MISS |
-| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (skip rebase); draft-CI sticky; draft→ready | Merged auto-rebase + draft-CI. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
+| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (logged, not rebased); draft-CI sticky; draft→ready | No `gh` update-branch (#1703). Draft-CI comment and draft→ready remain. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
 | Branch protection | [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) + `scripts/branch-protection/apply-main-ruleset.mjs` | Manual admin apply after merge |

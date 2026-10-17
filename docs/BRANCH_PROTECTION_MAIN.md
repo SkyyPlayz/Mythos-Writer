@@ -69,7 +69,7 @@ it, or creates one. It never runs from the token-audit workflow.
 3. **Empty bypass** stops force-push / admin shortcuts around the tip gate.
 4. **Linear history** keeps `main` readable for audits and bisects.
 
-Strict “branches must be up to date” pairs with
+Strict “branches must be up to date” stays in the ruleset.
 [`.github/workflows/mythos-pr-hygiene.yml`](../.github/workflows/mythos-pr-hygiene.yml)
-(hourly + PR events; `gh` update-branch) so open PRs — **including drafts** —
-stay current without human rebase tax. PRs labeled `tip-freeze` are skipped.
+no longer calls `gh` update-branch (#1703 removed that step). Open PRs,
+including drafts, are not auto-rebased.
