@@ -155,6 +155,9 @@ jobs:
       # Pin the PowerShell signing module electron-builder shells out to. pwsh here
       # on purpose: electron-builder prefers pwsh.exe when present, so the pin must
       # land in the same CurrentUser module path it will autoload from.
+      # PIN_VERSION is a literal here and in the S-1 check below — never an input,
+      # var or secret — so a release run can only ever pin 0.5.8. (Proof fixtures
+      # copy the script text and set their own env; release runs cannot.)
       - name: Pin TrustedSigning PowerShell module to 0.5.8
         shell: pwsh
         env:
