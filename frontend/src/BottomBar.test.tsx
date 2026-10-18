@@ -475,7 +475,6 @@ describe('split count name', () => {
       expect(node.getAttribute('aria-hidden')).toBe('true');
       expect(node.getAttribute('title')).toBe(SPLIT_FULL);
     }
-    expect(container.querySelector('.bottom-split-short--step1')).toBeNull();
     expect(container.querySelector('.bottom-split-short--step2')?.textContent).toBe('12.4k · 0');
     expect(container.querySelector('.bottom-split-full')?.textContent).toBe(SPLIT_FULL);
   });

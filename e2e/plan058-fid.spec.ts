@@ -2275,9 +2275,7 @@ test.describe('PLAN-058 Fid-a', () => {
     const editor = page.locator('.ProseMirror');
     await editor.click();
     await page.keyboard.insertText('me '.repeat(999_999));
-    await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent(), {
-      timeout: 15_000,
-    }).toBe('999,999 words');
+    await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent()).toBe('999,999 words');
     await saveScene(page);
     const fullText = 'Pane 1: 999,999 words · Pane 2: 999,999 words';
     const shortText = '999.9k · 999.9k';
