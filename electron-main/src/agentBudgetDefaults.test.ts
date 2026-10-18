@@ -2,7 +2,8 @@
  * Pins AGENT_BUDGET_DEFAULTS (appSettingsLoad.ts) so a changed default goes red,
  * and proves the loader back-fills a missing per-agent requestsPerMinute.
  * Expected values are written out on purpose — do not derive them from the
- * constant under test.
+ * constant under test. Saved-file cases include slice2AutonomyOffMigrated,
+ * the on-disk state after the slice-2 autonomy-off migration.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -45,6 +46,36 @@ const EXPECTED_BUDGET_DEFAULTS = {
 function rpm(agent: object | undefined): unknown {
   return (agent as Record<string, unknown> | undefined)?.requestsPerMinute;
 }
+
+/**
+ * One agent as the slice-2 migration writes it (appSettingsLoad.ts):
+ * autoApply forced off and autoApplyCategories replaced with the all-off map.
+ * requestsPerMinute is stripped so a later load has to back-fill it — the
+ * slice2AutonomyOffMigrated flag stops that migration from running again.
+ */
+function agentAfterSlice2AutonomyOff(saved: Record<string, unknown>): Record<string, unknown> {
+  const agent: Record<string, unknown> = {
+    ...saved,
+    autoApply: false,
+    autoApplyCategories: { ...EXPECTED_BUDGET_DEFAULTS.autoApplyCategories },
+  };
+  delete agent.requestsPerMinute;
+  return agent;
+}
+
+/** Saved settings file that already went through the slice-2 autonomy-off migration. */
+const slice2AutonomyOffMigrated = {
+  slice2AutonomyOffMigrated: true,
+  agents: {
+    writingAssistant: agentAfterSlice2AutonomyOff({ enabled: true }),
+    brainstorm: agentAfterSlice2AutonomyOff({ enabled: true }),
+    archive: agentAfterSlice2AutonomyOff({ enabled: true, model: 'saved-model' }),
+    betaReader: agentAfterSlice2AutonomyOff({ enabled: true }),
+    alphaReader: agentAfterSlice2AutonomyOff({ enabled: false }),
+    storylineConsultant: agentAfterSlice2AutonomyOff({ enabled: false }),
+    lineEditor: agentAfterSlice2AutonomyOff({ enabled: false }),
+  },
+};
 
 const tempDirs: string[] = [];
 
@@ -145,5 +176,22 @@ describe('loadAppSettingsFrom — requestsPerMinute back-fill', () => {
     expect(rpm(loaded.agents.archive)).toBe(5);
     // A sibling agent without the field still gets the default.
     expect(rpm(loaded.agents.brainstorm)).toBe(60);
+  });
+
+  it('back-fills requestsPerMinute and budget defaults for a slice2AutonomyOffMigrated file', () => {
+    const { settingsPath, store } = mkSettingsStore();
+    const raw = JSON.stringify(slice2AutonomyOffMigrated);
+    fs.writeFileSync(settingsPath, raw);
+
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+
+    // Flag stays set, and this load must not re-run the migration write.
+    expect(loaded.slice2AutonomyOffMigrated).toBe(true);
+    expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(raw);
+    for (const key of AGENT_KEYS) {
+      expect(rpm(loaded.agents[key]), key).toBe(60);
+      expect(loaded.agents[key], key).toMatchObject(EXPECTED_BUDGET_DEFAULTS);
+    }
+    expect(loaded.agents.archive.model).toBe('saved-model');
   });
 });
