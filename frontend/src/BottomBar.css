@@ -4,6 +4,11 @@
   /* A1 / 09 §3.5: status bar + backdrop blur */
   gap: 14px;
   padding: 0 18px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
   height: 30px;
   background: rgba(8, 10, 18, .4);
   backdrop-filter: blur(var(--blur, 18px));
@@ -15,12 +20,16 @@
   user-select: none;
   position: relative;
   z-index: 10;
+  /* Container queries hide donors. The width is the content box. */
+  container-type: inline-size;
+  container-name: status-bar;
 }
 
 .bottom-nav {
   display: flex;
   gap: 4px;
-  flex-shrink: 0;
+  /* Prev/next never shrinks and never ellipsizes. Donors leave first. */
+  flex: 0 0 auto;
 }
 
 /* GH #619: the "‹ Prev / Next ›" page-nav buttons used bare dark hex (near-zero
@@ -59,12 +68,10 @@
 }
 
 .bottom-meta {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  overflow: hidden;
-  min-width: 0;
+  /* Children join the bar's flex line. A box here was shrinking below the
+     word count and clipping it once the save label and voice indicator
+     were both present. */
+  display: contents;
 }
 
 .bottom-breadcrumb {
@@ -72,6 +79,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
+  /* Takes leftover space until the container query removes it. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .bottom-sep {
@@ -86,9 +96,50 @@
 }
 
 .bottom-stats {
+  /* Split-view counts and note stats are one line. The live scene count
+     overrides this below; these two must not inherit that flex box. */
   white-space: nowrap;
-  flex-shrink: 0;
   color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.bottom-stats[data-testid="bottom-live-stats"] {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: min-content;
+  white-space: nowrap;
+}
+
+.bottom-stats-lead {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.bottom-stats-chars {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.bottom-stats-tail {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Visually hidden copy of a donor. display:none until that donor is hidden,
+   so a wide bar does not announce the same status twice. No live region.
+   position:absolute keeps the copy out of the flex line when it is shown. */
+.bottom-status-fallback {
+  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .bottom-hint {
@@ -96,10 +147,12 @@
 }
 
 .bottom-draft {
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .bottom-draft-badge {
+  display: block;
+  white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
@@ -125,7 +178,8 @@
 }
 
 .bottom-daily-goal {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
@@ -157,7 +211,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--text-muted);
 }
 
@@ -168,6 +223,23 @@
   background: var(--n1, #00f0ff);
   box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, .4));
   animation: bottom-saved-pulse 2.6s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+
+.bottom-saved-check {
+  display: none;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.bottom-saved-short {
+  display: none;
 }
 
 @keyframes bottom-saved-pulse {
@@ -183,7 +255,8 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--state-danger);
   font-size: 0.72rem;
   font-weight: 500;
@@ -195,6 +268,19 @@
   border-radius: 50%;
   background: var(--state-danger);
   animation: voice-pulse 1.2s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+
+.bottom-voice-icon {
+  display: none;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .bottom-voice-label {
@@ -208,4 +294,212 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-voice-dot { animation: none; }
+}
+
+/*
+ * Donor hide order. Measured after Ctrl+S with Listening on (content box, px):
+ *   window 900 → 438, 960 → 498, 1024 → 562, 1280 → 818, 1440 → 978.
+ *   prev/next 106.5, short word count 118.5, Saved just now 90.9, Listening 63.2,
+ *   gap 14. That short fixed set is 421.1 and fits in the 438px box at 900.
+ *   draft badge 82, daily goal 91.6, short title 196.3, stats tail 360.4.
+ * Goal and badge need 622.7 with the short fixed set, the title as well needs 833,
+ * the tail as well needs 1193.
+ * A 22,222-word scene makes the combined count 175.6px ("22,222 words · 66,667
+ * characters"). The fixed set then occupies 478.2px and overflows the 438px box
+ * by 40.2px. Split out, the word count is 71.7px and the character count is
+ * 100.8px. Hiding the character count leaves the fixed set at 374.3px, 63.7px
+ * inside the box. It leaves before the stats tail: the long count is 57px wider
+ * than the short one, so it hides from 1192 + 57 = 1249 downward. Then the tail.
+ * These thresholds are content-box widths, not window widths. A 1280px window
+ * is an 818px content box, so the title stays up through 760px and is still
+ * on screen there (measured title box 258px). A 1024px window is a 562px
+ * content box. With a short count the goal (91.6) and badge (82) leave 16px
+ * inside that box, so they stay up through 545px and are still on screen at
+ * 1024. A 22,223-word count is 30px wider, and the full word "Listening" then
+ * ends 13.9px inside the padding. Hiding the goal would miss the 1024px
+ * window, and the word count does not shrink. The goal returns above 545px.
+ * From there through 720px every count, including 999 words, switches
+ * Listening to the mic. Saved stays the full "Saved just now" wherever that
+ * mic leaves 12px on DejaVu Sans. A 100,000-word count with the mic and the
+ * full label has 1.0px of spare at content 546 and 7.1px at 552, so the label
+ * shortens through 557px. At content 561 the full label has 16.2px. A 1024px
+ * window is content 564 (19.3px on that count, 43.7px at 999 words). A 1008px
+ * window is content 549 and still shortens. The goal stays on through this band.
+ * Split view keeps the full labels above a 900px window when they fit.
+ * The character count is not in the split bar. The goal and badge then leave
+ * through content 748px: a 100,500-word split at content 564 with those two
+ * gone keeps the full word and "Saved just now", with 35px of DejaVu Sans
+ * spare (59.6 on Inter). A 1280px window is content 820 and keeps the goal.
+ * The split mic covers the full-word overflow through content 546px, so a
+ * 900px window (content 440) gets the mic and 1024 (content 564) keeps the word.
+ * On DejaVu Sans the mic plus the full save label at that 900px window ends
+ * 9.2px past the content edge (Inter spare is only 9.6). Saved therefore
+ * shortens in split view through content 452px. After that, DejaVu spare is
+ * 34.5px. A 936px window (content 477) keeps the full label, DejaVu spare 27.4.
+ * A 100,500-word count at a 790px window (content 330) keeps the mic, and the
+ * save label shortens through 360px so DejaVu spare is 28.6px. An 832px window
+ * is content 372 and keeps the full label (DejaVu spare 65px on a short count).
+ * Fully inside rows keep at least 12px of DejaVu Sans spare. The word count
+ * and prev/next do not shrink.
+ */
+@container status-bar (max-width: 1249px) {
+  .bottom-stats-chars { display: none; }
+  .bottom-status-fallback--chars { display: block; }
+}
+
+@container status-bar (max-width: 1192px) {
+  .bottom-stats-tail { display: none; }
+  .bottom-status-fallback--tail { display: block; }
+}
+
+@container status-bar (max-width: 760px) {
+  .bottom-breadcrumb { display: none; }
+  .bottom-status-fallback--title { display: block; }
+}
+
+@container status-bar (max-width: 545px) {
+  .bottom-daily-goal,
+  .bottom-draft { display: none; }
+  .bottom-status-fallback--goal,
+  .bottom-status-fallback--draft { display: block; }
+}
+
+/* Split view. The character count is not on this bar. Through 748px the
+   pane string does not fit beside the goal, so the goal and badge leave.
+   A 1024px window (content 564) hides them and keeps the full labels.
+   A 1280px window (content 820) keeps the goal. */
+@container status-bar (max-width: 748px) {
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-daily-goal,
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-draft { display: none; }
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-status-fallback--goal,
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-status-fallback--draft { display: block; }
+}
+
+/* Full "Listening" beside a 100,000-word pane overflows until content 546px
+   on DejaVu Sans. The mic covers that, so a 900px window gets the mic and
+   a 1024px window (content 564) keeps the word. */
+@container status-bar (max-width: 546px) {
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-label,
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-dot {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon {
+    display: block;
+  }
+}
+
+/* A 900px window is content 440. The mic plus the full save label ends 9.2px
+   past that edge on DejaVu Sans, so Saved shortens through 452px. Above that
+   the full label stays. */
+@container status-bar (max-width: 452px) {
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-dot,
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-check,
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-short {
+    display: block;
+  }
+}
+
+/* Normal view, goal on screen. Every count takes the mic through 720px,
+   including 999 words at a 1008px window (content 549) and at 1024 (content
+   564). Split view is excluded: above 900px it keeps the full labels. */
+@container status-bar (min-width: 545px) and (max-width: 720px) {
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-label,
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-dot {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-icon {
+    display: block;
+  }
+}
+
+/* Mic plus the full save label is under 12px on DejaVu Sans for a 100,000-word
+   count through content 557px (1.0px at 546, 7.1px at 552). Above that the
+   full "Saved just now" stays. */
+@container status-bar (min-width: 545px) and (max-width: 557px) {
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-saved-dot,
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-saved-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-saved-check,
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-saved-short {
+    display: block;
+  }
+}
+
+@container status-bar (max-width: 437px) {
+  .bottom-voice-label,
+  .bottom-voice-dot {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-voice-icon {
+    display: block;
+  }
+}
+
+@container status-bar (max-width: 360px) {
+  .bottom-saved-dot,
+  .bottom-saved-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-saved-check,
+  .bottom-saved-short {
+    display: block;
+  }
 }

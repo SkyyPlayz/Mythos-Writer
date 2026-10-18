@@ -296,6 +296,8 @@ describe('Beta 4 M2 — Saved indicator', () => {
     const saved = screen.getByTestId('bottom-saved');
     expect(saved.textContent).toContain('Saved just now');
     expect(saved.querySelector('.bottom-saved-dot')).not.toBeNull();
+    expect(saved.querySelector('.bottom-saved-short')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.bottom-status-fallback--saved')).toBeNull();
   });
 
   it('formatSavedAgo ramps just now → minutes → hours', () => {
@@ -303,6 +305,17 @@ describe('Beta 4 M2 — Saved indicator', () => {
     expect(formatSavedAgo(t0, t0 + 10_000)).toBe('Saved just now');
     expect(formatSavedAgo(t0, t0 + 2 * 60_000)).toBe('Saved 2m ago');
     expect(formatSavedAgo(t0, t0 + 3 * 3_600_000)).toBe('Saved 3h ago');
+  });
+
+  it('formats a 4-digit scene count without a width class on the bar', async () => {
+    const scene = makeScene({
+      blocks: [
+        { id: 'b1', type: 'prose', order: 0, content: 'me '.repeat(1000), updatedAt: '' },
+      ],
+    });
+    const { container } = await renderBar({ selectedScene: scene });
+    expect(container.querySelector('.bottom-bar')?.className).toBe('bottom-bar');
+    expect(screen.getByTestId('bottom-stats-lead').textContent).toBe('1,000 words');
   });
 });
 
