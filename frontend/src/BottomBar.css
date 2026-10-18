@@ -527,12 +527,12 @@
 }
 
 /*
- * Split view with voice on, below content 797px. The 417px trigger was the
+ * Split view with voice on, at content 797px and below. The 417px trigger was the
  * 0-word string; 999,999 words in both panes is wider. That full string is
  * 262.3px on DejaVu Sans and 235.7px on Liberation Sans (11px). With Saved
  * at "Saved just now", Listening as the word, and the goal and badge back,
- * DejaVu spare is 9.9px at content 795 and 12px at content 797. Liberation
- * Sans spare at content 797 is 78.6px. Narrower chrome recovers earlier and
+ * DejaVu spare is 11.7px at content 797 and 12.7px at content 798. Liberation
+ * Sans spare at content 798 is 79.6px. Narrower chrome recovers earlier and
  * then loses it: DejaVu spare is 14.6px at content 541 (mic, full Saved) and
  * negative again once Listening is the word (content 561, spare -18.5px) and
  * once the goal returns (content 760, spare -24.6px). Step 2
@@ -540,7 +540,7 @@
  * DejaVu spare and 54.1px of Liberation spare at an 800px window. Unsplit
  * counts are not targeted.
  */
-@container status-bar (max-width: 796px) {
+@container status-bar (max-width: 797px) {
   .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-full {
     display: none;
   }

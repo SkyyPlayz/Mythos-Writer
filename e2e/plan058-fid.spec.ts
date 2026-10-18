@@ -12,7 +12,7 @@
  * stay in DesktopShell). The guards below keep the word count, the
  * "Saved just now" label, "Listening", and prev/next fully visible.
  * Those four never shrink. The split string is the one exception: at content
- * 796px and below, split view with voice on uses the label-less pane counts.
+ * 797px and below, split view with voice on uses the label-less pane counts.
  * Donors leave with display:none from container
  * queries: character count, then the stats tail, then the title, then the
  * goal and the draft badge, so the flex gap leaves with them. Below a 900px
@@ -218,9 +218,9 @@ async function setBarContent(app: ElectronApplication, page: Page, target: numbe
 }
 
 /** Step 2 fires at this content-box width and below, split view with voice on.
- *  796 is the last width where "Pane 1: 999,999 words · Pane 2: 999,999 words"
- *  still has under 12px of DejaVu Sans spare. Content 797 has 12px. */
-const STEP2_MAX = 796;
+ *  797 is the last width where "Pane 1: 999,999 words · Pane 2: 999,999 words"
+ *  still has under 12px of DejaVu Sans spare (11.7px). Content 798 has 12.7px. */
+const STEP2_MAX = 797;
 
 async function reachBarContent(
   app: ElectronApplication,
@@ -2269,7 +2269,7 @@ test.describe('PLAN-058 Fid-a', () => {
     }
   });
 
-  test('PLAN-1700 P2 step 2 applies at 795 and 796 and not at 797', async () => {
+  test('PLAN-1700 P2 step 2 applies at 796 and 797 and not at 798', async () => {
     test.setTimeout(180_000);
     await openAddedScene(page, 'Followup band');
     const editor = page.locator('.ProseMirror');
