@@ -1,0 +1,4 @@
+name: red-demo
+on:
+  workflow_dispatch:
+# scanner fixture only: secrets.MYTHOS_BOT_TOKEN
