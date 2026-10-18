@@ -10699,7 +10699,7 @@ function registerBetaReportRunHandler(): void {
     const settings = loadAppSettings();
     const betaReaderSettings = getBetaReaderSettings(settings);
     if (!betaReaderSettings.enabled) {
-      throw new Error('Beta Reader is disabled — enable it in Settings > AI Agents to run a read.');
+      throw new Error('Beta Reader is disabled — enable it in Settings → Model & keys to run a read.');
     }
     const budgetCheck = checkCallBudget('beta-reader', betaReaderSettings, getDb());
     if (!budgetCheck.allowed) {
@@ -10781,7 +10781,7 @@ function registerBetaReportRunHandler(): void {
       if (!parsed.summaryFound) {
         throw new SafeIpcError(
           "The Beta Reader's response couldn't be parsed into a report. This can happen with " +
-            'some local/reasoning models — try again, or try a different model in Settings > AI Agents.',
+            'some local/reasoning models — try again, or try a different model in Settings → Model & keys.',
         );
       }
       const reportId = crypto.randomUUID();
@@ -10908,7 +10908,7 @@ function registerProductionRoleRunHandler(): void {
     const roleDef = PRODUCTION_ROLES[role];
     const displayName = resolveAgentDisplayName(role, settings.agentNames);
     if (!roleSettings.enabled) {
-      throw new Error(`${displayName} is disabled — enable it in Settings > AI Agents to run a review.`);
+      throw new Error(`${displayName} is disabled — enable it in Settings → Model & keys to run a review.`);
     }
 
     const sourceAgent = PRODUCTION_ROLE_SOURCE_AGENT[role];

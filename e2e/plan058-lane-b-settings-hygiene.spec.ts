@@ -202,9 +202,9 @@ test.describe('PLAN-058 Lane B — settings-write hygiene', () => {
     await waitForShell(page);
 
     await openSettingsDialog(page);
-    await page.screenshot({
-      path: '/opt/cursor/artifacts/screenshots/plan058-b2-settings-close.png',
-    });
+    const shotPath = path.resolve(__dirname, '../test-results/plan058-b2-settings-close.png');
+    fs.mkdirSync(path.dirname(shotPath), { recursive: true });
+    await page.screenshot({ path: shotPath });
     await closeSettingsDialog(page);
     await page.waitForTimeout(800);
 

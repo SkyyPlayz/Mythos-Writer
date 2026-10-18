@@ -1,21 +1,33 @@
 # Mythos merge gate
 
-Airtight, tip-SHA-bound conditions for merging into `main`. Enforced by
-[`.github/workflows/mythos-gate-auto-merge.yml`](../.github/workflows/mythos-gate-auto-merge.yml).
+Airtight, tip-SHA-bound conditions for merging into `main`. A human applies
+them. Actions does not.
 
-Fail-closed: if any condition is missing or ambiguous, the workflow **does not merge**.
+`.github/workflows/mythos-gate-auto-merge.yml` (check name
+`mythos-gate-auto-merge`) was removed. It still had live triggers
+(`workflow_run` when CI completed successfully, `issue_comment`,
+`pull_request_review`, and `pull_request` labeled / unlabeled /
+ready_for_review / synchronize) and read the repo bot PAT, falling back to
+`GITHUB_TOKEN`. A working PAT would have revived auto-merge with no GitHub
+review. Skyy approved the removal. The repo secret is left in place; deleting
+it is a separate owner-only step.
+
+Fail-closed: if any condition below is missing or ambiguous, do not merge.
 
 ## Who merges
 
 | Path | Merger |
 | --- | --- |
-| Routine product/docs PRs | Mythos gate auto-merge workflow |
-| VR baseline refresh PRs (`vr-baselines.yml`) | Same Mythos gate — workflow opens a PR to **`main` only** with `MYTHOS_BOT_TOKEN` (so required checks run); **no** `--auto --squash` |
-| Dependabot (any update) | Human merge. The Mythos gate still skips `dependabot[bot]`. `.github/workflows/dependabot-auto-merge.yml` was removed after PR #1696 (`abceeae7`) armed native auto-merge and landed on `main` with no reviews and no CI on `main` (owner Option A, 2026-10-16). |
-| Carve-out paths | Same workflow **only** after owner tip-bound `CARVE-OUT APPROVE` |
+| Routine product/docs PRs | Human. The Mythos gate auto-merge workflow was removed. |
+| VR baseline refresh (`vr-baselines.yml`) | No PR. The step that opened one required the dead bot PAT and was removed. The workflow still regenerates baselines and uploads the `vr-baselines` artifact. |
+| Dependabot (any update) | Human merge. `.github/workflows/dependabot-auto-merge.yml` was removed after PR #1696 (`abceeae7`) armed native auto-merge and landed on `main` with no reviews and no CI on `main` (owner Option A, 2026-10-16). |
+| Carve-out paths | Human **only** after owner tip-bound `CARVE-OUT APPROVE` |
 | Releases | [`release.yml`](../.github/workflows/release.yml) — draft only unless owner publishes |
 
 Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`).
+
+While the bot PAT returns 403, Critic/Shield/Probe verdicts posted in the Mythos room with the tip sha count as official gate evidence. The only trusted approver is still SkyyPlayz (by `user.login`). Merge path: Ivy MERGE GO, then Sentinel merges as the bot pinned with `--match-head-commit`; on a 403, Ivy merges with the owner token pinned to the same sha; Skyy never merges.
+`tip-freeze` goes on at the tip-freeze wake, before any verdict. No tip-freeze until CI has run on the current head sha.
 
 ## Required conditions (ALL)
 
@@ -31,28 +43,29 @@ Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`
    - Probe: body must include `Probe` near `VERIFY PASS` (fail closed on bare "verify pass" alone)
 4. **Carve-outs** — if label `carve-out` is present, or the diff hits carve-out paths (workflows, actions, `db.ts`, auth, secrets, release/electron-builder config), or the active `carve-out-check` sticky still requires review:
    - **Do not merge** unless owner `SkyyPlayz` has commented tip-bound `CARVE-OUT APPROVE`.
-   - Otherwise a sticky comment asks Ivy/owner for that allow.
 5. **Clean merge** — `mergeable === true`; no tip-bound Critic `CHANGES_REQUESTED`.
 6. **Merge method** — create a **merge commit** (`merge_method: merge`). Branch delete is not required.
 7. **Never** publish GitHub releases, push commits to `main` outside this merge, or weaken tests.
 
 ## Triggers
 
-- `workflow_run` of workflow `CI` with `conclusion=success` (resolve PR from head SHA)
-- `issue_comment` / `pull_request_review` when the body looks like a gate signal
-- `pull_request` `labeled` / `unlabeled` / `ready_for_review` / `synchronize` (re-evaluate)
+Removed with the workflow. No remaining workflow re-checks a PR in order to
+merge it. Do not restore `workflow_run`, comment, review, or pull-request
+triggers that merge.
 
 ## Tokens
 
-Prefer repo secret `MYTHOS_BOT_TOKEN` (SkyHigh-Mythos-Bot PAT with Contents + Pull requests write) when set so the merge push can trigger downstream workflows.
-
-Fallback: `GITHUB_TOKEN` (repo has `allow_auto_merge=true`). Because that token does not re-trigger `push` workflows, the gate **dispatches `ci.yml` on `main`** after a successful `GITHUB_TOKEN` merge.
+Removal note: the deleted workflow read the repo bot PAT (SkyHigh-Mythos-Bot,
+Contents + Pull requests write) and, when that secret was empty, `GITHUB_TOKEN`.
+That read is gone. This change does not delete the secret.
 
 ## Idempotency
 
-- Already-merged PRs are no-ops.
-- The merge-intent comment is posted **only after** a successful merge API call (so transient merge failures can retry):
-  `Mythos gate auto-merge: Critic+Shield+Probe tip-bound + required checks green on <sha>.`
+The deleted workflow posted this comment only after a successful merge API call:
+
+`Mythos gate auto-merge: Critic+Shield+Probe tip-bound + required checks green on <sha>.`
+
+Nothing posts that marker now.
 
 ## Out of scope
 

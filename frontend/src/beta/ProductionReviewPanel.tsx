@@ -77,7 +77,7 @@ export default function ProductionReviewPanel({
     result.scopeId === activeScope?.id
       ? result
       : null;
-  const offHint = `${roleName} is off — enable it in Settings › AI Agents to run a review.`;
+  const offHint = `${roleName} is off — enable it in Settings › Model & keys to run a review.`;
 
   const handleRun = useCallback(async () => {
     if (!story || !activeScope) {

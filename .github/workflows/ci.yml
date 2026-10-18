@@ -235,8 +235,13 @@ jobs:
       - name: Test (mythos-gate Critic/Shield/Probe tip-bound signals)
         run: node .github/scripts/mythos-gate-signals.test.js
 
+      - name: Test (no bot token or secrets fallback in workflows)
+        run: node .github/scripts/no-bot-token.test.js
+
       - name: Test (ops-guards hygiene last-success selection)
         run: bash scripts/mythos-ops/ops-guards.test.sh
+      - name: Test (mythos-pr-hygiene auto-rebase gate)
+        run: bash scripts/mythos-ops/pr-hygiene-rebase.test.sh
 
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
