@@ -211,7 +211,6 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MYTHOS_BOT_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           TRACKING_ISSUE_VAR: ${{ vars.MYTHOS_TOKEN_AUDIT_ISSUE }}
           LAST_STATUS: ${{ vars.MYTHOS_TOKEN_AUDIT_LAST_STATUS }}
@@ -228,7 +227,4 @@ jobs:
         run: |
           set -euo pipefail
           export DAY=$(TZ=America/Denver date +%F)
-          if [[ -n "${MYTHOS_BOT_TOKEN:-}" ]]; then
-            export GH_TOKEN="$MYTHOS_BOT_TOKEN"
-          fi
           node scripts/mythos-token-audit/loud-digest.mjs
