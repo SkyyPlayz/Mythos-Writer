@@ -38,12 +38,14 @@ checks (those stay tip-bound comments/reviews, not Actions check names).
 ### Explicitly out of scope for this ruleset
 
 - Critic APPROVE / Shield CLEAR / Probe VERIFY PASS as **required check contexts**
-  — those are tip-SHA comment/review signals enforced by
-  [`mythos-gate-auto-merge.yml`](../.github/workflows/mythos-gate-auto-merge.yml),
-  not branch-protection check names.
+  — those are tip-SHA comment/review signals a human applies
+  ([MERGE_GATE.md](./MERGE_GATE.md)), not branch-protection check names.
+  `.github/workflows/mythos-gate-auto-merge.yml` (check `mythos-gate-auto-merge`)
+  was removed; do not put that check back on the ruleset.
 - Requiring ≥1 or ≥2 GitHub PR approvals — that was double-gate theater; tip-SHA
-  gate remains the quality bar.
-- Auto-merge policy — unchanged; see MERGE_GATE.md.
+  signals remain the quality bar.
+- Auto-merge — the Mythos gate auto-merge workflow was removed. See MERGE_GATE.md.
+  Do not re-add it.
 
 ## Apply (manual follow-up)
 
@@ -67,7 +69,7 @@ it, or creates one. It never runs from the token-audit workflow.
 3. **Empty bypass** stops force-push / admin shortcuts around the tip gate.
 4. **Linear history** keeps `main` readable for audits and bisects.
 
-Strict “branches must be up to date” pairs with
+Strict “branches must be up to date” stays in the ruleset.
 [`.github/workflows/mythos-pr-hygiene.yml`](../.github/workflows/mythos-pr-hygiene.yml)
-(hourly + PR events; `gh` update-branch) so open PRs — **including drafts** —
-stay current without human rebase tax. PRs labeled `tip-freeze` are skipped.
+no longer calls `gh` update-branch (#1703 removed that step). Open PRs,
+including drafts, are not auto-rebased.

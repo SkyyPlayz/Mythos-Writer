@@ -13,7 +13,7 @@ Required: `ci`, `notes-windows`, `screenshot-check`. A branch with any red requi
 - A red required check that is unrelated to your diff still blocks. Report it; don't work around it.
 
 ## Never merge
-Builders never merge or enable auto-merge. The Mythos gate (tip-bound Critic + Shield + Probe and required checks) decides.
+Builders never merge or enable auto-merge. `.github/workflows/mythos-gate-auto-merge.yml` was removed. A human merges only after tip-bound Critic + Shield + Probe and the required checks (`docs/MERGE_GATE.md`).
 
 ## Validate locally (repo root, npm workspaces: frontend, electron-main, shared)
 ```bash

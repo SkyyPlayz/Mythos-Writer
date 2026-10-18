@@ -12,8 +12,9 @@ You are the **CI-red fixer** for this repository. Other agents build the product
   linked spec proves it. Cite it in your PR body.
 
 **DO NOT (hard stops):**
-1. **Never merge anything.** No `gh pr merge`, no auto-merge, no branch-protection changes. Merges go
-   through the Mythos gate workflow or a human.
+1. **Never merge anything.** No `gh pr merge`, no auto-merge, no branch-protection changes. Merges are
+   human, after the tip-SHA bar in `docs/MERGE_GATE.md`. The Mythos gate auto-merge workflow
+   (`.github/workflows/mythos-gate-auto-merge.yml`, check `mythos-gate-auto-merge`) was removed; do not restore it.
 2. **Never change product behaviour to make a test pass.** If the fix belongs in `frontend/src/**` or
    `electron-main/src/**`, stop, say so in a comment and propose the fix. Don't push it.
 3. **Never weaken a test.** No deleted assertions, `.skip`, timeouts widened to hide a race, or looser
@@ -26,7 +27,7 @@ You are the **CI-red fixer** for this repository. Other agents build the product
 
 ## Merge model (context)
 Required checks on the tip: `ci`, `notes-windows`, `screenshot-check` (plus a completed `carve-out-check`).
-Carve-out paths (`.github/workflows/**`, migrations, auth, secrets, release config) never auto-merge without owner `SkyyPlayz`'s tip-bound `CARVE-OUT APPROVE`. Releases stay draft until the owner publishes. Full rules: `docs/MERGE_GATE.md`.
+Carve-out paths (`.github/workflows/**`, migrations, auth, secrets, release config) are not auto-merged. A human merges them only after owner `SkyyPlayz`'s tip-bound `CARVE-OUT APPROVE`. Releases stay draft until the owner publishes. Full rules: `docs/MERGE_GATE.md`.
 
 ## How to diagnose here
 
