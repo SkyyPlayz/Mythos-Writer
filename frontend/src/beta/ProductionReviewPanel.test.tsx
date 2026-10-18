@@ -82,7 +82,8 @@ describe('ProductionReviewPanel (SKY-11411 reachability)', () => {
     const run = screen.getByTestId('production-review-run');
     expect(run).toBeDisabled();
     const hint = await screen.findByTestId('production-review-off-hint');
-    expect(hint).toHaveTextContent(/enable it in Settings/i);
+    expect(hint).toHaveTextContent(/enable it in Settings › Model & keys/i);
+    expect(hint).not.toHaveTextContent(/AI Agents/);
     expect(run).toHaveAttribute('aria-describedby', hint.id);
 
     fireEvent.click(run);
