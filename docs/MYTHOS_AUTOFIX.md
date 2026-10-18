@@ -30,7 +30,8 @@ Related: [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENC
    (unless mode is `disabled`).
 3. First run with empty UNTIL (post-merge): scripts set
    `MYTHOS_AUTOFIX_MODE=shadow` and `MYTHOS_AUTOFIX_SHADOW_UNTIL=<now+7d>` (needs
-   `MYTHOS_BOT_TOKEN` / vars:write).
+   vars:write). Actions no longer reads a bot PAT for that write; if the var
+   cannot be set from Actions, Ivy sets it in the UI.
 
 Flip helpers: `scripts/mythos-autofix/shadow-mode.mjs` · wired from
 `scripts/mythos-token-audit/loud-digest.mjs` and `.github/workflows/mythos-pr-hygiene.yml`.

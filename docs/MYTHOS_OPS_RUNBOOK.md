@@ -29,13 +29,13 @@ Health canary (weekday mornings + after audit/hygiene completes). Sticky marker:
 | Circuit breaker | `MYTHOS_WAKE_CIRCUIT_BREAKER` | Grok Bot `mythos-pr-ci-watch` / Forge must stay SILENT while ISO future |
 | Shadow / autofix | `MYTHOS_AUTOFIX_MODE`, `MYTHOS_AUTOFIX_SHADOW_UNTIL` | [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md) |
 | Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE`, allow-listed tip-window / batch / circuit / retry vars | Wed audit proposes one tweak; shadow 1w; APPLY or MISS |
-| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (skip rebase); draft-CI sticky; draft→ready | Merged auto-rebase + draft-CI. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
+| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (logged, not rebased); draft-CI sticky; draft→ready | No `gh` update-branch (#1703). Draft-CI comment and draft→ready remain. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
 | Branch protection | [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) + `scripts/branch-protection/apply-main-ruleset.mjs` | Manual admin apply after merge |
-| Merge gate | [MERGE_GATE.md](./MERGE_GATE.md) | Tip-SHA Critic+Shield+Probe — not collapsed |
+| Merge gate | [MERGE_GATE.md](./MERGE_GATE.md) | Tip-SHA Critic+Shield+Probe — not collapsed. Auto-merge workflow `mythos-gate-auto-merge.yml` (check `mythos-gate-auto-merge`) was removed; a human applies the bar. |
 | Ops health | `mythos-ops-health.yml` jobs `canary` + `secrets-rotation` | Red on audit silence/failure and hygiene silence since last success. Token-audit bootstrap WARN until the first completed run. Hygiene latest-failure is OK when a success is inside 26h. Quarterly PAT reminder |
-| Secrets rotation | `vars.MYTHOS_BOT_TOKEN_SET_AT`, `vars.MYTHOS_SECRET_ROTATION_DAYS` (default 90) | Reminder only — never prints secrets |
+| Secrets rotation | `vars.MYTHOS_PAT_SET_AT`, `vars.MYTHOS_SECRET_ROTATION_DAYS` (default 90) | Reminder only — never prints secrets. The auto-merge workflow was removed; do not confirm that it still merges. Deleting the repo bot PAT is owner-only. Copy any existing rotation date into `MYTHOS_PAT_SET_AT`; an unset date is treated as due. |
 
 ## Rollback one-liners
 

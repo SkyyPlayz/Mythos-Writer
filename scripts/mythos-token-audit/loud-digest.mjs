@@ -5,7 +5,6 @@
  *
  * Env:
  *   GITHUB_REPOSITORY, GH_TOKEN (required)
- *   MYTHOS_BOT_TOKEN (optional — vars write / stronger pin)
  *   TRACKING_ISSUE_VAR — current vars.MYTHOS_TOKEN_AUDIT_ISSUE (may be empty)
  *   AUDIT_FAILED — "1" if FAILED stub was written
  *   RUN_URL, RUN_ID, DAY (America/Denver date)
@@ -78,7 +77,7 @@ function ghJson(args, opts = {}) {
 
 function setVar(name, value, botToken) {
   if (!botToken) {
-    console.warn(`loud-digest: skip set var ${name} (no MYTHOS_BOT_TOKEN)`);
+    console.warn(`loud-digest: skip set var ${name} (no vars-write token)`);
     return false;
   }
   const ok = gh(
@@ -225,7 +224,7 @@ function main() {
   if (!repo) die("GITHUB_REPOSITORY required");
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   if (!token) die("GH_TOKEN required");
-  const botToken = process.env.MYTHOS_BOT_TOKEN || "";
+  const botToken = "";
   const day = process.env.DAY || new Date().toISOString().slice(0, 10);
   const runUrl = process.env.RUN_URL || "";
   const failed = process.env.AUDIT_FAILED === "1";
