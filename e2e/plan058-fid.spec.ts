@@ -12,7 +12,7 @@
  * stay in DesktopShell). The guards below keep the word count, the
  * "Saved just now" label, "Listening", and prev/next fully visible.
  * Those four never shrink. The split string is the one exception: at content
- * 417px and below, split view with voice on uses the label-less pane counts.
+ * 796px and below, split view with voice on uses the label-less pane counts.
  * Donors leave with display:none from container
  * queries: character count, then the stats tail, then the title, then the
  * goal and the draft badge, so the flex gap leaves with them. Below a 900px
@@ -217,8 +217,10 @@ async function setBarContent(app: ElectronApplication, page: Page, target: numbe
   return content;
 }
 
-/** Step 2 fires at this content-box width and below, split view with voice on. */
-const STEP2_MAX = 417;
+/** Step 2 fires at this content-box width and below, split view with voice on.
+ *  796 is the last width where "Pane 1: 999,999 words · Pane 2: 999,999 words"
+ *  still has under 12px of DejaVu Sans spare. Content 797 has 12px. */
+const STEP2_MAX = 796;
 
 async function reachBarContent(
   app: ElectronApplication,
@@ -240,7 +242,7 @@ async function reachBarContent(
 }
 
 async function setSplit(page: Page, on: boolean): Promise<void> {
-  await page.locator('.ProseMirror').click();
+  await page.locator('.ProseMirror').first().click();
   const split = page.getByTestId('split-word-counts');
   const visible = (await split.count()) > 0;
   if (visible === on) return;
@@ -2165,7 +2167,7 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(at900[key], `${key} hidden at 900`).not.toBe('none');
         expect(at800[key], `${key} newly hidden at 800`).not.toBe('none');
       }
-      expect(at900.full, 'full string hidden at 900').not.toBe('none');
+      expect(at900.full, 'full string painted at 900').toBe('none');
       const shot = test.info().outputPath('plan1700-followup-800-split-voice.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
@@ -2267,10 +2269,29 @@ test.describe('PLAN-058 Fid-a', () => {
     }
   });
 
-  test('PLAN-1700 P2 step 2 applies at 416 and 417 and not at 418', async () => {
+  test('PLAN-1700 P2 step 2 applies at 795 and 796 and not at 797', async () => {
     test.setTimeout(180_000);
     await openAddedScene(page, 'Followup band');
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await page.keyboard.insertText('me '.repeat(999_999));
+    await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent(), {
+      timeout: 15_000,
+    }).toBe('999,999 words');
     await saveScene(page);
+    const fullText = 'Pane 1: 999,999 words · Pane 2: 999,999 words';
+    const shortText = '999.9k · 999.9k';
+    const armWorstSplit = async () => {
+      await setSplit(page, true);
+      const split = page.getByTestId('split-word-counts');
+      const current = ((await split.textContent()) ?? '').replace(/\s+/g, ' ');
+      if (current.includes('Pane 2: 999,999 words')) return;
+      await page.getByTestId('spe-scene-btn').nth(1).click();
+      await page.locator('.spe-scene-option', { hasText: 'Followup band' }).click();
+      await expect.poll(async () => ((await split.textContent()) ?? '').replace(/\s+/g, ' '), {
+        timeout: 8_000,
+      }).toContain('Pane 2: 999,999 words');
+    };
     const bands = [
       { name: 'B-1', hint: STEP2_MAX - 1, on: true },
       { name: 'B', hint: STEP2_MAX, on: true },
@@ -2283,7 +2304,7 @@ test.describe('PLAN-058 Fid-a', () => {
     );
     try {
       for (const band of bands) {
-        await setSplit(page, true);
+        await armWorstSplit();
         await mountVoiceStandIn(page);
         const content = await reachBarContent(app!, page, band.hint, acceptFor(band.hint));
         expect(content, `${band.name} content ${content}`).toBeGreaterThan(band.hint - 1);
@@ -2291,11 +2312,11 @@ test.describe('PLAN-058 Fid-a', () => {
         if (band.on) {
           expect(forms.step2?.display, `${band.name} step 2 off at ${content}`).toBe('inline');
           expect(forms.full?.display, `${band.name} full string painted at ${content}`).toBe('none');
-          expect(forms.step2?.text).toBe('0 · 0');
+          expect(forms.step2?.text).toBe(shortText);
         } else {
           expect(forms.step2?.display, `${band.name} step 2 on at ${content}`).toBe('none');
           expect(forms.full?.display, `${band.name} full string hidden at ${content}`).not.toBe('none');
-          expect(forms.full?.text).toBe('Pane 1: 0 words · Pane 2: 0 words');
+          expect(forms.full?.text).toBe(fullText);
         }
         expectSavedVoiceInside(await savedVoiceEdges(page), `P2 split ${band.name}`);
         await removeVoiceStandIn(page);
