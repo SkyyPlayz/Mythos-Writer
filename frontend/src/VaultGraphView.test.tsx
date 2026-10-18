@@ -339,6 +339,26 @@ describe('VaultGraphView', () => {
     expect(screen.queryByTestId('vault-graph-truncation-banner')).not.toBeInTheDocument();
   }, 30_000);
 
+  // ─── FD-9 #25: filter bar slot ───────────────────────────────────────────────
+
+  it('renders Graph filters toolbar in the top-right slot of the card', async () => {
+    render(<VaultGraphView />);
+
+    const card = await screen.findByTestId('vault-graph-view');
+    await screen.findByRole('button', { name: 'Characters filter', exact: true });
+
+    const filters = within(card).getByRole('toolbar', { name: 'Graph filters', exact: true });
+    expect(filters).toHaveClass('vgv-filter-slot');
+    expect(card.firstElementChild).toBe(filters);
+
+    const header = card.querySelector('.vgv-toolbar');
+    expect(header).not.toBeNull();
+    expect(filters.compareDocumentPosition(header as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(within(card).getByRole('complementary', { name: 'Graph filters and forces', exact: true })).not.toBe(filters);
+  });
+
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
 
   it('AC-GV-06: renders category filter chips, all active by default', async () => {

@@ -537,7 +537,10 @@
   opacity: 0.28;
 }
 
-/* ─── Bottom toolbar (spec: 40 px) ──────────────────────────────────────── */
+/* ─── Filter bar (FD-9 #25): top row of the card, 40px ─────────────────── */
+/* .vgv-bottom-toolbar keeps the glass backing pin. vgv-filter-slot marks
+   the top-right slot: first flex child of the column, so its top and right
+   edges sit on the card. */
 
 .vgv-bottom-toolbar {
   display: flex;
@@ -545,7 +548,7 @@
   gap: 12px;
   height: 40px;
   padding: 0 12px;
-  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
   background: var(--glass-panel-bg);
   flex-shrink: 0;
   overflow: hidden;
