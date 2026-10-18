@@ -2,7 +2,7 @@
 // Beta 4 M2: + page-width hint, "Saved Xm ago" pulse, single-status-bar regression
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
-import BottomBar, { formatSavedAgo } from './BottomBar';
+import BottomBar, { formatCompactCount, formatSavedAgo } from './BottomBar';
 import type { Scene, Chapter, Story } from './types';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -67,6 +67,8 @@ async function renderBar(props: {
   selectedStory?: Story | null;
   activeNotePath?: string | null;
   pageWidthPx?: number | null;
+  isVoiceActive?: boolean;
+  splitWordCounts?: { pane1: number; pane2: number } | null;
 }) {
   const scene = props.selectedScene !== undefined ? props.selectedScene : makeScene();
   const chapter = props.selectedChapter !== undefined ? props.selectedChapter : makeChapter([scene ?? makeScene()]);
@@ -82,6 +84,8 @@ async function renderBar(props: {
         onNavigateScene={vi.fn()}
         activeNotePath={props.activeNotePath ?? null}
         pageWidthPx={props.pageWidthPx ?? null}
+        isVoiceActive={props.isVoiceActive ?? false}
+        splitWordCounts={props.splitWordCounts ?? null}
       />,
     );
   });
@@ -296,6 +300,8 @@ describe('Beta 4 M2 — Saved indicator', () => {
     const saved = screen.getByTestId('bottom-saved');
     expect(saved.textContent).toContain('Saved just now');
     expect(saved.querySelector('.bottom-saved-dot')).not.toBeNull();
+    expect(saved.querySelector('.bottom-saved-short')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.bottom-status-fallback--saved')).toBeNull();
   });
 
   it('formatSavedAgo ramps just now → minutes → hours', () => {
@@ -303,6 +309,17 @@ describe('Beta 4 M2 — Saved indicator', () => {
     expect(formatSavedAgo(t0, t0 + 10_000)).toBe('Saved just now');
     expect(formatSavedAgo(t0, t0 + 2 * 60_000)).toBe('Saved 2m ago');
     expect(formatSavedAgo(t0, t0 + 3 * 3_600_000)).toBe('Saved 3h ago');
+  });
+
+  it('formats a 4-digit scene count without a width class on the bar', async () => {
+    const scene = makeScene({
+      blocks: [
+        { id: 'b1', type: 'prose', order: 0, content: 'me '.repeat(1000), updatedAt: '' },
+      ],
+    });
+    const { container } = await renderBar({ selectedScene: scene });
+    expect(container.querySelector('.bottom-bar')?.className).toBe('bottom-bar');
+    expect(screen.getByTestId('bottom-stats-lead').textContent).toBe('1,000 words');
   });
 });
 
@@ -319,5 +336,146 @@ describe('Beta 4 M2 — single status bar regression', () => {
     expect(stats.textContent).toMatch(/min read/);
     // The deleted in-editor duplicate must never come back.
     expect(document.querySelector('.be-wordcount')).toBeNull();
+  });
+});
+
+const SPLIT_FULL = 'Pane 1: 12,403 words · Pane 2: 0 words';
+
+function parsedEnCompact(display: string): number {
+  const suffix = display.endsWith('M') ? 'M' : display.endsWith('k') ? 'k' : '';
+  const body = suffix === '' ? display.replace(/,/g, '') : display.slice(0, -1);
+  const negative = body.startsWith('-');
+  const unsigned = negative ? body.slice(1) : body;
+  const dot = unsigned.indexOf('.');
+  const fractionLength = dot === -1 ? 0 : unsigned.length - dot - 1;
+  const digits = Number(unsigned.replace('.', ''));
+  const scale = suffix === 'M' ? 1_000_000 : suffix === 'k' ? 1_000 : 1;
+  const value = digits * (scale / 10 ** fractionLength);
+  return negative ? -value : value;
+}
+
+describe('formatCompactCount', () => {
+  it('keeps counts under 1000 and the zero count in full', () => {
+    expect(formatCompactCount(0, 'en-US')).toBe('0');
+    expect(formatCompactCount(999, 'en-US')).toBe('999');
+  });
+
+  it('truncates thousands and millions without rounding up', () => {
+    expect(formatCompactCount(1000, 'en-US')).toBe('1k');
+    expect(formatCompactCount(1950, 'en-US')).toBe('1.9k');
+    expect(formatCompactCount(12403, 'en-US')).toBe('12.4k');
+    expect(formatCompactCount(12499, 'en-US')).toBe('12.4k');
+    expect(formatCompactCount(12999, 'en-US')).toBe('12.9k');
+    expect(formatCompactCount(999999, 'en-US')).toBe('999.9k');
+    expect(formatCompactCount(1049999, 'en-US')).toBe('1M');
+    expect(formatCompactCount(1200000, 'en-US')).toBe('1.2M');
+  });
+
+  it('uses the locale decimal separator and never compact notation', () => {
+    expect(formatCompactCount(12403, 'de-DE')).toBe('12,4k');
+    expect(formatCompactCount(12403, 'de-DE')).not.toBe('12.403');
+  });
+
+  it('returns a negative or non-finite count unchanged', () => {
+    expect(formatCompactCount(-1200, 'en-US')).toBe('-1,200');
+    expect(formatCompactCount(Number.NaN, 'en-US')).toBe('NaN');
+    expect(formatCompactCount(Number.POSITIVE_INFINITY, 'en-US')).toBe('∞');
+    expect(formatCompactCount(-1200, 'en-US')).not.toMatch(/k|M/);
+    expect(formatCompactCount(Number.NaN, 'en-US')).not.toMatch(/k|M/);
+  });
+
+  it('never displays a value higher than the count', () => {
+    const samples = [1000, 999_999, 1_000_000, 1_049_999, 2_000_000];
+    for (let n = 1000; n <= 2_000_000; n += 37) samples.push(n);
+    for (const n of samples) {
+      const display = formatCompactCount(n, 'en-US');
+      expect(parsedEnCompact(display), display).toBeLessThanOrEqual(n);
+    }
+  });
+
+  it('does not construct a NumberFormat on a warm call', () => {
+    formatCompactCount(12403, 'en-US');
+    const Original = Intl.NumberFormat;
+    let constructed = 0;
+    function CountingFormat(
+      this: Intl.NumberFormat,
+      locales?: Intl.LocalesArgument,
+      options?: Intl.NumberFormatOptions,
+    ) {
+      constructed += 1;
+      return new Original(locales, options);
+    }
+    CountingFormat.prototype = Original.prototype;
+    CountingFormat.supportedLocalesOf = Original.supportedLocalesOf.bind(Original);
+    Intl.NumberFormat = CountingFormat as unknown as typeof Intl.NumberFormat;
+    try {
+      expect(formatCompactCount(12499, 'en-US')).toBe('12.4k');
+      expect(formatCompactCount(1200000, 'en-US')).toBe('1.2M');
+      expect(constructed).toBe(0);
+    } finally {
+      Intl.NumberFormat = Original;
+    }
+  });
+});
+
+describe('voice status name', () => {
+  it('omits the voice status when voice is off', async () => {
+    const { container } = await renderBar({});
+    expect(container.querySelector('.bottom-voice')).toBeNull();
+  });
+
+  it('has one accessible name and an empty description', async () => {
+    const { container } = await renderBar({ isVoiceActive: true });
+    const status = screen.getByRole('status', { name: 'Voice input active' });
+    expect(status).toHaveAccessibleName('Voice input active');
+    expect(status).toHaveAccessibleDescription('');
+    expect(status).not.toHaveAttribute('title');
+    expect(status.getAttribute('aria-describedby')).toBeNull();
+    const wrap = container.querySelector('.bottom-voice-icon-wrap');
+    expect(wrap?.getAttribute('aria-hidden')).toBe('true');
+    expect(wrap?.getAttribute('title')).toBe('Listening');
+    expect(wrap?.querySelector('.bottom-voice-icon')).not.toBeNull();
+    expect(wrap?.querySelector('title')).toBeNull();
+  });
+});
+
+describe('split count name', () => {
+  it('keeps the unsplit word count full', async () => {
+    const scene = makeScene({
+      blocks: [
+        { id: 'b1', type: 'prose', order: 0, content: 'word '.repeat(12403), updatedAt: '' },
+      ],
+    });
+    const { container } = await renderBar({ selectedScene: scene });
+    const lead = screen.getByTestId('bottom-stats-lead');
+    expect(lead.textContent).toBe('12,403 words');
+    expect(lead).not.toHaveAttribute('title');
+    expect(lead.getAttribute('role')).toBeNull();
+    expect(lead.getAttribute('aria-live')).toBeNull();
+    expect(lead).not.toHaveAttribute('aria-label');
+    expect(container.querySelector('.bottom-split-short')).toBeNull();
+  });
+
+  it('puts the full pane count on the fallback and the hidden short wrapper', async () => {
+    const { container } = await renderBar({
+      splitWordCounts: { pane1: 12403, pane2: 0 },
+    });
+    const split = screen.getByTestId('split-word-counts');
+    const fallback = container.querySelector('.bottom-status-fallback--split');
+    expect(fallback).not.toBeNull();
+    expect(fallback?.textContent).toBe(SPLIT_FULL);
+    expect(fallback?.getAttribute('title')).toBeNull();
+    expect(fallback?.getAttribute('role')).toBeNull();
+    expect(fallback?.getAttribute('aria-live')).toBeNull();
+    expect(fallback).not.toHaveAttribute('aria-label');
+    expect(split.getAttribute('title')).toBeNull();
+    const shorts = container.querySelectorAll('.bottom-split-short');
+    expect(shorts).toHaveLength(1);
+    for (const node of shorts) {
+      expect(node.getAttribute('aria-hidden')).toBe('true');
+      expect(node.getAttribute('title')).toBe(SPLIT_FULL);
+    }
+    expect(container.querySelector('.bottom-split-short--step2')?.textContent).toBe('12.4k · 0');
+    expect(container.querySelector('.bottom-split-full')?.textContent).toBe(SPLIT_FULL);
   });
 });
