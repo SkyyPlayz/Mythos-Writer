@@ -28,6 +28,46 @@ export function formatSavedAgo(savedAt: number, now: number): string {
   return `Saved ${Math.round(m / 60)}h ago`;
 }
 
+const fullCountFormatters = new Map<string, Intl.NumberFormat>();
+const truncCountFormatters = new Map<string, Intl.NumberFormat>();
+
+function countLocaleKey(locale: string | undefined): string {
+  return locale ?? '';
+}
+
+function fullCountFormatter(locale: string | undefined): Intl.NumberFormat {
+  const key = countLocaleKey(locale);
+  const cached = fullCountFormatters.get(key);
+  if (cached) return cached;
+  const created = new Intl.NumberFormat(locale);
+  fullCountFormatters.set(key, created);
+  return created;
+}
+
+function truncCountFormatter(locale: string | undefined): Intl.NumberFormat {
+  const key = countLocaleKey(locale);
+  const cached = truncCountFormatters.get(key);
+  if (cached) return cached;
+  const created = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+    roundingMode: 'trunc',
+  });
+  truncCountFormatters.set(key, created);
+  return created;
+}
+
+/** Short pane counts. Suffixes are fixed lowercase k and uppercase M. No compact notation. */
+export function formatCompactCount(n: number, locale?: string): string {
+  if (!Number.isFinite(n) || n < 0) return fullCountFormatter(locale).format(n);
+  if (n < 1000) return fullCountFormatter(locale).format(n);
+  if (n < 1_000_000) return `${truncCountFormatter(locale).format(n / 1000)}k`;
+  return `${truncCountFormatter(locale).format(n / 1_000_000)}M`;
+}
+
+function splitCountText(pane1: number, pane2: number): string {
+  return `Pane 1: ${pane1.toLocaleString()} words · Pane 2: ${pane2.toLocaleString()} words`;
+}
+
 export default function BottomBar({
   selectedScene,
   selectedChapter,
@@ -117,6 +157,19 @@ export default function BottomBar({
       : `Today: ${goalStats.todayWords.toLocaleString()} words`
     : undefined;
 
+  const sceneTitleText = selectedScene
+    ? [selectedStory?.title, selectedChapter?.title, selectedScene.title].filter(Boolean).join(' › ')
+    : '';
+  const tailParts = [
+    readTime,
+    currentIndex >= 0 ? `Scene ${currentIndex + 1} / ${allScenes.length}` : '',
+    pageWidthPx !== null ? `Page ${pageWidthPx.toLocaleString()} px — drag page edge to resize` : '',
+  ].filter(Boolean);
+  const tailText = tailParts.join(' · ');
+  const splitText = splitWordCounts !== null
+    ? splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)
+    : null;
+
   return (
     <div className="bottom-bar">
       <div className="bottom-nav">
@@ -139,17 +192,28 @@ export default function BottomBar({
       </div>
 
       <div className="bottom-meta">
-        {splitWordCounts !== null ? (
-          <span className="bottom-stats" data-testid="split-word-counts">
-            Pane 1: {splitWordCounts.pane1.toLocaleString()} words
-            {' '}·{' '}
-            Pane 2: {splitWordCounts.pane2.toLocaleString()} words
-          </span>
+        {splitText !== null && splitWordCounts !== null ? (
+          <>
+            <span className="bottom-stats" data-testid="split-word-counts">
+              <span className="bottom-split-full">{splitText}</span>
+              <span
+                className="bottom-split-short bottom-split-short--step2"
+                aria-hidden="true"
+                title={splitText}
+              >
+                {`${formatCompactCount(splitWordCounts.pane1)} · ${formatCompactCount(splitWordCounts.pane2)}`}
+              </span>
+            </span>
+            <span className="bottom-status-fallback bottom-status-fallback--split">
+              {splitText}
+            </span>
+          </>
         ) : isNoteActive ? (
           <>
             <span className="bottom-breadcrumb">
               <span className="bottom-scene-name">{noteFileName}</span>
             </span>
+            <span className="bottom-status-fallback bottom-status-fallback--title">{noteFileName}</span>
             <span className="bottom-stats">
               {(activeNoteWordCount ?? 0).toLocaleString()} words
             </span>
@@ -158,23 +222,36 @@ export default function BottomBar({
           <>
             <span className="bottom-breadcrumb">
               {selectedStory?.title}
-              <span className="bottom-sep">›</span>
+              <span className="bottom-sep" aria-hidden="true">›</span>
               {selectedChapter?.title}
-              <span className="bottom-sep">›</span>
+              <span className="bottom-sep" aria-hidden="true">›</span>
               <span className="bottom-scene-name">{selectedScene.title}</span>
             </span>
+            <span className="bottom-status-fallback bottom-status-fallback--title">{sceneTitleText}</span>
             <span className="bottom-stats" data-testid="bottom-live-stats">
-              {wordCount.toLocaleString()} words · {charCount.toLocaleString()} characters · {readTime}
-              {currentIndex >= 0 && (
-                <> · Scene {currentIndex + 1} / {allScenes.length}</>
-              )}
-              {/* Beta 4 M2 (§4): page-width hint (prototype 3625) */}
-              {pageWidthPx !== null && (
-                <span className="bottom-page-hint" data-testid="bottom-page-hint">
-                  {' '}· Page {pageWidthPx.toLocaleString()} px — drag page edge to resize
-                </span>
-              )}
+              <span className="bottom-stats-lead" data-testid="bottom-stats-lead">
+                {wordCount.toLocaleString()} words
+              </span>
+              <span className="bottom-stats-chars" data-testid="bottom-stats-chars">
+                {' · '}{charCount.toLocaleString()} characters
+              </span>
+              <span className="bottom-stats-tail">
+                {' · '}{readTime}
+                {currentIndex >= 0 && (
+                  <> · Scene {currentIndex + 1} / {allScenes.length}</>
+                )}
+                {/* Beta 4 M2 (§4): page-width hint (prototype 3625) */}
+                {pageWidthPx !== null && (
+                  <span className="bottom-page-hint" data-testid="bottom-page-hint">
+                    {' '}· Page {pageWidthPx.toLocaleString()} px — drag page edge to resize
+                  </span>
+                )}
+              </span>
             </span>
+            <span className="bottom-status-fallback bottom-status-fallback--chars">
+              {charCount.toLocaleString()} characters
+            </span>
+            <span className="bottom-status-fallback bottom-status-fallback--tail">{tailText}</span>
           </>
         ) : (
           <span className="bottom-hint">
@@ -185,13 +262,16 @@ export default function BottomBar({
         )}
       </div>
 
-      <div className="bottom-draft">
-        {selectedScene?.draftState && (
+      {selectedScene?.draftState && (
+        <div className="bottom-draft">
           <span className={`bottom-draft-badge draft-${selectedScene.draftState}`}>
             {selectedScene.draftState}
           </span>
-        )}
-      </div>
+        </div>
+      )}
+      {selectedScene?.draftState && (
+        <span className="bottom-status-fallback bottom-status-fallback--draft">{selectedScene.draftState}</span>
+      )}
 
       {showGoalChip && (
         <span
@@ -205,18 +285,31 @@ export default function BottomBar({
             : `${goalStats!.todayWords.toLocaleString()} today`}
         </span>
       )}
+      {showGoalChip && goalAriaLabel && (
+        <span className="bottom-status-fallback bottom-status-fallback--goal">{goalAriaLabel}</span>
+      )}
 
       {/* Beta 4 M2 (§4): "Saved Xm ago" + pulsing dot (prototype 3630) */}
       {lastSavedAt !== null && (
         <span className="bottom-saved" data-testid="bottom-saved" role="status" aria-live="polite">
           <span className="bottom-saved-dot" aria-hidden="true" />
-          {formatSavedAgo(lastSavedAt, nowTick)}
+          <svg className="bottom-saved-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 12.5l4.5 4.5L19 7" />
+          </svg>
+          <span className="bottom-saved-full">{formatSavedAgo(lastSavedAt, nowTick)}</span>
+          <span className="bottom-saved-short" aria-hidden="true">Saved</span>
         </span>
       )}
 
       {isVoiceActive && (
         <div className="bottom-voice" aria-label="Voice input active" role="status">
           <span className="bottom-voice-dot" aria-hidden="true" />
+          <span className="bottom-voice-icon-wrap" aria-hidden="true" title="Listening">
+            <svg className="bottom-voice-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+            </svg>
+          </span>
           <span className="bottom-voice-label">Listening</span>
         </div>
       )}

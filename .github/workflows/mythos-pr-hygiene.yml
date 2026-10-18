@@ -180,7 +180,6 @@ jobs:
       - name: Mark draft ready after 2 greens on same tip (shadow / breaker aware)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MYTHOS_BOT_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN }}
           MYTHOS_AUTOFIX_MODE: ${{ vars.MYTHOS_AUTOFIX_MODE }}
           MYTHOS_AUTOFIX_SHADOW_UNTIL: ${{ vars.MYTHOS_AUTOFIX_SHADOW_UNTIL }}
           MYTHOS_WAKE_CIRCUIT_BREAKER: ${{ vars.MYTHOS_WAKE_CIRCUIT_BREAKER }}

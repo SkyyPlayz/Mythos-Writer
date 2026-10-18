@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tip-bound Critic / Shield / Probe matchers for mythos-gate-auto-merge.
+ * Tip-bound Critic / Shield / Probe matchers. The auto-merge workflow that used them was removed.
  *
  * Tokens (case-insensitive; COMMENT reviews OK):
  *   Critic: whole-word APPROVE | CHANGES REQUIRED (also CHANGES REQUESTED / CHANGES_REQUESTED)
@@ -14,7 +14,7 @@
  * - Signals must cite the evaluated tip SHA (full or ≥7-char prefix).
  * - Trusted authors only: SkyyPlayz, SkyHigh-Mythos-Bot (ignore cursor[bot] et al.).
  *
- * Used by `.github/workflows/mythos-gate-auto-merge.yml`.
+ * No workflow loads this file. The auto-merge workflow that did was removed.
  * Tests: `node .github/scripts/mythos-gate-signals.test.js`
  */
 
