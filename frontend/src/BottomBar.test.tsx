@@ -440,7 +440,7 @@ describe('voice status name', () => {
 });
 
 describe('split count name', () => {
-  it('keeps the unsplit word count full, with an empty description', async () => {
+  it('keeps the unsplit word count full', async () => {
     const scene = makeScene({
       blocks: [
         { id: 'b1', type: 'prose', order: 0, content: 'word '.repeat(12403), updatedAt: '' },
@@ -448,33 +448,34 @@ describe('split count name', () => {
     });
     const { container } = await renderBar({ selectedScene: scene });
     const lead = screen.getByTestId('bottom-stats-lead');
-    expect(lead).toHaveAccessibleName('12,403 words');
-    expect(lead).toHaveAccessibleDescription('');
-    expect(lead).not.toHaveAttribute('title');
     expect(lead.textContent).toBe('12,403 words');
+    expect(lead).not.toHaveAttribute('title');
+    expect(lead.getAttribute('role')).toBeNull();
+    expect(lead.getAttribute('aria-live')).toBeNull();
+    expect(lead).not.toHaveAttribute('aria-label');
     expect(container.querySelector('.bottom-split-short')).toBeNull();
   });
 
-  it('puts the full pane count on the fallback and the hidden short wrappers', async () => {
+  it('puts the full pane count on the fallback and the hidden short wrapper', async () => {
     const { container } = await renderBar({
       splitWordCounts: { pane1: 12403, pane2: 0 },
     });
     const split = screen.getByTestId('split-word-counts');
     const fallback = container.querySelector('.bottom-status-fallback--split');
     expect(fallback).not.toBeNull();
-    expect(fallback).toHaveAccessibleName(SPLIT_FULL);
-    expect(fallback).toHaveAccessibleDescription('');
+    expect(fallback?.textContent).toBe(SPLIT_FULL);
     expect(fallback?.getAttribute('title')).toBeNull();
     expect(fallback?.getAttribute('role')).toBeNull();
     expect(fallback?.getAttribute('aria-live')).toBeNull();
+    expect(fallback).not.toHaveAttribute('aria-label');
     expect(split.getAttribute('title')).toBeNull();
     const shorts = container.querySelectorAll('.bottom-split-short');
-    expect(shorts).toHaveLength(2);
+    expect(shorts).toHaveLength(1);
     for (const node of shorts) {
       expect(node.getAttribute('aria-hidden')).toBe('true');
       expect(node.getAttribute('title')).toBe(SPLIT_FULL);
     }
-    expect(container.querySelector('.bottom-split-short--step1')?.textContent).toBe('Pane 1: 12.4k words · Pane 2: 0 words');
+    expect(container.querySelector('.bottom-split-short--step1')).toBeNull();
     expect(container.querySelector('.bottom-split-short--step2')?.textContent).toBe('12.4k · 0');
     expect(container.querySelector('.bottom-split-full')?.textContent).toBe(SPLIT_FULL);
   });

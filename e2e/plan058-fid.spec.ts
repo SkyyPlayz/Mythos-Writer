@@ -300,7 +300,6 @@ function expectSavedVoiceInside(
 
 async function splitForms(page: Page): Promise<{
   full: { display: string; position: string; width: string; height: string; text: string; title: string | null; hidden: string | null; role: string | null; live: string | null } | null;
-  step1: { display: string; text: string; title: string | null; hidden: string | null } | null;
   step2: { display: string; text: string; title: string | null; hidden: string | null } | null;
   fallback: { display: string; position: string; width: string; height: string; text: string; title: string | null; role: string | null; live: string | null } | null;
   splitTitle: string | null;
@@ -324,7 +323,6 @@ async function splitForms(page: Page): Promise<{
     };
     return {
       full: read('.bottom-split-full'),
-      step1: read('.bottom-split-short--step1'),
       step2: read('.bottom-split-short--step2'),
       fallback: read('.bottom-status-fallback--split'),
       splitTitle: document.querySelector('[data-testid="split-word-counts"]')?.getAttribute('title') ?? null,
@@ -2199,7 +2197,6 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(forms.step2?.text).toBe('12.4k · 0');
       expect(forms.step2?.hidden).toBe('true');
       expect(forms.step2?.title).toBe(fullText);
-      expect(forms.step1?.display).toBe('none');
       expect(forms.full?.display).toBe('none');
       expect(forms.fallback?.display).toBe('block');
       expect(forms.fallback?.position).toBe('absolute');
@@ -2210,9 +2207,6 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(forms.fallback?.role).toBeNull();
       expect(forms.fallback?.live).toBeNull();
       expect(forms.splitTitle).toBeNull();
-      const fallback = page.locator('.bottom-status-fallback--split');
-      await expect(fallback).toHaveAccessibleName(fullText);
-      await expect(fallback).toHaveAccessibleDescription('');
       expectSavedVoiceInside(await savedVoiceEdges(page), 'P1b step 2');
       await removeVoiceStandIn(page);
       const off = await splitForms(page);

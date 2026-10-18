@@ -539,8 +539,7 @@
  * this rule stays off there. Unsplit counts are not targeted.
  */
 @container status-bar (max-width: 417px) {
-  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-full,
-  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-short--step1 {
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-full {
     display: none;
   }
 

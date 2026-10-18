@@ -166,6 +166,9 @@ export default function BottomBar({
     pageWidthPx !== null ? `Page ${pageWidthPx.toLocaleString()} px — drag page edge to resize` : '',
   ].filter(Boolean);
   const tailText = tailParts.join(' · ');
+  const splitText = splitWordCounts !== null
+    ? splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)
+    : null;
 
   return (
     <div className="bottom-bar">
@@ -189,30 +192,20 @@ export default function BottomBar({
       </div>
 
       <div className="bottom-meta">
-        {splitWordCounts !== null ? (
+        {splitText !== null && splitWordCounts !== null ? (
           <>
             <span className="bottom-stats" data-testid="split-word-counts">
-              <span className="bottom-split-full">{splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)}</span>
-              <span
-                className="bottom-split-short bottom-split-short--step1"
-                aria-hidden="true"
-                title={splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)}
-              >
-                {`Pane 1: ${formatCompactCount(splitWordCounts.pane1)} words · Pane 2: ${formatCompactCount(splitWordCounts.pane2)} words`}
-              </span>
+              <span className="bottom-split-full">{splitText}</span>
               <span
                 className="bottom-split-short bottom-split-short--step2"
                 aria-hidden="true"
-                title={splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)}
+                title={splitText}
               >
                 {`${formatCompactCount(splitWordCounts.pane1)} · ${formatCompactCount(splitWordCounts.pane2)}`}
               </span>
             </span>
-            <span
-              className="bottom-status-fallback bottom-status-fallback--split"
-              aria-label={splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)}
-            >
-              {splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)}
+            <span className="bottom-status-fallback bottom-status-fallback--split">
+              {splitText}
             </span>
           </>
         ) : isNoteActive ? (
@@ -236,11 +229,7 @@ export default function BottomBar({
             </span>
             <span className="bottom-status-fallback bottom-status-fallback--title">{sceneTitleText}</span>
             <span className="bottom-stats" data-testid="bottom-live-stats">
-              <span
-                className="bottom-stats-lead"
-                data-testid="bottom-stats-lead"
-                aria-label={`${wordCount.toLocaleString()} words`}
-              >
+              <span className="bottom-stats-lead" data-testid="bottom-stats-lead">
                 {wordCount.toLocaleString()} words
               </span>
               <span className="bottom-stats-chars" data-testid="bottom-stats-chars">
