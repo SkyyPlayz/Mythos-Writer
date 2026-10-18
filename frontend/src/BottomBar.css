@@ -126,6 +126,10 @@
   white-space: nowrap;
 }
 
+.bottom-split-short {
+  display: none;
+}
+
 /* Visually hidden copy of a donor. display:none until that donor is hidden,
    so a wide bar does not announce the same status twice. No live region.
    position:absolute keeps the copy out of the flex line when it is shown. */
@@ -271,8 +275,16 @@
   flex: 0 0 auto;
 }
 
-.bottom-voice-icon {
+.bottom-voice-icon-wrap {
   display: none;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  line-height: 0;
+}
+
+.bottom-voice-icon {
+  display: block;
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
@@ -294,6 +306,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-voice-dot { animation: none; }
+}
+
+/* System colours only. The pulse dots otherwise drop out of forced-colors. */
+@media (forced-colors: active) {
+  .bottom-saved-dot,
+  .bottom-voice-dot {
+    forced-color-adjust: none;
+    background: CanvasText;
+    box-shadow: none;
+  }
 }
 
 /*
@@ -392,7 +414,7 @@
     border: 0;
   }
 
-  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon {
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon-wrap {
     display: block;
   }
 }
@@ -437,7 +459,7 @@
     border: 0;
   }
 
-  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-icon {
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-icon-wrap {
     display: block;
   }
 }
@@ -479,7 +501,7 @@
     border: 0;
   }
 
-  .bottom-voice-icon {
+  .bottom-voice-icon-wrap {
     display: block;
   }
 }
@@ -500,6 +522,34 @@
 
   .bottom-saved-check,
   .bottom-saved-short {
+    display: block;
+  }
+}
+
+/*
+ * Split view with voice on, at content 797px and below. The 417px trigger was the
+ * 0-word string; 999,999 words in both panes is wider. That full string is
+ * 262.3px on DejaVu Sans and 235.7px on Liberation Sans (11px). With Saved
+ * at "Saved just now", Listening as the word, and the goal and badge back,
+ * DejaVu spare is 11.7px at content 797 and 12.7px at content 798. Liberation
+ * Sans spare at content 798 is 79.6px. Narrower chrome recovers earlier and
+ * then loses it: DejaVu spare is 14.6px at content 541 (mic, full Saved) and
+ * negative again once Listening is the word (content 561, spare -18.5px) and
+ * once the goal returns (content 760, spare -24.6px). Step 2
+ * ("999.9k · 999.9k": 86.1px DejaVu, 75.7px Liberation) keeps 34.3px of
+ * DejaVu spare and 54.1px of Liberation spare at an 800px window. Unsplit
+ * counts are not targeted.
+ */
+@container status-bar (max-width: 797px) {
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-full {
+    display: none;
+  }
+
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-short--step2 {
+    display: inline;
+  }
+
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-status-fallback--split {
     display: block;
   }
 }

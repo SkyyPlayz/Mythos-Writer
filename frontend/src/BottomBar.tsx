@@ -28,6 +28,46 @@ export function formatSavedAgo(savedAt: number, now: number): string {
   return `Saved ${Math.round(m / 60)}h ago`;
 }
 
+const fullCountFormatters = new Map<string, Intl.NumberFormat>();
+const truncCountFormatters = new Map<string, Intl.NumberFormat>();
+
+function countLocaleKey(locale: string | undefined): string {
+  return locale ?? '';
+}
+
+function fullCountFormatter(locale: string | undefined): Intl.NumberFormat {
+  const key = countLocaleKey(locale);
+  const cached = fullCountFormatters.get(key);
+  if (cached) return cached;
+  const created = new Intl.NumberFormat(locale);
+  fullCountFormatters.set(key, created);
+  return created;
+}
+
+function truncCountFormatter(locale: string | undefined): Intl.NumberFormat {
+  const key = countLocaleKey(locale);
+  const cached = truncCountFormatters.get(key);
+  if (cached) return cached;
+  const created = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+    roundingMode: 'trunc',
+  });
+  truncCountFormatters.set(key, created);
+  return created;
+}
+
+/** Short pane counts. Suffixes are fixed lowercase k and uppercase M. No compact notation. */
+export function formatCompactCount(n: number, locale?: string): string {
+  if (!Number.isFinite(n) || n < 0) return fullCountFormatter(locale).format(n);
+  if (n < 1000) return fullCountFormatter(locale).format(n);
+  if (n < 1_000_000) return `${truncCountFormatter(locale).format(n / 1000)}k`;
+  return `${truncCountFormatter(locale).format(n / 1_000_000)}M`;
+}
+
+function splitCountText(pane1: number, pane2: number): string {
+  return `Pane 1: ${pane1.toLocaleString()} words · Pane 2: ${pane2.toLocaleString()} words`;
+}
+
 export default function BottomBar({
   selectedScene,
   selectedChapter,
@@ -126,6 +166,9 @@ export default function BottomBar({
     pageWidthPx !== null ? `Page ${pageWidthPx.toLocaleString()} px — drag page edge to resize` : '',
   ].filter(Boolean);
   const tailText = tailParts.join(' · ');
+  const splitText = splitWordCounts !== null
+    ? splitCountText(splitWordCounts.pane1, splitWordCounts.pane2)
+    : null;
 
   return (
     <div className="bottom-bar">
@@ -149,12 +192,22 @@ export default function BottomBar({
       </div>
 
       <div className="bottom-meta">
-        {splitWordCounts !== null ? (
-          <span className="bottom-stats" data-testid="split-word-counts">
-            Pane 1: {splitWordCounts.pane1.toLocaleString()} words
-            {' '}·{' '}
-            Pane 2: {splitWordCounts.pane2.toLocaleString()} words
-          </span>
+        {splitText !== null && splitWordCounts !== null ? (
+          <>
+            <span className="bottom-stats" data-testid="split-word-counts">
+              <span className="bottom-split-full">{splitText}</span>
+              <span
+                className="bottom-split-short bottom-split-short--step2"
+                aria-hidden="true"
+                title={splitText}
+              >
+                {`${formatCompactCount(splitWordCounts.pane1)} · ${formatCompactCount(splitWordCounts.pane2)}`}
+              </span>
+            </span>
+            <span className="bottom-status-fallback bottom-status-fallback--split">
+              {splitText}
+            </span>
+          </>
         ) : isNoteActive ? (
           <>
             <span className="bottom-breadcrumb">
@@ -251,10 +304,12 @@ export default function BottomBar({
       {isVoiceActive && (
         <div className="bottom-voice" aria-label="Voice input active" role="status">
           <span className="bottom-voice-dot" aria-hidden="true" />
-          <svg className="bottom-voice-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
-            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-          </svg>
+          <span className="bottom-voice-icon-wrap" aria-hidden="true" title="Listening">
+            <svg className="bottom-voice-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+            </svg>
+          </span>
           <span className="bottom-voice-label">Listening</span>
         </div>
       )}
