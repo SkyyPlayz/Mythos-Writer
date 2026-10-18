@@ -345,9 +345,9 @@ describe('VaultGraphView', () => {
     render(<VaultGraphView />);
 
     const card = await screen.findByTestId('vault-graph-view');
-    await screen.findByRole('button', { name: 'Characters filter', exact: true });
+    await screen.findByRole('button', { name: /^Characters filter$/ });
 
-    const filters = within(card).getByRole('toolbar', { name: 'Graph filters', exact: true });
+    const filters = within(card).getByRole('toolbar', { name: /^Graph filters$/ });
     expect(filters).toHaveClass('vgv-filter-slot');
     expect(card.firstElementChild).toBe(filters);
 
@@ -356,7 +356,7 @@ describe('VaultGraphView', () => {
     expect(filters.compareDocumentPosition(header as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(within(card).getByRole('complementary', { name: 'Graph filters and forces', exact: true })).not.toBe(filters);
+    expect(within(card).getByRole('complementary', { name: /^Graph filters and forces$/ })).not.toBe(filters);
   });
 
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
