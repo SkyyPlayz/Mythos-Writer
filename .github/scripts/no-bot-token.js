@@ -10,12 +10,15 @@
  *   || secrets.   or   || secrets[
  *
  * Run: node .github/scripts/no-bot-token.js [root]
- * Exit 0 when clean, 1 when a pattern matches, 2 when root is not a directory.
+ * Exit 0 when clean, 1 when a pattern matches, YAML is invalid, a file
+ * cannot be read, or zero files were scanned. Exit 2 when root is not a directory.
+ * YAML is parsed with js-yaml, already installed via the repo lockfile.
  */
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
+const yaml = require('js-yaml');
 
 const RULES = [
   {
@@ -91,14 +94,28 @@ function formatFinding(finding) {
   return `no-bot-token: ${finding.file}:${finding.line}: ${finding.rule}: ${finding.match}`;
 }
 
+function yamlError(relPath, text) {
+  try {
+    yaml.loadAll(text);
+    return null;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return `no-bot-token: ${relPath}: invalid YAML: ${detail.split('\n')[0]}`;
+  }
+}
+
 function scanRoot(root) {
   const findings = [];
+  const yamlErrors = [];
   const files = listTargets(root);
   for (const file of files) {
+    const rel = toRel(root, file);
     const text = fs.readFileSync(file, 'utf8');
-    findings.push(...findingsInText(toRel(root, file), text));
+    const parsed = yamlError(rel, text);
+    if (parsed) yamlErrors.push(parsed);
+    findings.push(...findingsInText(rel, text));
   }
-  return { files, findings };
+  return { files, findings, yamlErrors };
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -107,8 +124,13 @@ function main(argv = process.argv.slice(2)) {
     console.error(`no-bot-token: not a directory: ${root}`);
     process.exit(2);
   }
-  const { files, findings } = scanRoot(root);
-  if (findings.length > 0) {
+  const { files, findings, yamlErrors } = scanRoot(root);
+  if (files.length === 0) {
+    console.error('no-bot-token: scanned 0 files');
+    process.exit(1);
+  }
+  if (yamlErrors.length > 0 || findings.length > 0) {
+    for (const line of yamlErrors) console.error(line);
     for (const finding of findings) console.error(formatFinding(finding));
     process.exit(1);
   }
@@ -123,4 +145,5 @@ module.exports = {
   formatFinding,
   listTargets,
   scanRoot,
+  yamlError,
 };

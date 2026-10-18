@@ -199,3 +199,57 @@ test('a missing root is an error, not a clean pass', () => {
   const result = run(missing);
   assert.equal(result.status, 2, result.stderr || result.stdout);
 });
+
+test('zero files scanned fails the scan', () => {
+  withTree(
+    {
+      '.github/workflows/.gitkeep': '',
+      '.github/README.md': 'env: ${{ secrets.MYTHOS_BOT_TOKEN }}\n',
+    },
+    (result) => {
+      assert.equal(result.status, 1, result.stderr || result.stdout);
+      assert.match(result.stderr, /no-bot-token: scanned 0 files/);
+      assert.doesNotMatch(result.stderr, /mythos-bot-token/);
+    }
+  );
+});
+
+test('invalid YAML fails the scan', () => {
+  withTree(
+    {
+      '.github/workflows/broken.yml': ':\n  - [ unterminated\n',
+    },
+    (result) => {
+      assert.equal(result.status, 1, result.stderr || result.stdout);
+      assert.match(result.stderr, /no-bot-token: \.github\/workflows\/broken\.yml: invalid YAML:/);
+      assert.doesNotMatch(result.stderr, /mythos-bot-token/);
+    }
+  );
+});
+
+// mode 000 does not deny read when the process is root, and Windows ACLs do not
+// follow that Unix mode, so this case is skipped only there.
+const skipUnreadable =
+  process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0);
+
+test('an unreadable workflow file fails the scan', {
+  skip: skipUnreadable ? 'mode 000 does not deny read as root or on Windows' : false,
+}, () => {
+  const root = writeTree({
+    '.github/workflows/secret.yml': 'name: blocked\n',
+  });
+  const target = path.join(root, '.github', 'workflows', 'secret.yml');
+  try {
+    fs.chmodSync(target, 0);
+    const result = run(root);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /EACCES/);
+  } finally {
+    try {
+      fs.chmodSync(target, 0o644);
+    } catch {
+      // The file may already be gone.
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
