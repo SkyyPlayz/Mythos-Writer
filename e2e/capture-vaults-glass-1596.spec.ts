@@ -42,13 +42,11 @@ test('capture Settings → Vaults & Files glass panels', async () => {
 
     const pagePath = path.join(OUT_DIR, 'vaults-files-glass.png');
     await page.screenshot({ path: pagePath, fullPage: false });
-    fs.copyFileSync(pagePath, '/opt/cursor/artifacts/vaults-1596-files-glass.png');
 
     const section = page.locator('.settings-section[data-settings-cat="vaults"]').first();
     if (await section.count()) {
       const cardPath = path.join(OUT_DIR, 'vaults-section-card.png');
       await section.screenshot({ path: cardPath });
-      fs.copyFileSync(cardPath, '/opt/cursor/artifacts/vaults-1596-section-card.png');
     }
   } finally {
     await app.close().catch(() => undefined);
