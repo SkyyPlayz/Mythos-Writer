@@ -126,6 +126,10 @@
   white-space: nowrap;
 }
 
+.bottom-split-short {
+  display: none;
+}
+
 /* Visually hidden copy of a donor. display:none until that donor is hidden,
    so a wide bar does not announce the same status twice. No live region.
    position:absolute keeps the copy out of the flex line when it is shown. */
@@ -271,8 +275,16 @@
   flex: 0 0 auto;
 }
 
-.bottom-voice-icon {
+.bottom-voice-icon-wrap {
   display: none;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  line-height: 0;
+}
+
+.bottom-voice-icon {
+  display: block;
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
@@ -294,6 +306,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-voice-dot { animation: none; }
+}
+
+/* System colours only. The pulse dots otherwise drop out of forced-colors. */
+@media (forced-colors: active) {
+  .bottom-saved-dot,
+  .bottom-voice-dot {
+    forced-color-adjust: none;
+    background: CanvasText;
+    box-shadow: none;
+  }
 }
 
 /*
@@ -392,7 +414,7 @@
     border: 0;
   }
 
-  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon {
+  .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon-wrap {
     display: block;
   }
 }
@@ -437,7 +459,7 @@
     border: 0;
   }
 
-  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-icon {
+  .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-icon-wrap {
     display: block;
   }
 }
@@ -479,7 +501,7 @@
     border: 0;
   }
 
-  .bottom-voice-icon {
+  .bottom-voice-icon-wrap {
     display: block;
   }
 }
@@ -500,6 +522,33 @@
 
   .bottom-saved-check,
   .bottom-saved-short {
+    display: block;
+  }
+}
+
+/*
+ * Split view with voice on, below content 418px. Measured at an 800px window
+ * (content 341): the full "Pane 1: 0 words · Pane 2: 0 words" string, with
+ * Saved already "✓ Saved" and Listening already the mic, leaves the mic 65px
+ * past the content edge on DejaVu Sans and 37.7px past it on Liberation Sans.
+ * Tightening the 14px bar gap to 8px and the 6px saved gap to 2px recovers
+ * about 22px, and step 1 does not shorten a count under 1000, so neither
+ * clears 12px of spare. Step 2 ("0 · 0", worst "999.9k · 999.9k") does:
+ * DejaVu spare is 12px from about content 250 and 313. The full 0-word string
+ * regains that spare at content 418, and a 900px window is content 440, so
+ * this rule stays off there. Unsplit counts are not targeted.
+ */
+@container status-bar (max-width: 417px) {
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-full,
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-short--step1 {
+    display: none;
+  }
+
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-split-short--step2 {
+    display: inline;
+  }
+
+  .bottom-bar:has([data-testid="split-word-counts"]):has(.bottom-voice) .bottom-status-fallback--split {
     display: block;
   }
 }

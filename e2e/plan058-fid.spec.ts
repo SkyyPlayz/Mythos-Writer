@@ -11,7 +11,9 @@
  * pipeline (scene:saved is manual-snapshot only; autosave and its errors
  * stay in DesktopShell). The guards below keep the word count, the
  * "Saved just now" label, "Listening", and prev/next fully visible.
- * Those four never shrink. Donors leave with display:none from container
+ * Those four never shrink. The split string is the one exception: at content
+ * 417px and below, split view with voice on uses the label-less pane counts.
+ * Donors leave with display:none from container
  * queries: character count, then the stats tail, then the title, then the
  * goal and the draft badge, so the flex gap leaves with them. Below a 900px
  * window "Listening" keeps its mic and the word is sr-only. From content
@@ -103,10 +105,15 @@ async function mountVoiceStandIn(page: Page): Promise<void> {
     const micStem = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     micStem.setAttribute('d', 'M5 11a7 7 0 0 0 14 0M12 18v3');
     icon.append(micHead, micStem);
+    const wrap = document.createElement('span');
+    wrap.className = 'bottom-voice-icon-wrap';
+    wrap.setAttribute('aria-hidden', 'true');
+    wrap.setAttribute('title', 'Listening');
+    wrap.append(icon);
     const label = document.createElement('span');
     label.className = 'bottom-voice-label';
     label.textContent = 'Listening';
-    voice.append(dot, icon, label);
+    voice.append(dot, wrap, label);
     bar.append(voice);
     return voice.getAttribute('style') === null;
   });
@@ -134,9 +141,9 @@ async function listeningIcon(page: Page): Promise<{
 } | null> {
   return page.evaluate(() => {
     const bar = document.querySelector('.bottom-bar');
-    const icon = document.querySelector('.bottom-voice-icon');
+    const icon = document.querySelector('.bottom-voice-icon-wrap');
     const label = document.querySelector('.bottom-voice-label');
-    if (!(bar instanceof HTMLElement) || !icon || !label) return null;
+    if (!(bar instanceof HTMLElement) || !(icon instanceof HTMLElement) || !label) return null;
     const barCs = getComputedStyle(bar);
     const padL = parseFloat(barCs.paddingLeft) || 0;
     const padR = parseFloat(barCs.paddingRight) || 0;
@@ -208,6 +215,121 @@ async function setBarContent(app: ElectronApplication, page: Page, target: numbe
     win += target - content;
   }
   return content;
+}
+
+/** Step 2 fires at this content-box width and below, split view with voice on. */
+const STEP2_MAX = 417;
+
+async function reachBarContent(
+  app: ElectronApplication,
+  page: Page,
+  hint: number,
+  accept: (content: number) => boolean,
+): Promise<number> {
+  let win = Math.max(640, Math.round(hint + 461));
+  let content = 0;
+  for (let i = 0; i < 24; i += 1) {
+    await setContentSize(app, win, 900);
+    content = await barContentWidth(page);
+    if (accept(content)) return content;
+    const delta = hint - content;
+    if (Math.abs(delta) < 1) win += delta >= 0 ? 1 : -1;
+    else win = Math.max(640, Math.round(win + delta));
+  }
+  throw new Error(`content ${content} missed the band near ${hint}`);
+}
+
+async function setSplit(page: Page, on: boolean): Promise<void> {
+  await page.locator('.ProseMirror').click();
+  const split = page.getByTestId('split-word-counts');
+  const visible = (await split.count()) > 0;
+  if (visible === on) return;
+  await page.keyboard.press('Control+Shift+2');
+  if (on) await expect(split).toBeVisible({ timeout: 8_000 });
+  else await expect(split).toHaveCount(0, { timeout: 8_000 });
+}
+
+async function savedVoiceEdges(page: Page): Promise<{
+  content: number;
+  font: string;
+  saved: { display: string; pastRight: number; pastLeft: number; width: number } | null;
+  voice: { display: string; pastRight: number; pastLeft: number; width: number } | null;
+} | null> {
+  return page.evaluate(() => {
+    const bar = document.querySelector('.bottom-bar');
+    if (!(bar instanceof HTMLElement)) return null;
+    const cs = getComputedStyle(bar);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    const rect = bar.getBoundingClientRect();
+    const right = rect.right - padR;
+    const left = rect.left + padL;
+    const read = (sel: string) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      return {
+        display: getComputedStyle(el).display,
+        pastRight: Math.round((box.right - right) * 10) / 10,
+        pastLeft: Math.round((left - box.left) * 10) / 10,
+        width: Math.round(box.width * 10) / 10,
+      };
+    };
+    return {
+      content: Math.round((bar.clientWidth - padL - padR) * 10) / 10,
+      font: cs.fontFamily,
+      saved: read('[data-testid="bottom-saved"]'),
+      voice: read('.bottom-voice'),
+    };
+  });
+}
+
+function expectSavedVoiceInside(
+  edges: Awaited<ReturnType<typeof savedVoiceEdges>>,
+  label: string,
+): void {
+  expect(edges, `${label} edges missing`).not.toBeNull();
+  for (const [name, item] of [['saved', edges!.saved], ['voice', edges!.voice]] as const) {
+    expect(item, `${label} ${name} missing`).not.toBeNull();
+    expect(item!.display, `${label} ${name} hidden`).not.toBe('none');
+    expect(item!.width, `${label} ${name} has no box`).toBeGreaterThan(0);
+    expect(item!.pastLeft, `${label} ${name} past left ${item!.pastLeft}`).toBeLessThanOrEqual(0.5);
+    expect(item!.pastRight, `${label} ${name} past right ${item!.pastRight}`).toBeLessThanOrEqual(0.5);
+  }
+}
+
+async function splitForms(page: Page): Promise<{
+  full: { display: string; position: string; width: string; height: string; text: string; title: string | null; hidden: string | null; role: string | null; live: string | null } | null;
+  step1: { display: string; text: string; title: string | null; hidden: string | null } | null;
+  step2: { display: string; text: string; title: string | null; hidden: string | null } | null;
+  fallback: { display: string; position: string; width: string; height: string; text: string; title: string | null; role: string | null; live: string | null } | null;
+  splitTitle: string | null;
+}> {
+  return page.evaluate(() => {
+    const read = (sel: string) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return {
+        display: cs.display,
+        position: cs.position,
+        width: cs.width,
+        height: cs.height,
+        text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+        title: el.getAttribute('title'),
+        hidden: el.getAttribute('aria-hidden'),
+        role: el.getAttribute('role'),
+        live: el.getAttribute('aria-live'),
+      };
+    };
+    return {
+      full: read('.bottom-split-full'),
+      step1: read('.bottom-split-short--step1'),
+      step2: read('.bottom-split-short--step2'),
+      fallback: read('.bottom-status-fallback--split'),
+      splitTitle: document.querySelector('[data-testid="split-word-counts"]')?.getAttribute('title') ?? null,
+    };
+  });
 }
 
 async function savedLabel(page: Page): Promise<{
@@ -1958,6 +2080,383 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
       await removeVoiceStandIn(page);
+    }
+  });
+
+  test('PLAN-1700 roundingMode truncates in the Electron renderer', async () => {
+    const line = await page.evaluate(() => {
+      const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, roundingMode: 'trunc' });
+      return `${fmt.resolvedOptions().roundingMode} ${fmt.format(12.99)}`;
+    });
+    console.log(`roundingMode ${line}`);
+    expect(line, `roundingMode runtime ${line}`).toBe('trunc 12.9');
+  });
+
+  test('PLAN-1700 P4 the Listening title sits on the icon wrapper', async () => {
+    await openEditor(page);
+    await saveScene(page);
+    await setSplit(page, true);
+    await setContentSize(app!, 900, 900);
+    await mountVoiceStandIn(page);
+    try {
+      const status = page.getByTestId('fid-voice-standin');
+      await expect(status).toHaveAccessibleName('Voice input active');
+      await expect(status).toHaveAccessibleDescription('');
+      await expect(status).not.toHaveAttribute('title');
+      const wrap = status.locator('.bottom-voice-icon-wrap');
+      await expect(wrap).toHaveAttribute('aria-hidden', 'true');
+      await expect(wrap).toHaveAttribute('title', 'Listening');
+      const display = await wrap.evaluate((el) => getComputedStyle(el).display);
+      expect(display, 'mic wrapper hidden at 900 split').toBe('block');
+    } finally {
+      await removeVoiceStandIn(page);
+      await setSplit(page, false);
+    }
+  });
+
+  test('PLAN-1700 P1 an 800px split with voice keeps Saved and the mic inside', async () => {
+    test.setTimeout(120_000);
+    await openAddedScene(page, 'Followup empty');
+    await saveScene(page);
+    await setSplit(page, true);
+    await mountVoiceStandIn(page);
+    try {
+      await setContentSize(app!, 900, 900);
+      const at900 = await page.evaluate(() => {
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          return el ? getComputedStyle(el).display : null;
+        };
+        return {
+          nav: read('.bottom-nav'),
+          split: read('[data-testid="split-word-counts"]'),
+          saved: read('[data-testid="bottom-saved"]'),
+          voice: read('.bottom-voice'),
+          savedShort: read('.bottom-saved-short'),
+          wrap: read('.bottom-voice-icon-wrap'),
+          full: read('.bottom-split-full'),
+        };
+      });
+      await setContentSize(app!, 800, 900);
+      const edges = await savedVoiceEdges(page);
+      expect(edges!.content, `800 content ${edges!.content}`).toBeGreaterThan(320);
+      expect(edges!.content, `800 content ${edges!.content}`).toBeLessThanOrEqual(360);
+      expectSavedVoiceInside(edges, 'P1 800 split');
+      expect(edges!.voice!.pastRight, `P1 spare ${-edges!.voice!.pastRight}px`).toBeLessThanOrEqual(-12);
+      const forms = await splitForms(page);
+      expect(forms.full?.display, 'full split string stayed painted at 800').toBe('none');
+      expect(forms.step2?.display, 'step 2 hidden at 800').toBe('inline');
+      expect(forms.step2?.text).toBe('0 · 0');
+      expect(forms.fallback?.text).toBe('Pane 1: 0 words · Pane 2: 0 words');
+      const at800 = await page.evaluate(() => {
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          return el ? getComputedStyle(el).display : null;
+        };
+        return {
+          nav: read('.bottom-nav'),
+          split: read('[data-testid="split-word-counts"]'),
+          saved: read('[data-testid="bottom-saved"]'),
+          voice: read('.bottom-voice'),
+          savedShort: read('.bottom-saved-short'),
+          wrap: read('.bottom-voice-icon-wrap'),
+          full: read('.bottom-split-full'),
+        };
+      });
+      for (const key of ['nav', 'split', 'saved', 'voice', 'savedShort', 'wrap'] as const) {
+        expect(at900[key], `${key} hidden at 900`).not.toBe('none');
+        expect(at800[key], `${key} newly hidden at 800`).not.toBe('none');
+      }
+      expect(at900.full, 'full string hidden at 900').not.toBe('none');
+      const shot = test.info().outputPath('plan1700-followup-800-split-voice.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+      await setSplit(page, false);
+    }
+  });
+
+  test('PLAN-1700 P1b step 2 shortens pane counts only while voice is on', async () => {
+    test.setTimeout(120_000);
+    await openAddedScene(page, 'Followup twelve');
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await page.keyboard.insertText('me '.repeat(12403));
+    await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent(), {
+      timeout: 15_000,
+    }).toBe('12,403 words');
+    await saveScene(page);
+    await setSplit(page, true);
+    const fullText = 'Pane 1: 12,403 words · Pane 2: 0 words';
+    await mountVoiceStandIn(page);
+    try {
+      const content = await reachBarContent(app!, page, STEP2_MAX, (value) => value <= STEP2_MAX && value > STEP2_MAX - 1);
+      expect(content, `P1b content ${content}`).toBeLessThanOrEqual(STEP2_MAX);
+      expect(content, `P1b content ${content}`).toBeGreaterThan(STEP2_MAX - 1);
+      const forms = await splitForms(page);
+      expect(forms.step2?.display).toBe('inline');
+      expect(forms.step2?.text).toBe('12.4k · 0');
+      expect(forms.step2?.hidden).toBe('true');
+      expect(forms.step2?.title).toBe(fullText);
+      expect(forms.step1?.display).toBe('none');
+      expect(forms.full?.display).toBe('none');
+      expect(forms.fallback?.display).toBe('block');
+      expect(forms.fallback?.position).toBe('absolute');
+      expect(forms.fallback?.width).toBe('1px');
+      expect(forms.fallback?.height).toBe('1px');
+      expect(forms.fallback?.text).toBe(fullText);
+      expect(forms.fallback?.title).toBeNull();
+      expect(forms.fallback?.role).toBeNull();
+      expect(forms.fallback?.live).toBeNull();
+      expect(forms.splitTitle).toBeNull();
+      const fallback = page.locator('.bottom-status-fallback--split');
+      await expect(fallback).toHaveAccessibleName(fullText);
+      await expect(fallback).toHaveAccessibleDescription('');
+      expectSavedVoiceInside(await savedVoiceEdges(page), 'P1b step 2');
+      await removeVoiceStandIn(page);
+      const off = await splitForms(page);
+      expect(off.full?.display, 'step 2 fired with voice off').not.toBe('none');
+      expect(off.full?.text).toBe(fullText);
+      expect(off.step2?.display, 'step 2 visible with voice off').toBe('none');
+      expect(off.fallback?.display, 'split fallback visible with voice off').toBe('none');
+    } finally {
+      await removeVoiceStandIn(page);
+      await setSplit(page, false);
+    }
+  });
+
+  test('PLAN-1700 P1d the unsplit word count stays full', async () => {
+    test.setTimeout(120_000);
+    await openAddedScene(page, 'Followup unsplit');
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await page.keyboard.insertText('me '.repeat(12403));
+    await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent(), {
+      timeout: 15_000,
+    }).toBe('12,403 words');
+    await saveScene(page);
+    await setSplit(page, false);
+    await mountVoiceStandIn(page);
+    try {
+      const check = async (label: string, place: () => Promise<number>) => {
+        const content = await place();
+        const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+        expect(lead?.text, `${label} lead`).toBe('12,403 words');
+        expect(lead?.full, `${label} lead clipped`).toBe(true);
+        const shown = await page.evaluate(() => {
+          const el = document.querySelector('[data-testid="bottom-stats-lead"]');
+          return el ? getComputedStyle(el).display : null;
+        });
+        expect(shown, `${label} lead hidden`).not.toBe('none');
+        expect(await page.locator('.bottom-split-short').count(), `${label} short wrapper`).toBe(0);
+        const edges = await savedVoiceEdges(page);
+        expect(edges!.content, `${label} content ${content}`).toBe(content);
+        expectSavedVoiceInside(edges, label);
+      };
+      await check('P1d 800', async () => {
+        await setContentSize(app!, 800, 900);
+        return barContentWidth(page);
+      });
+      for (const hint of [STEP2_MAX - 1, STEP2_MAX, STEP2_MAX + 1]) {
+        await check(`P1d content ${hint}`, () => reachBarContent(
+          app!,
+          page,
+          hint,
+          (value) => (hint === STEP2_MAX + 1
+            ? value > STEP2_MAX && value <= STEP2_MAX + 1.5
+            : value <= hint && value > hint - 1),
+        ));
+      }
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('PLAN-1700 P2 step 2 applies at 416 and 417 and not at 418', async () => {
+    test.setTimeout(180_000);
+    await openAddedScene(page, 'Followup band');
+    await saveScene(page);
+    const bands = [
+      { name: 'B-1', hint: STEP2_MAX - 1, on: true },
+      { name: 'B', hint: STEP2_MAX, on: true },
+      { name: 'B+1', hint: STEP2_MAX + 1, on: false },
+    ] as const;
+    const acceptFor = (hint: number) => (value: number) => (
+      hint === STEP2_MAX + 1
+        ? value > STEP2_MAX && value <= STEP2_MAX + 1.5
+        : value <= hint && value > hint - 1
+    );
+    try {
+      for (const band of bands) {
+        await setSplit(page, true);
+        await mountVoiceStandIn(page);
+        const content = await reachBarContent(app!, page, band.hint, acceptFor(band.hint));
+        expect(content, `${band.name} content ${content}`).toBeGreaterThan(band.hint - 1);
+        const forms = await splitForms(page);
+        if (band.on) {
+          expect(forms.step2?.display, `${band.name} step 2 off at ${content}`).toBe('inline');
+          expect(forms.full?.display, `${band.name} full string painted at ${content}`).toBe('none');
+          expect(forms.step2?.text).toBe('0 · 0');
+        } else {
+          expect(forms.step2?.display, `${band.name} step 2 on at ${content}`).toBe('none');
+          expect(forms.full?.display, `${band.name} full string hidden at ${content}`).not.toBe('none');
+          expect(forms.full?.text).toBe('Pane 1: 0 words · Pane 2: 0 words');
+        }
+        expectSavedVoiceInside(await savedVoiceEdges(page), `P2 split ${band.name}`);
+        await removeVoiceStandIn(page);
+        await setSplit(page, false);
+        await mountVoiceStandIn(page);
+        const unsplit = await reachBarContent(app!, page, band.hint, acceptFor(band.hint));
+        expect(unsplit, `P2 unsplit ${band.name} content ${unsplit}`).toBeGreaterThan(band.hint - 1);
+        expect(await page.locator('.bottom-split-short').count(), `P2 unsplit ${band.name} compact`).toBe(0);
+        const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+        expect(lead?.text, `P2 unsplit ${band.name} lead`).toMatch(/^\d[\d,]* words$/);
+        expect(lead?.text, `P2 unsplit ${band.name} shortened`).not.toMatch(/k|M/);
+        expect(lead?.full, `P2 unsplit ${band.name} lead clipped`).toBe(true);
+        expectSavedVoiceInside(await savedVoiceEdges(page), `P2 unsplit ${band.name}`);
+        await removeVoiceStandIn(page);
+      }
+    } finally {
+      await removeVoiceStandIn(page);
+      await setSplit(page, false);
+    }
+  });
+
+  test('PLAN-1700 P3 forced-colors keeps the status dots painted', async () => {
+    await openEditor(page);
+    await saveScene(page);
+    await setSplit(page, false);
+    await setContentSize(app!, 1280, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await page.emulateMedia({ forcedColors: 'active' });
+      const colors = await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.style.forcedColorAdjust = 'none';
+        probe.style.background = 'CanvasText';
+        probe.style.width = '8px';
+        probe.style.height = '8px';
+        document.body.append(probe);
+        const expected = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        const bar = document.querySelector('.bottom-bar');
+        const barBg = bar ? getComputedStyle(bar).backgroundColor : '';
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          const box = el.getBoundingClientRect();
+          return {
+            width: box.width,
+            height: box.height,
+            opacity: Number(cs.opacity),
+            background: cs.backgroundColor,
+          };
+        };
+        return { expected, barBg, saved: read('.bottom-saved-dot'), voice: read('.bottom-voice-dot') };
+      });
+      expect(colors.expected, 'CanvasText probe was transparent').not.toBe('rgba(0, 0, 0, 0)');
+      expect(colors.expected).not.toBe(colors.barBg);
+      for (const [name, dot] of [['saved', colors.saved], ['voice', colors.voice]] as const) {
+        expect(dot, `${name} dot missing`).not.toBeNull();
+        expect(dot!.width, `${name} dot width`).toBeGreaterThan(0);
+        expect(dot!.height, `${name} dot height`).toBeGreaterThan(0);
+        expect(dot!.opacity, `${name} dot opacity`).toBeGreaterThan(0);
+        expect(dot!.background, `${name} dot ${dot!.background} vs probe ${colors.expected}`).toBe(colors.expected);
+        expect(dot!.background).not.toBe(colors.barBg);
+      }
+    } finally {
+      await page.emulateMedia({ forcedColors: 'none' });
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('PLAN-1700 P8 forced-colors and reduced motion keep the dots still', async () => {
+    await openEditor(page);
+    await saveScene(page);
+    await setSplit(page, false);
+    await setContentSize(app!, 1280, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
+      const motion = await page.evaluate(() => {
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          const box = el.getBoundingClientRect();
+          return { animation: cs.animationName, width: box.width, opacity: Number(cs.opacity) };
+        };
+        return { saved: read('.bottom-saved-dot'), voice: read('.bottom-voice-dot') };
+      });
+      for (const [name, dot] of [['saved', motion.saved], ['voice', motion.voice]] as const) {
+        expect(dot, `${name} dot missing`).not.toBeNull();
+        expect(dot!.width, `${name} dot hidden`).toBeGreaterThan(0);
+        expect(dot!.opacity, `${name} dot faded`).toBeGreaterThan(0);
+        expect(dot!.animation, `${name} dot still animating`).toBe('none');
+      }
+    } finally {
+      await page.emulateMedia({ forcedColors: 'none', reducedMotion: 'no-preference' });
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('PLAN-1700 P5 Liberation Sans renders and the bar stays inside', async () => {
+    test.setTimeout(180_000);
+    await openEditor(page);
+    await saveScene(page);
+    const widths = await page.evaluate(() => {
+      const measure = (family: string) => {
+        const span = document.createElement('span');
+        span.textContent = 'Pane 1: 12,403 words · Pane 2: 0 words';
+        span.style.fontFamily = family;
+        span.style.fontSize = '11px';
+        span.style.position = 'absolute';
+        span.style.left = '0';
+        span.style.top = '0';
+        span.style.whiteSpace = 'nowrap';
+        document.body.append(span);
+        const width = span.getBoundingClientRect().width;
+        span.remove();
+        return Math.round(width * 10) / 10;
+      };
+      return {
+        liberation: measure('"Liberation Sans", monospace'),
+        mono: measure('monospace'),
+        dejavu: measure('"DejaVu Sans"'),
+      };
+    });
+    expect(widths.liberation, `Liberation Sans missing ${JSON.stringify(widths)}`).not.toBe(widths.mono);
+    expect(widths.liberation, `Liberation Sans matched DejaVu ${JSON.stringify(widths)}`).not.toBe(widths.dejavu);
+    const fontTag = await page.addStyleTag({
+      content: '.bottom-bar, .bottom-bar * { font-family: "Liberation Sans", sans-serif !important; }',
+    });
+    try {
+      const spares: string[] = [];
+      for (const [label, width, split] of [
+        ['800 split', 800, true],
+        ['900 split', 900, true],
+        ['1024 split', 1024, true],
+        ['800 unsplit', 800, false],
+        ['900 unsplit', 900, false],
+        ['1024 unsplit', 1024, false],
+      ] as const) {
+        await setSplit(page, split);
+        await setContentSize(app!, width, 900);
+        await mountVoiceStandIn(page);
+        const edges = await savedVoiceEdges(page);
+        expectSavedVoiceInside(edges, `P5 ${label}`);
+        const spare = -edges!.voice!.pastRight;
+        spares.push(`${label} content ${edges!.content} spare ${spare}px`);
+        await removeVoiceStandIn(page);
+      }
+      console.log(`P5 Liberation Sans ${spares.join('; ')}`);
+      test.info().annotations.push({ type: 'liberation-spare', description: spares.join('; ') });
+    } finally {
+      await fontTag.evaluate((el) => el.remove());
+      await removeVoiceStandIn(page);
+      await setSplit(page, false);
     }
   });
 
