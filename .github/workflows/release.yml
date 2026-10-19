@@ -159,9 +159,9 @@ jobs:
           body: "Release build in progress…"
 
   # Windows build. Unsigned: legacy certificate secrets are removed, and this
-  # job cannot upload a release. It copies each installer to the GitHub-safe
-  # name already written in the channel yml (url/path), hashes those names,
-  # then hands those exact bytes to upload-windows.
+  # job cannot upload a release. It copies each installer to the name GitHub
+  # will store (spaces become '.'), hashes that name, then hands those exact
+  # bytes to upload-windows. The dashed names inside latest.yml are unchanged.
   # needs create-release so upload-windows cannot start before the draft exists.
   build-windows:
     needs: [determine-release, create-release]
@@ -208,15 +208,10 @@ jobs:
           const crypto = require('crypto');
           const fs = require('fs');
           const path = require('path');
-          const yaml = require('js-yaml');
 
           function fail(message) {
             console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
             process.exit(1);
-          }
-
-          function safe(value) {
-            return String(value).replace(/[\r\n]/g, ' ');
           }
 
           function validName(name) {
@@ -230,8 +225,13 @@ jobs:
               && name !== '..';
           }
 
-          function sha512(buf) {
-            return crypto.createHash('sha512').update(buf).digest('base64');
+          // GitHub's release asset API stores a filename that contains a space
+          // with each space replaced by '.'. gh release upload does that rename
+          // on the way in, so a manifest keyed by the local spaced name never
+          // matches the draft. Copy to that stored name before hashing.
+          // This is not the dashed name electron-builder writes into latest.yml.
+          function githubAssetName(name) {
+            return name.replace(/ /g, '.');
           }
 
           const sourceDir = 'dist-electron';
@@ -242,96 +242,31 @@ jobs:
             fail('dist-electron is missing');
           }
 
-          const fileNames = fs.readdirSync(sourceDir).filter((name) => {
-            return fs.statSync(path.join(sourceDir, name)).isFile();
-          });
-          const channels = fileNames.filter((name) => channelRe.test(name)).sort();
-          if (channels.length === 0) fail('no Windows channel yml to name the release files');
+          const selected = fs.readdirSync(sourceDir).filter((name) => {
+            const full = path.join(sourceDir, name);
+            if (!fs.statSync(full).isFile()) return false;
+            return name.endsWith('.exe') || name.endsWith('.zip') || channelRe.test(name);
+          }).sort();
 
-          const bySha512 = new Map();
-          const buffers = new Map();
-          for (const name of fileNames) {
-            if (channelRe.test(name)) continue;
-            const buf = fs.readFileSync(path.join(sourceDir, name));
-            buffers.set(name, buf);
-            const digest = sha512(buf);
-            const list = bySha512.get(digest) || [];
-            list.push(name);
-            bySha512.set(digest, list);
-          }
+          if (selected.length === 0) fail('win-manifest has zero entries');
 
-          // Publish names come from the channel yml url/path strings. The bytes
-          // are the file whose sha512 the yml already recorded. No rename rule.
           const publish = new Map();
-
-          function feedName(channelName, raw, label) {
-            if (!validName(raw)) fail(`${channelName} ${label} ${safe(raw)} has no matching file`);
-            return raw;
-          }
-
-          function takeMatch(channelName, feed, digest) {
-            const matches = bySha512.get(digest) || [];
-            if (matches.length === 0) fail(`${channelName} url ${feed} has no matching file`);
-            if (matches.length > 1) fail(`${channelName} url ${feed} matches more than one file`);
-            const sourceName = matches[0];
-            const existing = publish.get(feed);
-            if (existing && existing.sourceName !== sourceName) {
-              fail(`${channelName} url ${feed} maps to conflicting files`);
-            }
-            if (!existing && buffers.has(feed) && sourceName !== feed) {
-              fail(`${channelName} url ${feed} would overwrite a different file`);
-            }
-            publish.set(feed, { sourceName, buf: buffers.get(sourceName) });
-          }
-
-          for (const channelName of channels) {
-            let doc;
-            try {
-              doc = yaml.load(fs.readFileSync(path.join(sourceDir, channelName), 'utf8'));
-            } catch (err) {
-              fail(`${channelName} is unparsable`);
-            }
-            if (doc == null || typeof doc !== 'object' || Array.isArray(doc)) fail(`${channelName} is unparsable`);
-            if (!Array.isArray(doc.files) || doc.files.length === 0) fail(`${channelName} has no file urls`);
-
-            const seen = new Map();
-            for (const file of doc.files) {
-              if (file == null || typeof file !== 'object' || Array.isArray(file)) fail(`${channelName} file entry is unparsable`);
-              const feed = feedName(channelName, file.url, 'url');
-              if (typeof file.sha512 !== 'string' || file.sha512.trim() === '') {
-                fail(`${channelName} url ${feed} has no matching file`);
-              }
-              const digest = file.sha512.trim();
-              if (seen.has(feed) && seen.get(feed) !== digest) fail(`${channelName} url ${feed} is listed twice with different hashes`);
-              seen.set(feed, digest);
-              takeMatch(channelName, feed, digest);
-            }
-
-            if (Object.prototype.hasOwnProperty.call(doc, 'path')) {
-              const feed = feedName(channelName, doc.path, 'path');
-              if (!seen.has(feed)) fail(`${channelName} path ${feed} has no matching file`);
-              if (typeof doc.sha512 === 'string' && doc.sha512.trim() !== '' && doc.sha512.trim() !== seen.get(feed)) {
-                fail(`${channelName} path ${feed} does not match the url hash`);
-              }
-            }
-          }
-
-          for (const channelName of channels) {
-            if (publish.has(channelName)) fail(`${channelName} collides with a feed file name`);
-            publish.set(channelName, {
-              sourceName: channelName,
-              buf: fs.readFileSync(path.join(sourceDir, channelName)),
+          for (const name of selected) {
+            if (!validName(name)) fail('refusing to publish an invalid Windows artifact name');
+            const safeName = githubAssetName(name);
+            if (!validName(safeName)) fail(`refusing to publish an invalid GitHub asset name for ${name}`);
+            if (publish.has(safeName)) fail(`GitHub asset name collides: ${safeName}`);
+            publish.set(safeName, {
+              sourceName: name,
+              buf: fs.readFileSync(path.join(sourceDir, name)),
             });
           }
 
           const names = [...publish.keys()].sort();
-          if (names.length === 0) fail('win-manifest has zero entries');
-
           fs.rmSync(staging, { recursive: true, force: true });
           fs.mkdirSync(staging);
           const manifest = {};
           for (const name of names) {
-            if (!validName(name)) fail('refusing to publish an invalid Windows artifact name');
             const item = publish.get(name);
             const dest = path.join(staging, name);
             fs.writeFileSync(dest, item.buf);
