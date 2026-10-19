@@ -4,7 +4,7 @@
 // phonemization run everywhere. The full model inference runs only when the
 // bundled weights are present on disk (dev / a checkout that ran the build-time
 // fetch) — CI without the 86MB model skips it, exactly like voice-real-binary.
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,17 +21,6 @@ import {
   KOKORO_SAMPLE_RATE,
   type KokoroAssets,
 } from './kokoro.js';
-
-// Vitest externalizes this dependency and Node 22 rejects its ESM JSON imports
-// (ERR_IMPORT_ATTRIBUTE_MISSING). The CJS build require()s those lexicons.
-// The mock is hoisted above imports, so the loader cannot be an import binding.
-const { EnglishG2P } = vi.hoisted(() => {
-  const { createRequire } = process.getBuiltinModule('module');
-  const loaded = createRequire(import.meta.url)('phonemize/en-g2p') as { default?: unknown };
-  return { EnglishG2P: loaded.default ?? loaded };
-});
-
-vi.mock('phonemize/en-g2p', () => ({ default: EnglishG2P }));
 
 const KOKORO_DIR =
   process.env.MYTHOS_KOKORO_DIR ?? path.join(__dirname, '..', 'resources', 'kokoro');

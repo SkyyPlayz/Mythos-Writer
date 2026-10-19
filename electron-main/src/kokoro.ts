@@ -190,8 +190,8 @@ function segmentByPunctuation(text: string): { match: boolean; text: string }[] 
 export async function phonemizeText(text: string, lang: 'a' | 'b' = 'a'): Promise<string> {
   const normalized = normalizeText(text);
   const segments = segmentByPunctuation(normalized);
-  const parts = segments.map(({ match, text: seg }) =>
-    match ? seg : phonemizeEnglish(seg, lang),
+  const parts = await Promise.all(
+    segments.map(({ match, text: seg }) => (match ? seg : phonemizeEnglish(seg, lang))),
   );
   return parts.join('').trim();
 }

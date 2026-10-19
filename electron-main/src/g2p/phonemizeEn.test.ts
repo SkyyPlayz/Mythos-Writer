@@ -1,19 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { phonemizeEnglish } from './phonemizeEn.js';
-
-// Vitest externalizes this dependency and Node 22 rejects its ESM JSON imports
-// (ERR_IMPORT_ATTRIBUTE_MISSING). The CJS build require()s those lexicons.
-// The mock is hoisted above imports, so the loader cannot be an import binding.
-const { EnglishG2P } = vi.hoisted(() => {
-  const { createRequire } = process.getBuiltinModule('module');
-  const loaded = createRequire(import.meta.url)('phonemize/en-g2p') as { default?: unknown };
-  return { EnglishG2P: loaded.default ?? loaded };
-});
-
-vi.mock('phonemize/en-g2p', () => ({ default: EnglishG2P }));
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__', 'kokoro-vocab.json');
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as { vocab: Record<string, number> };
@@ -46,31 +35,31 @@ function expectInVocab(word: string, phones: string): void {
 }
 
 describe('phonemizeEnglish', () => {
-  it('phonemizes a 200-word sample into the Kokoro vocab', () => {
+  it('phonemizes a 200-word sample into the Kokoro vocab', async () => {
     const list = words(SAMPLE);
     expect(list).toHaveLength(200);
     for (const word of list) {
-      expectInVocab(word, phonemizeEnglish(word, 'a'));
+      expectInVocab(word, await phonemizeEnglish(word, 'a'));
     }
   });
 
-  it('maps r-colored vowels and dark l onto vocab phones', () => {
+  it('maps r-colored vowels and dark l onto vocab phones', async () => {
     for (const word of ['world', 'bird']) {
-      const phones = phonemizeEnglish(word, 'a');
+      const phones = await phonemizeEnglish(word, 'a');
       expect(phones, word).not.toContain('ɝ');
       expect(phones, word).not.toContain('ɫ');
       expect(phones, word).toContain('ɜ');
     }
-    expect(phonemizeEnglish('world', 'a')).toContain('l');
-    expectInVocab('bird-gb', phonemizeEnglish('bird', 'b'));
+    expect(await phonemizeEnglish('world', 'a')).toContain('l');
+    expectInVocab('bird-gb', await phonemizeEnglish('bird', 'b'));
   });
 
-  it('maps diphthongs to single Kokoro tokens', () => {
-    const say = phonemizeEnglish('say', 'a');
-    const high = phonemizeEnglish('high', 'a');
-    const how = phonemizeEnglish('how', 'a');
-    const boy = phonemizeEnglish('boy', 'a');
-    const go = phonemizeEnglish('go', 'a');
+  it('maps diphthongs to single Kokoro tokens', async () => {
+    const say = await phonemizeEnglish('say', 'a');
+    const high = await phonemizeEnglish('high', 'a');
+    const how = await phonemizeEnglish('how', 'a');
+    const boy = await phonemizeEnglish('boy', 'a');
+    const go = await phonemizeEnglish('go', 'a');
     expect(say).toContain('A');
     expect(say).not.toContain('eɪ');
     expect(high).toContain('I');

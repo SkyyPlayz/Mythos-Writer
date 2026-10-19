@@ -113,7 +113,7 @@ function specifiersInSource(source: string): string[] {
   const patterns = [
     /^\s*import\s+(?:type\s+)?(?:[^'"`;]*?\sfrom\s+)?['"]([^'"]+)['"]/,
     /^\s*export\s+(?:type\s+)?[^'"`;]*?\sfrom\s+['"]([^'"]+)['"]/,
-    /^\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)/,
+    /import\s*\(\s*['"]([^'"]+)['"]\s*\)/,
     /require\(\s*['"]([^'"]+)['"]\s*\)/,
   ];
   for (const line of source.split('\n')) {
