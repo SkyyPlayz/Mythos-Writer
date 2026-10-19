@@ -375,21 +375,16 @@ function PartnerChatView({
     ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
   const pastToggleRef = useRef<HTMLButtonElement>(null);
-  // FD-9 #3 — the menu stays mounted so the session pill remains available
-  // while the dropdown is closed (TC-8537-02). Escape closes and returns focus.
-  useEffect(() => {
-    if (!pastOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      event.preventDefault();
-      setPastOpen(false);
-      pastToggleRef.current?.focus();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [pastOpen]);
+  // FD-9 #3 — the session pill stays mounted while Past chats is closed
+  // (TC-8537-02). Escape is handled only inside this region.
+  const onPastChatsKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!pastOpen || event.key !== 'Escape') return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+    event.preventDefault();
+    setPastOpen(false);
+    pastToggleRef.current?.focus();
+  };
   // Tip cards always mounted (N4-A tips-only WA); chat stays on the partner thread.
   const [showWriterTips, setShowWriterTips] = useState(false);
 
@@ -403,14 +398,17 @@ function PartnerChatView({
         onEndCall={onEndCall}
         pastChats={(
           /* FD-9 #3 — small neutral Past chats dropdown in the header card. */
-          <div className="ahp-past-chats" data-testid="ahp-past-chats">
+          <div
+            className="ahp-past-chats"
+            data-testid="ahp-past-chats"
+            onKeyDown={onPastChatsKeyDown}
+          >
             <button
               ref={pastToggleRef}
               type="button"
               className="ahp-past-chats__toggle"
               aria-expanded={pastOpen}
-              aria-haspopup="menu"
-              aria-controls="ahp-past-chats-menu"
+              aria-controls="ahp-past-chats-history"
               onClick={() => setPastOpen((o) => !o)}
               data-testid="ahp-past-chats-toggle"
             >
@@ -423,9 +421,6 @@ function PartnerChatView({
             <div
               id="ahp-past-chats-menu"
               className={`ahp-past-chats__menu${pastOpen ? ' ahp-past-chats__menu--open' : ''}`}
-              role="menu"
-              aria-label="Past chats and calls"
-              aria-hidden={pastOpen ? undefined : true}
               data-testid="ahp-past-chats-menu"
             >
               <AgentSessionPicker
@@ -433,17 +428,18 @@ function PartnerChatView({
                 className="ahp-session-pill ahp-session-pill--dropdown"
                 busy={false}
               />
-              {pastOpen && onOpenPartnerHistory && (
-                <button
-                  type="button"
-                  className="ahp-past-chats__history-link"
-                  role="menuitem"
-                  data-testid="ahp-partner-history-link"
-                  onClick={() => onOpenPartnerHistory()}
-                >
-                  Open full session history…
-                </button>
-              )}
+              <div id="ahp-past-chats-history" hidden={!pastOpen}>
+                {pastOpen && onOpenPartnerHistory && (
+                  <button
+                    type="button"
+                    className="ahp-past-chats__history-link"
+                    data-testid="ahp-partner-history-link"
+                    onClick={() => onOpenPartnerHistory()}
+                  >
+                    Open full session history…
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

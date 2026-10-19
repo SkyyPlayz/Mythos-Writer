@@ -54,6 +54,8 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     // Active session pill stays mounted without expanding Past chats (TC-8537-02).
     expect(screen.getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
+    const closedPill = within(card).getByRole('button', { name: /Session:/ });
+    expect(closedPill.closest('[aria-hidden="true"]')).toBeNull();
     expect(screen.queryByTestId('ahp-writer-tips')).not.toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-beta-read')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-continuity')).toBeInTheDocument();
@@ -64,28 +66,87 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-hand-archivist')).not.toBeInTheDocument();
   });
 
-  it('past chats & calls opens as a dropdown menu and closes on Escape', async () => {
+  it('Escape in a contenteditable outside past chats does not move focus', async () => {
+    render(
+      <div>
+        <AgentHubPanel scene={null} onOpenPartnerHistory={() => {}} />
+        <div
+          contentEditable
+          suppressContentEditableWarning
+          data-testid="manuscript-outside"
+        />
+      </div>,
+    );
+    const card = await screen.findByTestId('partner-card');
+    const toggle = within(card).getByTestId('ahp-past-chats-toggle');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    const manuscript = screen.getByTestId('manuscript-outside');
+    manuscript.focus();
+    expect(manuscript).toHaveFocus();
+
+    fireEvent.keyDown(manuscript, { key: 'Escape' });
+
+    expect(manuscript).toHaveFocus();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('past chats opens as a disclosure and closes on Escape inside it', async () => {
     render(<AgentHubPanel scene={null} onOpenPartnerHistory={() => {}} />);
     const card = await screen.findByTestId('partner-card');
     const toggle = within(card).getByTestId('ahp-past-chats-toggle');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(within(card).queryByRole('menu')).not.toBeInTheDocument();
-    // Session pill stays mounted while the menu is closed (TC-8537-02).
-    expect(within(card).getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
-    expect(within(card).getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
+    expect(toggle).toHaveAttribute('aria-controls', 'ahp-past-chats-history');
+    expect(toggle).not.toHaveAttribute('aria-haspopup');
+    const panel = within(card).getByTestId('ahp-past-chats-menu');
+    expect(panel).not.toHaveAttribute('role');
+    // Session pill stays mounted while the disclosure is closed (TC-8537-02).
+    expect(panel).toBeInTheDocument();
+    const pill = within(card).getByRole('button', { name: /Session:/ });
+    expect(pill.closest('[aria-hidden="true"]')).toBeNull();
+    expect(within(card).queryByTestId('ahp-partner-history-link')).not.toBeInTheDocument();
 
     fireEvent.click(toggle);
-    const menu = within(card).getByRole('menu');
-    expect(menu).toHaveAttribute('data-testid', 'ahp-past-chats-menu');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(within(card).getByTestId('ahp-partner-history-link')).toBeInTheDocument();
+    const history = within(card).getByTestId('ahp-partner-history-link');
+    expect(history).not.toHaveAttribute('role');
+    expect(pill).toBeInTheDocument();
 
     fireEvent.keyDown(toggle, { key: 'Escape' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(within(card).queryByRole('menu')).not.toBeInTheDocument();
     expect(toggle).toHaveFocus();
+    expect(within(card).queryByTestId('ahp-partner-history-link')).not.toBeInTheDocument();
     expect(within(card).getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
-    expect(within(card).getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
+    expect(within(card).getByRole('button', { name: /Session:/ }).closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('tab order is header controls, then past chats, in both call layouts', async () => {
+    render(<AgentHubPanel scene={null} onOpenPartnerHistory={() => {}} />);
+    const card = await screen.findByTestId('partner-card');
+    const names = (root: HTMLElement) => Array.from(
+      root.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea'),
+    )
+      .filter((el) => el.tabIndex >= 0 && !el.hasAttribute('disabled') && el.closest('[aria-hidden="true"]') === null)
+      .map((el) => el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName);
+
+    const idle = names(card);
+    const start = idle.indexOf('partner-start-call');
+    const toggle = idle.indexOf('ahp-past-chats-toggle');
+    const pill = idle.findIndex((name) => name.startsWith('Session:'));
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(toggle).toBeGreaterThan(start);
+    expect(pill).toBeGreaterThan(toggle);
+
+    fireEvent.click(within(card).getByTestId('partner-start-call'));
+    const onCall = names(card);
+    const past = onCall.indexOf('ahp-past-chats-toggle');
+    const pillOnCall = onCall.findIndex((name) => name.startsWith('Session:'));
+    for (const id of ['partner-call-transcript', 'partner-call-mute', 'partner-call-settings', 'partner-end-call']) {
+      expect(onCall.indexOf(id)).toBeGreaterThanOrEqual(0);
+      expect(onCall.indexOf(id)).toBeLessThan(past);
+    }
+    expect(pillOnCall).toBeGreaterThan(past);
   });
 
   it('action buttons post results into the unified partner thread', async () => {

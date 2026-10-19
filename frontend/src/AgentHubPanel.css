@@ -699,9 +699,9 @@
   color: #c8d3e7;
 }
 
-/* FD-9 #3 — small neutral Past chats dropdown inside the header card.
-   The menu shell stays mounted (session pill, TC-8537-02) and is hidden
-   until the toggle opens it. The pill paints through the closed shell. */
+/* FD-9 #3 — small neutral Past chats disclosure inside the header card.
+   The session pill stays in the row. Only the history link is hidden while
+   closed, so the closed row does not reserve a visibility:hidden gap. */
 .ahp-partner .partner-card .ahp-past-chats {
   display: flex;
   flex: 1 0 100%;
@@ -752,7 +752,6 @@
 }
 
 .ahp-past-chats__menu {
-  visibility: hidden;
   display: inline-flex;
   align-items: center;
   margin: 0;
@@ -762,7 +761,6 @@
 }
 
 .ahp-past-chats__menu--open {
-  visibility: visible;
   position: static;
   flex: 1 0 100%;
   display: flex;
@@ -774,12 +772,6 @@
   border-radius: 10px;
   border: 1px solid var(--border-default);
   background: var(--glass-panel-bg);
-}
-
-.ahp-past-chats__menu .asp-root,
-.ahp-past-chats__menu .asp-pill,
-.ahp-past-chats__menu .asp-pill-label {
-  visibility: visible;
 }
 
 .ahp-past-chats__history-link {

@@ -78,9 +78,20 @@ test('past chats picker is a dropdown inside the hub header card', async () => {
     const card = page.getByTestId('partner-card');
     const toggle = card.getByTestId('ahp-past-chats-toggle');
     await expect(toggle).toBeVisible({ timeout: 6_000 });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toHaveAttribute('aria-controls', 'ahp-past-chats-history');
     const menu = page.getByTestId('ahp-past-chats-menu');
-    await expect(menu).not.toBeVisible();
+    const pill = card.getByRole('button', { name: /Session:/ });
+    await expect(pill).toBeVisible();
     await expect(card.locator('.asp-pill-label')).toBeVisible();
+    await expect(page.getByTestId('ahp-partner-history-link')).toHaveCount(0);
+    expect(await pill.evaluate((el) => el.closest('[aria-hidden="true"]') !== null)).toBe(false);
+
+    const menuBox = await menu.boundingBox();
+    const pillBox = await pill.boundingBox();
+    expect(menuBox).toBeTruthy();
+    expect(pillBox).toBeTruthy();
+    expect(Math.abs(menuBox!.height - pillBox!.height)).toBeLessThan(4);
 
     const bg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).not.toMatch(/rgba?\(\s*255\s*,\s*77\s*,\s*255/);
@@ -90,16 +101,19 @@ test('past chats picker is a dropdown inside the hub header card', async () => {
     });
 
     await toggle.click();
-    await expect(card.getByRole('menu')).toBeVisible({ timeout: 4_000 });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(menu).toBeVisible({ timeout: 4_000 });
+    await expect(page.getByTestId('ahp-partner-history-link')).toBeVisible();
 
     await page.getByTestId('ahp-partner-view').screenshot({
       path: test.info().outputPath('plan058-fid-r3-past-open.png'),
     });
 
     await page.keyboard.press('Escape');
-    await expect(menu).not.toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('ahp-partner-history-link')).toHaveCount(0);
     await expect(toggle).toBeFocused();
+    await expect(pill).toBeVisible();
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(root, { recursive: true, force: true });
