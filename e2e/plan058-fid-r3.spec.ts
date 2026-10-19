@@ -16,7 +16,24 @@ import {
 } from '@playwright/test';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-const WIDTHS = [900, 936, 962, 1024] as const;
+const WIDTHS = [900, 936, 962, 1024, 1280] as const;
+const CHIP_LABELS = ['Characters', 'Locations', 'Factions', 'History', 'Systems', 'Items', 'Scenes', 'Misc'] as const;
+const TAB_ANCHORS = [
+  'Notes',
+  'Story',
+  'Both',
+  'Filters',
+  'Show story cluster',
+  'Characters filter',
+  'Locations filter',
+  'Factions filter',
+  'History filter',
+  'Systems filter',
+  'Items filter',
+  'Scenes filter',
+  'Misc filter',
+  'Depth limit: All',
+] as const;
 const ARYA_ID = 'Characters/Arya.md';
 const WINTERFELL_ID = 'Locations/Winterfell.md';
 
@@ -32,6 +49,13 @@ function intersects(a: Box, b: Box): boolean {
     && a.x + a.width > b.x
     && a.y < b.y + b.height
     && a.y + a.height > b.y;
+}
+
+function boxInside(inner: Box, outer: Box): boolean {
+  return inner.x >= outer.x
+    && inner.y >= outer.y
+    && inner.x + inner.width <= outer.x + outer.width
+    && inner.y + inner.height <= outer.y + outer.height;
 }
 
 function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
@@ -165,7 +189,33 @@ test.describe('PLAN-058 Fid r3 tip 3', () => {
         if (!cardBox || !barBox) return 'missing-box';
         const rightGap = Math.abs((barBox.x + barBox.width) - (cardBox.x + cardBox.width));
         const topGap = Math.abs(barBox.y - cardBox.y);
-        if (rightGap > 16 || topGap > 16) return `right:${rightGap.toFixed(1)} top:${topGap.toFixed(1)}`;
+        const leftGap = barBox.x - cardBox.x;
+        const widthRatio = barBox.width / cardBox.width;
+        if (rightGap > 16 || topGap > 16) return `w${w} right:${rightGap.toFixed(1)} top:${topGap.toFixed(1)}`;
+        // Full-width stretch leaves leftGap ≈ 0 and widthRatio ≈ 1. A content-sized
+        // top-right cluster stays well under the card with a real left gap.
+        if (!(leftGap > 24)) return `w${w} left:${leftGap.toFixed(1)} ratio:${widthRatio.toFixed(3)}`;
+        if (!(widthRatio < 0.9)) return `w${w} width-ratio:${widthRatio.toFixed(3)} left:${leftGap.toFixed(1)}`;
+        if (!(barBox.width < cardBox.width - 24)) return `w${w} bar-wide:${barBox.width.toFixed(1)}/${cardBox.width.toFixed(1)}`;
+        for (const label of CHIP_LABELS) {
+          const chip = bar.getByRole('button', { name: `${label} filter`, exact: true });
+          const chipBox = await chip.boundingBox();
+          if (!chipBox) return `w${w} missing-chip:${label}`;
+          if (!boxInside(chipBox, barBox)) return `w${w} chip-outside-bar:${label}`;
+          if (!boxInside(chipBox, cardBox)) return `w${w} chip-outside-card:${label}`;
+          const clip = await chip.evaluate((el) => {
+            const labelEl = el.querySelector('.vgv-chip-label') ?? el;
+            return {
+              scrollWidth: labelEl.scrollWidth,
+              clientWidth: labelEl.clientWidth,
+              text: (labelEl.textContent ?? '').trim(),
+            };
+          });
+          if (clip.text !== label) return `w${w} label-text:${clip.text}`;
+          if (clip.scrollWidth > clip.clientWidth) {
+            return `w${w} clipped:${label}:${clip.scrollWidth}>${clip.clientWidth}`;
+          }
+        }
         return 'within-16';
       }).toBe('within-16');
 
@@ -182,6 +232,30 @@ test.describe('PLAN-058 Fid r3 tip 3', () => {
       }).toBe('clear');
 
       await card.screenshot({ path: test.info().outputPath(`plan058-fid-r3-${w}.png`) });
+    }
+
+    // Tab order follows DOM: header controls, then the eight chips, then Depth.
+    // Focus the card (not a control) and walk with real Tab presses.
+    await card.evaluate((el) => {
+      el.setAttribute('tabindex', '-1');
+      el.focus();
+    });
+    const tabNames: string[] = [];
+    for (let step = 0; step < 24; step += 1) {
+      await page.keyboard.press('Tab');
+      const name = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (!el || el === document.body) return '';
+        return el.getAttribute('aria-label') || (el.textContent || '').replace(/\s+/g, ' ').trim();
+      });
+      tabNames.push(name);
+      if (name.startsWith('Depth limit')) break;
+    }
+    let from = 0;
+    for (const anchor of TAB_ANCHORS) {
+      const idx = tabNames.indexOf(anchor, from);
+      expect(idx, `tab order missing "${anchor}" in ${tabNames.join(' > ')}`).toBeGreaterThanOrEqual(from);
+      from = idx + 1;
     }
 
     const nodes = page.locator('[data-testid^="vault-node-"]');
