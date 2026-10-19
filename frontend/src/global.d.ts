@@ -1857,24 +1857,6 @@ interface Window {
       { ok: true; relPath: string } | { ok: false; error: string }
     >;
 
-    // Per-chapter/per-scene file layout (MYT-609)
-    vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;
-    vaultCreateScene: (chapterPath: string, sceneName: string) => Promise<unknown>;
-    vaultListChapters: (projectPath: string) => Promise<unknown>;
-    vaultListScenes: (chapterPath: string) => Promise<unknown>;
-
-    // Document-level IPC with typed errors, soft-delete, and per-file watching (MYT-610)
-    readDocument: (filePath: string) => Promise<unknown>;
-    writeDocument: (filePath: string, content: string) => Promise<unknown>;
-    deleteDocument: (filePath: string) => Promise<unknown>;
-    watchDocument: (filePath: string) => Promise<unknown>;
-    unwatchDocument: (filePath: string) => Promise<unknown>;
-    onDocumentChanged: (cb: (event: { filePath: string }) => void) => () => void;
-
-    // Versioned drafts (MYT-611)
-    listHistory: (filePath: string) => Promise<unknown>;
-    restoreSnapshot: (filePath: string, snapshotPath: string) => Promise<unknown>;
-
     // Stream-start push events
     onWritingAssistantStreamStart: (cb: (requestId: string) => void) => () => void;
     onBrainstormStreamStart: (cb: (requestId: string) => void) => () => void;
@@ -2223,12 +2205,6 @@ interface Window {
     sceneCrafterSuggestionReject: (suggestionId: string, actor?: string) => Promise<{
       suggestionId: string;
       auditId: string;
-    }>;
-
-    // SKY-2454: Persist a user-confirmed timestamp override for a scene's timeline entry
-    updateSceneTimestamp: (sceneId: string, userDay: number, userTime: string) => Promise<{
-      success: boolean;
-      error?: string;
     }>;
 
     // SKY-2966: story navigator popout cross-window sync
