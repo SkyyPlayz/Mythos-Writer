@@ -438,10 +438,10 @@ export default function WritingAssistantPanel({
         <div
           className="wa-auto-apply-section"
           role="group"
-          aria-label="Auto-apply categories"
+          aria-label="Auto-mark done categories"
           data-testid="wa-auto-apply-categories"
         >
-          <span className="wa-auto-apply-label">Auto-apply:</span>
+          <span className="wa-auto-apply-label">Auto-mark done:</span>
           {SUGGESTION_CATEGORY_ORDER.map((cat) => {
             const on = isCategoryEnabled(autoApplyCategories, cat);
             return (
@@ -450,7 +450,7 @@ export default function WritingAssistantPanel({
                 type="button"
                 className={`wa-cat-pill${on ? ' wa-cat-pill--on' : ''}`}
                 aria-pressed={on}
-                aria-label={`Auto-apply ${SUGGESTION_CATEGORY_LABELS[cat]}`}
+                aria-label={`Auto-mark done ${SUGGESTION_CATEGORY_LABELS[cat]}`}
                 onClick={() => handleCategoryToggle(cat)}
               >
                 {SUGGESTION_CATEGORY_LABELS[cat]}

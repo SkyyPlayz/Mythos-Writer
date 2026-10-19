@@ -285,7 +285,7 @@ describe('SuggestionReview — Inbox tab', () => {
     await waitFor(() => {
       // Announced in both the assertive live region (§4) and the visible
       // Undo toast (§8) — same text, two surfaces.
-      expect(screen.getAllByText(/suggestion accepted — applied to stories\/ch1\/scene-1\.md/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Marked done\. Make the change in your scene\./i).length).toBeGreaterThan(0);
     });
     // Focus lands on what's now the first remaining row (sug-2), never document.body.
     await waitFor(() => {

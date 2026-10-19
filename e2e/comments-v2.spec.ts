@@ -319,10 +319,10 @@ test.describe.serial('Comments v2 (M9) — vault sidecar round-trip', () => {
     await expect(open).toContainText(`on “${ARCHIVE_ANCHOR}`);
     await expect(open).toContainText(ARCHIVE_TEXT);
 
-    // The three archive actions render (disabled affordances here — the seeded
-    // flag carries no live suggestion id) plus Resolve + Show in focus.
+    // Edit notes and Ignore render (disabled affordances here — the seeded
+    // flag carries no live suggestion id). Suggest story change is gone.
     await expect(page.getByTestId('msv-copen-act-match_archive')).toHaveText('Edit notes to match');
-    await expect(page.getByTestId('msv-copen-act-suggest_story_change')).toHaveText('Suggest story change');
+    await expect(page.getByTestId('msv-copen-act-suggest_story_change')).toHaveCount(0);
     await expect(page.getByTestId('msv-copen-act-ignore')).toHaveText('Ignore');
     await expect(page.getByTestId('msv-copen-resolve')).toBeVisible();
     await expect(open).toContainText('Show in focus');
