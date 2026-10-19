@@ -644,8 +644,8 @@
   padding: 4px 0 8px;
 }
 
-.ahp-partner--compact .ahp-past-chats {
-  margin: 0 6px;
+.ahp-partner--compact .partner-card .ahp-past-chats {
+  margin: 0;
 }
 
 .ahp-partner--compact .ahp-actions {
@@ -699,31 +699,50 @@
   color: #c8d3e7;
 }
 
-/* Proto magenta header card — PAST CHATS & CALLS thread picker */
-.ahp-past-chats {
-  margin: 0 8px;
+/* FD-9 #3 — small neutral Past chats dropdown inside the header card.
+   The menu shell stays mounted (session pill, TC-8537-02) and is hidden
+   until the toggle opens it. The pill paints through the closed shell. */
+.ahp-partner .partner-card .ahp-past-chats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  align-self: center;
+  position: relative;
 }
 
 .ahp-past-chats__toggle {
-  width: 100%;
-  display: flex;
+  width: auto;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 13px;
-  border: 1px solid rgb(255, 77, 255);
-  background: rgba(255, 77, 255, 0.31);
-  color: #f5e9ff;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-inset);
+  color: var(--text-muted);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
   cursor: pointer;
 }
 
+.ahp-past-chats__toggle:hover {
+  background: var(--bg-elevated);
+  color: var(--text-body);
+}
+
+.ahp-past-chats__toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .ahp-past-chats__count {
-  margin-left: auto;
-  color: rgba(245, 233, 255, 0.85);
+  margin-left: 0;
+  color: var(--text-muted);
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
@@ -731,22 +750,47 @@
 }
 
 .ahp-past-chats__menu {
-  margin-top: 6px;
+  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.ahp-past-chats__menu--open {
+  visibility: visible;
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 220px;
   padding: 8px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 77, 255, 0.35);
-  background: rgba(8, 10, 18, 0.55);
+  border: 1px solid var(--border-default);
+  background: var(--glass-panel-bg);
+}
+
+.ahp-past-chats__menu .asp-root,
+.ahp-past-chats__menu .asp-pill,
+.ahp-past-chats__menu .asp-pill-label {
+  visibility: visible;
 }
 
 .ahp-past-chats__history-link {
   display: block;
   width: 100%;
-  margin-top: 8px;
+  margin: 0;
   padding: 6px 8px;
-  border: none;
+  border: 1px solid var(--border-default);
   border-radius: 8px;
-  background: transparent;
-  color: #c8a0ff;
+  background: var(--bg-inset);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
   text-align: left;
@@ -754,8 +798,8 @@
 }
 
 .ahp-past-chats__history-link:hover {
-  background: rgba(255, 77, 255, 0.12);
-  color: #ff9dff;
+  background: var(--bg-elevated);
+  color: var(--text-body);
 }
 
 .ahp-writer-tips {

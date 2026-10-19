@@ -87,8 +87,8 @@ export default function PartnerCallChrome({
           >
             <MicIcon />
           </button>
+          {pastChats}
         </div>
-        {pastChats}
       </section>
     );
   }
@@ -155,6 +155,7 @@ export default function PartnerCallChrome({
             End
           </button>
         </div>
+        {pastChats}
       </div>
       {call.settingsOpen && (
         <div className="partner-card__settings-pop" data-testid="partner-call-settings-pop" role="dialog" aria-label="Call voice settings">
@@ -181,7 +182,6 @@ export default function PartnerCallChrome({
           </label>
         </div>
       )}
-      {pastChats}
     </section>
   );
 }

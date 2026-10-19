@@ -1,5 +1,5 @@
 // Slice B — unified partner shell tests (replaces four-agent hub assertions).
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { vi, afterEach, beforeEach, describe, it, expect } from 'vitest';
 import AgentHubPanel, { resolveAgentStatus } from './AgentHubPanel';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
@@ -62,6 +62,30 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-hand-writer')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-analyst')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-archivist')).not.toBeInTheDocument();
+  });
+
+  it('past chats & calls opens as a dropdown menu and closes on Escape', async () => {
+    render(<AgentHubPanel scene={null} onOpenPartnerHistory={() => {}} />);
+    const card = await screen.findByTestId('partner-card');
+    const toggle = within(card).getByTestId('ahp-past-chats-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(card).queryByRole('menu')).not.toBeInTheDocument();
+    // Session pill stays mounted while the menu is closed (TC-8537-02).
+    expect(within(card).getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
+    expect(within(card).getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
+
+    fireEvent.click(toggle);
+    const menu = within(card).getByRole('menu');
+    expect(menu).toHaveAttribute('data-testid', 'ahp-past-chats-menu');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(card).getByTestId('ahp-partner-history-link')).toBeInTheDocument();
+
+    fireEvent.keyDown(toggle, { key: 'Escape' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(card).queryByRole('menu')).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+    expect(within(card).getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
+    expect(within(card).getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
   });
 
   it('action buttons post results into the unified partner thread', async () => {
