@@ -13,6 +13,8 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 
 ## [0.5.7] — 2026-10-03
 
+_Draft release that was never published._
+
 _Wording follows the v0.5.7 release notes._
 
 ### Added
@@ -63,6 +65,8 @@ _Wording follows the v0.5.7 release notes._
 
 ## [0.5.6] — 2026-09-28
 
+_Draft release that was never published._
+
 _Feature list follows the v0.5.6 draft notes (`bf9a6c35..d2838622`). The GitHub release body is a commit list, so the wording is from the pull requests._
 
 ### Added
@@ -90,6 +94,8 @@ _Feature list follows the v0.5.6 draft notes (`bf9a6c35..d2838622`). The GitHub 
 
 ## [0.5.5] — 2026-09-28
 
+_Draft release that was never published._
+
 _Record is thin: the GitHub release body repeats older commits. The only change after 0.5.4.5 is the packaging fix below._
 
 ### Fixed
@@ -97,6 +103,8 @@ _Record is thin: the GitHub release body repeats older commits. The only change 
 - **The app version is 0.5.5, which installers can package.** electron-builder rejected `0.5.4.5` as an invalid version, so Linux and Windows release builds failed. ([#1623](https://github.com/SkyyPlayz/Mythos-Writer/pull/1623))
 
 ## [0.5.4.5] — 2026-09-27
+
+_Draft release that was never published._
 
 _The GitHub release body is “Release build in progress…”. This section is from the pull request._
 
@@ -106,7 +114,7 @@ _The GitHub release body is “Release build in progress…”. This section is 
 
 ## [0.5.4]
 
-_No git tag and no GitHub release. Slice 1 merged 2026-09-25 and slice 2 merged 2026-09-26, while `package.json` was still 0.5.3._
+_Never published. No git tag and no GitHub release, draft or otherwise. Slice 1 merged 2026-09-25 and slice 2 merged 2026-09-26, while `package.json` was still 0.5.3._
 
 ### Added
 
@@ -131,6 +139,8 @@ _No git tag and no GitHub release. Slice 1 merged 2026-09-25 and slice 2 merged 
 - Release-tag normalization, a dependency bump, and CI hygiene. ([#1610](https://github.com/SkyyPlayz/Mythos-Writer/pull/1610), [#1611](https://github.com/SkyyPlayz/Mythos-Writer/pull/1611), [#1619](https://github.com/SkyyPlayz/Mythos-Writer/pull/1619), [#1620](https://github.com/SkyyPlayz/Mythos-Writer/pull/1620))
 
 ## [0.5.3] — 2026-09-19
+
+_Draft release that was never published._
 
 _The GitHub release body is a commit list. Wording is from the pull requests._
 
