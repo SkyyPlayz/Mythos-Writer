@@ -538,12 +538,6 @@
 }
 
 /* ─── Filter cluster (FD-9 #25): top-right of the card ───────────────────── */
-/* SKY-11787 still keys the glass backing off .vgv-bottom-toolbar. The live
-   control is .vgv-graph-filters; that historical selector is not on the element. */
-
-.vgv-bottom-toolbar {
-  background: var(--glass-panel-bg);
-}
 
 .vgv-graph-filters {
   display: flex;

@@ -2,7 +2,7 @@
  * PLAN-058 Fid r3 — Tip 3 (FD-9 #25).
  * The graph filter bar sits in the top-right corner of the graph card.
  *
- *   xvfb-run --auto-servernum npx playwright test e2e/plan058-fid-r3.spec.ts --reporter=list --workers=1
+ *   xvfb-run --auto-servernum npx playwright test e2e/plan058-fid-r3-tip3.spec.ts --reporter=list --workers=1
  */
 import path from 'path';
 import os from 'os';
