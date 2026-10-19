@@ -159,8 +159,9 @@ jobs:
           body: "Release build in progress…"
 
   # Windows build. Unsigned: legacy certificate secrets are removed, and this
-  # job cannot upload a release. It hashes the installer, zip, and channel
-  # yml, then hands those exact bytes to upload-windows.
+  # job cannot upload a release. It copies each installer to the GitHub-safe
+  # name already written in the channel yml (url/path), hashes those names,
+  # then hands those exact bytes to upload-windows.
   # needs create-release so upload-windows cannot start before the draft exists.
   build-windows:
     needs: [determine-release, create-release]
@@ -207,10 +208,15 @@ jobs:
           const crypto = require('crypto');
           const fs = require('fs');
           const path = require('path');
+          const yaml = require('js-yaml');
 
           function fail(message) {
             console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
             process.exit(1);
+          }
+
+          function safe(value) {
+            return String(value).replace(/[\r\n]/g, ' ');
           }
 
           function validName(name) {
@@ -224,33 +230,113 @@ jobs:
               && name !== '..';
           }
 
+          function sha512(buf) {
+            return crypto.createHash('sha512').update(buf).digest('base64');
+          }
+
           const sourceDir = 'dist-electron';
           const staging = 'win-upload';
-          const channel = /^(latest|beta|alpha)\.yml$/;
+          const channelRe = /^(latest|beta|alpha)\.yml$/;
 
           if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
             fail('dist-electron is missing');
           }
 
-          const names = fs.readdirSync(sourceDir).filter((name) => {
-            const full = path.join(sourceDir, name);
-            if (!fs.statSync(full).isFile()) return false;
-            return name.endsWith('.exe') || name.endsWith('.zip') || channel.test(name);
-          }).sort();
+          const fileNames = fs.readdirSync(sourceDir).filter((name) => {
+            return fs.statSync(path.join(sourceDir, name)).isFile();
+          });
+          const channels = fileNames.filter((name) => channelRe.test(name)).sort();
+          if (channels.length === 0) fail('no Windows channel yml to name the release files');
 
-          if (names.length === 0) fail('win-manifest has zero entries');
-
-          const manifest = {};
-          for (const name of names) {
-            if (!validName(name)) fail('refusing to publish an invalid Windows artifact name');
+          const bySha512 = new Map();
+          const buffers = new Map();
+          for (const name of fileNames) {
+            if (channelRe.test(name)) continue;
             const buf = fs.readFileSync(path.join(sourceDir, name));
-            manifest[name] = crypto.createHash('sha256').update(buf).digest('hex');
+            buffers.set(name, buf);
+            const digest = sha512(buf);
+            const list = bySha512.get(digest) || [];
+            list.push(name);
+            bySha512.set(digest, list);
           }
+
+          // Publish names come from the channel yml url/path strings. The bytes
+          // are the file whose sha512 the yml already recorded. No rename rule.
+          const publish = new Map();
+
+          function feedName(channelName, raw, label) {
+            if (!validName(raw)) fail(`${channelName} ${label} ${safe(raw)} has no matching file`);
+            return raw;
+          }
+
+          function takeMatch(channelName, feed, digest) {
+            const matches = bySha512.get(digest) || [];
+            if (matches.length === 0) fail(`${channelName} url ${feed} has no matching file`);
+            if (matches.length > 1) fail(`${channelName} url ${feed} matches more than one file`);
+            const sourceName = matches[0];
+            const existing = publish.get(feed);
+            if (existing && existing.sourceName !== sourceName) {
+              fail(`${channelName} url ${feed} maps to conflicting files`);
+            }
+            if (!existing && buffers.has(feed) && sourceName !== feed) {
+              fail(`${channelName} url ${feed} would overwrite a different file`);
+            }
+            publish.set(feed, { sourceName, buf: buffers.get(sourceName) });
+          }
+
+          for (const channelName of channels) {
+            let doc;
+            try {
+              doc = yaml.load(fs.readFileSync(path.join(sourceDir, channelName), 'utf8'));
+            } catch (err) {
+              fail(`${channelName} is unparsable`);
+            }
+            if (doc == null || typeof doc !== 'object' || Array.isArray(doc)) fail(`${channelName} is unparsable`);
+            if (!Array.isArray(doc.files) || doc.files.length === 0) fail(`${channelName} has no file urls`);
+
+            const seen = new Map();
+            for (const file of doc.files) {
+              if (file == null || typeof file !== 'object' || Array.isArray(file)) fail(`${channelName} file entry is unparsable`);
+              const feed = feedName(channelName, file.url, 'url');
+              if (typeof file.sha512 !== 'string' || file.sha512.trim() === '') {
+                fail(`${channelName} url ${feed} has no matching file`);
+              }
+              const digest = file.sha512.trim();
+              if (seen.has(feed) && seen.get(feed) !== digest) fail(`${channelName} url ${feed} is listed twice with different hashes`);
+              seen.set(feed, digest);
+              takeMatch(channelName, feed, digest);
+            }
+
+            if (Object.prototype.hasOwnProperty.call(doc, 'path')) {
+              const feed = feedName(channelName, doc.path, 'path');
+              if (!seen.has(feed)) fail(`${channelName} path ${feed} has no matching file`);
+              if (typeof doc.sha512 === 'string' && doc.sha512.trim() !== '' && doc.sha512.trim() !== seen.get(feed)) {
+                fail(`${channelName} path ${feed} does not match the url hash`);
+              }
+            }
+          }
+
+          for (const channelName of channels) {
+            if (publish.has(channelName)) fail(`${channelName} collides with a feed file name`);
+            publish.set(channelName, {
+              sourceName: channelName,
+              buf: fs.readFileSync(path.join(sourceDir, channelName)),
+            });
+          }
+
+          const names = [...publish.keys()].sort();
+          if (names.length === 0) fail('win-manifest has zero entries');
 
           fs.rmSync(staging, { recursive: true, force: true });
           fs.mkdirSync(staging);
+          const manifest = {};
           for (const name of names) {
-            fs.copyFileSync(path.join(sourceDir, name), path.join(staging, name));
+            if (!validName(name)) fail('refusing to publish an invalid Windows artifact name');
+            const item = publish.get(name);
+            const dest = path.join(staging, name);
+            fs.writeFileSync(dest, item.buf);
+            if (item.sourceName !== name) console.log(`copied ${JSON.stringify(item.sourceName)} -> ${JSON.stringify(name)}`);
+            manifest[name] = crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex');
           }
 
           const staged = fs.readdirSync(staging).sort();
