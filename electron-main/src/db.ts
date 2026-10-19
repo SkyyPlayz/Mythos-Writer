@@ -31,6 +31,8 @@ export interface UnifiedSuggestion {
   budgetExceeded: boolean;
   category: string | null;
   payloadJson: string | null;
+  /** suggestions.target_kind. Null for continuity and wiki-link rows. */
+  targetKind: 'vault' | 'manuscript' | string | null;
 }
 
 export interface UnifiedSuggestionFilters {
@@ -1298,7 +1300,8 @@ export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedS
         applied_at,
         budget_exceeded,
         category,
-        payload_json
+        payload_json,
+        target_kind
       FROM suggestions
 
       UNION ALL
@@ -1327,7 +1330,8 @@ export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedS
         resolved_at AS applied_at,
         0           AS budget_exceeded,
         severity    AS category,
-        NULL        AS payload_json
+        NULL        AS payload_json,
+        NULL        AS target_kind
       FROM continuity_issues
 
       UNION ALL
@@ -1350,7 +1354,8 @@ export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedS
         NULL AS applied_at,
         0    AS budget_exceeded,
         NULL AS category,
-        NULL AS payload_json
+        NULL AS payload_json,
+        NULL AS target_kind
       FROM wiki_link_suggestions
     )
   `;
@@ -1415,6 +1420,7 @@ export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedS
       budget_exceeded: number;
       category: string | null;
       payload_json: string | null;
+      target_kind: string | null;
     }>;
 
   const items: UnifiedSuggestion[] = rawRows.map((r) => ({
@@ -1431,6 +1437,7 @@ export function listUnifiedSuggestions(opts: UnifiedSuggestionFilters): UnifiedS
     budgetExceeded: r.budget_exceeded === 1,
     category: r.category,
     payloadJson: r.payload_json,
+    targetKind: r.target_kind,
   }));
 
   return { items, totalCount, countByAgent, countByKind };
