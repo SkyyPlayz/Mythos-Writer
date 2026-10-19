@@ -83,7 +83,7 @@ test.describe('PLAN-058 L3 — Boards canvas', () => {
     await expect(select).toBeVisible();
     await expect(pan.locator('svg')).toBeVisible();
     await expect(select.locator('svg')).toBeVisible();
-    await page.screenshot({ path: '/opt/cursor/artifacts/screenshots/plan058-l3-boards.png' });
+    await page.screenshot({ path: test.info().outputPath('plan058-l3-boards.png') });
   });
 
   test('pan tool sets active tool on canvas (81:01)', async () => {

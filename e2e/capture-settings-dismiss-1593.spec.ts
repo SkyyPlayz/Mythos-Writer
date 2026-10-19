@@ -38,13 +38,11 @@ test('capture Settings open (dismiss X visible)', async () => {
     await expect(page.getByLabel('Close settings')).toBeVisible();
     const openPath = path.join(OUT_DIR, 'settings-open-with-x.png');
     await page.screenshot({ path: openPath, fullPage: false });
-    fs.copyFileSync(openPath, '/opt/cursor/artifacts/settings-1593-open-with-x.png');
 
     await page.getByLabel('Close settings').click();
     await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0, { timeout: 5_000 });
     const closedPath = path.join(OUT_DIR, 'settings-dismissed.png');
     await page.screenshot({ path: closedPath, fullPage: false });
-    fs.copyFileSync(closedPath, '/opt/cursor/artifacts/settings-1593-dismissed.png');
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

@@ -18,7 +18,6 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../docs/screenshots/boards-1592');
-const ARTIFACTS = '/opt/cursor/artifacts';
 
 function seed(userData: string, storyDir: string, notesDir: string): void {
   fs.mkdirSync(userData, { recursive: true });
@@ -63,7 +62,6 @@ test('capture Boards top chrome + folder glyph + note thumb', async () => {
   const notesDir = path.join(tempRoot, 'notes');
   seed(userData, storyDir, notesDir);
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.mkdirSync(ARTIFACTS, { recursive: true });
 
   const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
   const app: ElectronApplication = await electron.launch({
@@ -88,10 +86,8 @@ test('capture Boards top chrome + folder glyph + note thumb', async () => {
 
     const chromePath = path.join(OUT_DIR, 'boards-top-chrome.png');
     await page.screenshot({ path: chromePath, fullPage: false });
-    fs.copyFileSync(chromePath, path.join(ARTIFACTS, 'boards-1592-top-chrome.png'));
 
     const toolbar = page.locator('.boards-tab-panel__furniture-toolbar');
-    await toolbar.screenshot({ path: path.join(ARTIFACTS, 'boards-1592-furniture-toolbar.png') });
     await toolbar.screenshot({ path: path.join(OUT_DIR, 'boards-furniture-toolbar.png') });
 
     // Enter Characters so Aria note with thumb is visible.
@@ -103,7 +99,6 @@ test('capture Boards top chrome + folder glyph + note thumb', async () => {
 
     const thumbPath = path.join(OUT_DIR, 'boards-note-thumb.png');
     await page.screenshot({ path: thumbPath, fullPage: false });
-    fs.copyFileSync(thumbPath, path.join(ARTIFACTS, 'boards-1592-note-thumb.png'));
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
