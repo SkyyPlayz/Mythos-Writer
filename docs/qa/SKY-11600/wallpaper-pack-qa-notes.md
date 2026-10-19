@@ -1,5 +1,7 @@
 # SKY-11600 — QA pass on the bundled wallpaper pack
 
+> **Evidence PNGs:** the five `*.png` files cited below moved on 2026-10-18 to the private `SkyyPlayz/Mythos-Ops` repo at the same path (`docs/qa/SKY-11600/`). These notes and `measurements.txt` stay here.
+
 Two questions were handed over: which wallpapers read soft above 1080p, and
 whether the one bright image stays legible. Both are answered per file below.
 

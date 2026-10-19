@@ -1,5 +1,7 @@
 # Paste this into the "Mythos Writer" Claude Code chat
 
+> **Note (2026-10-18):** the root `design-handoff/` v1 package this prompt names moved to the private `SkyyPlayz/Mythos-Ops` repo. The current package is `plans/design-handoff/v2/` (README.md, PROCESS.md, DESIGN-SPEC.md, FULL-SPEC.md, `prototype/`).
+
 ---
 
 I'm handing off the approved Liquid Neon redesign. The handoff package is in `design-handoff/` in the repo (README.md, PROCESS.md, DESIGN-SPEC.md, and `prototype/` containing the approved interactive prototype — it's the single source of truth for every visual and interaction).
