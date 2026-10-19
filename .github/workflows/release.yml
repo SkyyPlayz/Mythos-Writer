@@ -160,8 +160,10 @@ jobs:
 
   # Windows build. Unsigned: legacy certificate secrets are removed, and this
   # job cannot upload a release. It copies (does not rename) each installer to
-  # the dashed url/path name in the channel yml and hashes that name. A space
-  # or a GitHub space-to-dot name fails, so the upload name is stored unchanged.
+  # the dashed url/path name in the channel yml and hashes that name. The zip
+  # is not in that yml, so it is staged under the same space-to-dash name
+  # electron-builder uses and hashed too. A space, a GitHub space-to-dot name,
+  # or a zip name collision fails. The upload name is stored unchanged.
   # needs create-release so upload-windows cannot start before the draft exists.
   build-windows:
     needs: [determine-release, create-release]
@@ -374,6 +376,43 @@ jobs:
             return true;
           }
 
+          function expectedZipName(channelName, doc) {
+            if (typeof doc.version !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(doc.version) || doc.version.includes('..')) {
+              fail(`${channelName} version is not a dashed product version`);
+            }
+            if (typeof doc.path !== 'string') fail(`${channelName} path is missing`);
+            const version = doc.version;
+            const suffix = `-${version}.exe`;
+            if (!doc.path.endsWith(suffix)) fail(`${channelName} path is not the dashed product-version exe`);
+            const product = doc.path.slice(0, -suffix.length);
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(product) || product.length === 0 || product.includes('..')) {
+              fail(`${channelName} product is not a dashed publish name`);
+            }
+            const zipName = `${product}-${version}.zip`;
+            if (!isPublishName(zipName)) fail(`refusing to publish an invalid Windows artifact name: ${safe(zipName)}`);
+            const listed = Array.isArray(doc.files) && doc.files.some((file) => file && file.url === doc.path);
+            if (!listed) fail(`${channelName} path ${safe(doc.path)} has no matching file`);
+            return zipName;
+          }
+
+          function zipPublishName(sourceName) {
+            if (typeof sourceName !== 'string' || sourceName.length === 0 || /[\\/\0\r\n]/.test(sourceName)) {
+              fail(`refusing to publish an invalid Windows zip name: ${safe(sourceName)}`);
+            }
+            // electron-builder computeSafeArtifactNameIfNeeded: keep a GitHub-safe
+            // name; otherwise replace spaces with dashes and keep that only when
+            // it matches /^[0-9A-Za-z._-]+$/.
+            let dashed = sourceName;
+            if (!/^[0-9A-Za-z._-]+$/.test(dashed)) {
+              dashed = sourceName.replace(/ /g, '-');
+              if (!/^[0-9A-Za-z._-]+$/.test(dashed)) {
+                fail(`refusing to publish a Windows zip name that space-to-dash does not make safe: ${safe(sourceName)}`);
+              }
+            }
+            if (!isPublishName(dashed)) fail(`refusing to publish an invalid Windows artifact name: ${safe(dashed)}`);
+            return dashed;
+          }
+
           function sha512(buf) {
             return crypto.createHash('sha512').update(buf).digest('base64');
           }
@@ -408,6 +447,7 @@ jobs:
           // Those strings are the dashed names. A space, or a dot standing in for a
           // space, is not that name, so GitHub is never asked to rename the upload.
           const publish = new Map();
+          let expectedZip = null;
 
           function feedName(channelName, raw, label) {
             if (typeof raw !== 'string' || raw.length === 0 || /[\0\r\n]/.test(raw)) {
@@ -473,7 +513,29 @@ jobs:
                 fail(`${channelName} path ${feed} does not match the url hash`);
               }
             }
+            const zipForChannel = expectedZipName(channelName, doc);
+            if (expectedZip == null) expectedZip = zipForChannel;
+            else if (expectedZip !== zipForChannel) fail('channel yml files disagree on the Windows zip name');
           }
+
+          if (expectedZip == null) fail('Windows zip name cannot be derived from the channel yml');
+          const zipSources = fileNames.filter((name) => name.endsWith('.zip'));
+          if (zipSources.length !== 1) {
+            fail(zipSources.length === 0 ? 'Windows zip is missing' : 'Windows release has more than one zip');
+          }
+          const zipSource = zipSources[0];
+          const zipName = zipPublishName(zipSource);
+          if (zipName !== expectedZip) {
+            fail(`Windows zip ${safe(zipName)} is not the dashed product-version name ${safe(expectedZip)}`);
+          }
+          const zipExisting = publish.get(zipName);
+          if (zipExisting && zipExisting.sourceName !== zipSource) {
+            fail(`Windows zip name ${safe(zipName)} collides with ${safe(zipExisting.sourceName)}`);
+          }
+          if (buffers.has(zipName) && zipName !== zipSource) {
+            fail(`Windows zip name ${safe(zipName)} collides with a different file`);
+          }
+          publish.set(zipName, { sourceName: zipSource, buf: buffers.get(zipSource) });
 
           for (const channelName of channels) {
             if (publish.has(channelName)) fail(`${channelName} collides with a feed file name`);
@@ -1008,6 +1070,25 @@ jobs:
             return true;
           }
 
+          function expectedZipName(channelName, doc) {
+            if (typeof doc.version !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(doc.version) || doc.version.includes('..')) {
+              fail(`${channelName} version is not a dashed product version`);
+            }
+            if (typeof doc.path !== 'string') fail(`${channelName} path is missing`);
+            const version = doc.version;
+            const suffix = `-${version}.exe`;
+            if (!doc.path.endsWith(suffix)) fail(`${channelName} path is not the dashed product-version exe`);
+            const product = doc.path.slice(0, -suffix.length);
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(product) || product.length === 0 || product.includes('..')) {
+              fail(`${channelName} product is not a dashed publish name`);
+            }
+            const zipName = `${product}-${version}.zip`;
+            if (!isPublishName(zipName)) fail(`refusing to publish an invalid Windows artifact name: ${safe(zipName)}`);
+            const listed = Array.isArray(doc.files) && doc.files.some((file) => file && file.url === doc.path);
+            if (!listed) fail(`${channelName} path ${safe(doc.path)} has no matching file`);
+            return zipName;
+          }
+
           function isChannelYml(name) {
             return /^(latest|beta|alpha)\.yml$/i.test(name);
           }
@@ -1096,6 +1177,7 @@ jobs:
           }
 
           const feedNames = new Set();
+          let expectedZip = null;
           for (const [name, filePath] of downloadedFiles) {
             if (!isChannelYml(name)) continue;
             let doc;
@@ -1128,11 +1210,21 @@ jobs:
                 fail(`${safe(name)} path ${safe(doc.path)} has no downloaded file`);
               }
             }
+            const zipForChannel = expectedZipName(name, doc);
+            if (expectedZip == null) expectedZip = zipForChannel;
+            else if (expectedZip !== zipForChannel) fail('channel yml files disagree on the Windows zip name');
           }
 
-          for (const name of Object.keys(manifest)) {
-            if (isChannelYml(name)) continue;
-            if (!feedNames.has(name)) fail(`${safe(name)} is not a channel yml url`);
+          if (expectedZip == null) fail('Windows zip name cannot be derived from the channel yml');
+          const manifestZips = Object.keys(manifest).filter((entry) => entry.toLowerCase().endsWith('.zip')).sort();
+          if (manifestZips.length !== 1 || manifestZips[0] !== expectedZip) {
+            fail(`Windows release must contain exactly one zip named ${safe(expectedZip)}; found ${manifestZips.join(', ') || 'none'}`);
+          }
+
+          for (const manifestName of Object.keys(manifest)) {
+            if (isChannelYml(manifestName)) continue;
+            if (manifestName === expectedZip) continue;
+            if (!feedNames.has(manifestName)) fail(`${safe(manifestName)} is not a channel yml url`);
           }
 
           const denied = assetNames.filter((name) => !Object.prototype.hasOwnProperty.call(manifest, name) && !linuxAllowed(name));
