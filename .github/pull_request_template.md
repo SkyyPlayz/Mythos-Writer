@@ -28,6 +28,7 @@ _Every change must satisfy all items before merge. Reviewer confirms these hold.
 - [ ] `npm run build:electron` succeeds locally
 - [ ] Live required CI checks pass: `ci`, `notes-windows`, `screenshot-check` (packaging is main/release-only)
 - [ ] No secrets, credentials, or customer data in the diff
+- [ ] CHANGELOG.md: one plain-language, user-facing line under [Unreleased] (Added/Changed/Fixed/Removed), ending with this PR's link, or this is a pure CI/chore PR
 
 ## Test plan
 
