@@ -1,5 +1,5 @@
 /**
- * launch.ts — SKY-8217 shared harness plumbing.
+ * launchApp.ts — SKY-8217 shared harness plumbing.
  *
  * Launches the REAL packaged Electron build (electron-vite `out/main/main.js`)
  * headless via Playwright's `_electron`, the same way scene-save-perf.spec.ts
@@ -15,9 +15,9 @@ import {
   type Page,
 } from '@playwright/test';
 import { expect } from '@playwright/test';
-import { clickStoryNav } from '../../helpers/navGuard';
+import { clickStoryNav } from './navGuard';
 
-export const MAIN_JS = path.resolve(__dirname, '../../../out/main/main.js');
+export const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
 export const STORY_ID = 'perf-ui-runtime-story';
 export const CHAPTER_ID = 'perf-ui-runtime-chapter';

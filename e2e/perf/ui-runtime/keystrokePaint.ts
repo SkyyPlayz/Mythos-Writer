@@ -42,7 +42,7 @@ function percentile(values: number[], p: number): number {
 
 /**
  * Caller must have already navigated to the editor and focused `.ProseMirror`
- * (see `openSeededScene` in launch.ts) — this only drives the keystrokes.
+ * (see `openSeededScene` in e2e/helpers/launchApp.ts) — this only drives the keystrokes.
  */
 export async function measureKeystrokeToPaint(page: Page, reps = 20): Promise<KeystrokeToPaintResult> {
   const client: CDPSession = await page.context().newCDPSession(page);
