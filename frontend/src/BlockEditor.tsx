@@ -60,7 +60,7 @@ interface Props {
   wikiLinkCandidates?: WikiLinkCandidate[];
   /** SKY-2011: called when the editor selection changes, debounced by TipTap's onSelectionUpdate. */
   onSelectionChange?: (text: string) => void;
-  /** When false, suppress Tiptap's autofocus on mount (used in multi-editor views like ChapterContinuousView). */
+  /** When false, suppress Tiptap's autofocus on mount. */
   autoFocus?: boolean;
   /** GH #631: show the heading-focus control (H1–H6 section view splitting). Single-scene view only. */
   enableHeadingFocus?: boolean;

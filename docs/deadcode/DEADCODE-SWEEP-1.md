@@ -14,7 +14,7 @@ Tools: a TypeScript import-graph scan (knip / ts-prune role), `depcheck` 1.x on 
 | 4. Leftover flags and orphaned styles | 0 `ENABLE_` / `FEATURE_` / `FLAG_` constants. 6 stylesheets unreachable from any importer. Orphaned selectors under `.chapter-continuous-*` and `.book-outline-*` in `DesktopShell.css` | 5 stylesheets. Child selectors of the two legacy views. The two container classes stay, because the manuscript wrap still uses them | 1 stylesheet |
 | 5. Commented-out code blocks | 2 comment ranges that look like code | 0 | 2 (format examples, not disabled code) |
 | 6. Unused dependencies | 2 (`depcheck` on the root manifest; the three workspaces reported none) | 0 | 2 |
-| 7. Stale TODOs and duplicate logic | 0 `TODO` / `FIXME` / `HACK` comments in `frontend/src`, `electron-main/src`, and `shared`. 9 `test.fixme` skips. 37 cross-file clone pairs (`jscpd`) | 0 | all of them (list only) |
+| 7. Stale TODOs and duplicate logic | 0 `TODO` / `FIXME` / `HACK` comments in `frontend/src`, `electron-main/src`, and `shared`. 10 `test.fixme` skips. 37 cross-file clone pairs (`jscpd`) | 0 | all of them (list only) |
 
 ## Removed
 
