@@ -9,7 +9,7 @@ import {
   seedVault,
   makeScratch,
   rmScratch,
-} from '../perf/ui-runtime/launch';
+} from '../helpers/launchApp';
 import { measureKeystrokeToPaint } from '../perf/ui-runtime/keystrokePaint';
 
 /**
