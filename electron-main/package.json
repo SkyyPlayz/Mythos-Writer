@@ -17,9 +17,9 @@
     "fuzz": "npm run fuzz:frontmatter && npm run fuzz:docxInline"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
+    "@anthropic-ai/sdk": "^0.135.0",
     "chokidar": "^5.0.0",
-    "docx": "^9.10.0",
+    "docx": "^9.11.0",
     "electron-updater": "^6.8.9",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
@@ -34,6 +34,6 @@
     "electron-vite": "^5.0.0",
     "fast-check": "^4.10.2",
     "typescript": "^5.3.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }
