@@ -238,7 +238,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       // the ref to null; guard against the destroyed-but-non-null editor case.
       try {
         editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
-      } catch (_) { /* editor destroyed between render and effect */ }
+      } catch { /* editor destroyed between render and effect */ }
     };
     const focusTimer = autoFocus ? setTimeout(focusEditor, 0) : undefined;
     const cb = onEditorReadyRef.current;
