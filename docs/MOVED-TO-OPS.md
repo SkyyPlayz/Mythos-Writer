@@ -1,0 +1,107 @@
+# Files moved to Mythos-Ops (2026-10-18)
+
+These team-ops notes, plans, reports, ticket-evidence screenshots and one-off scripts moved to the **private** repo `SkyyPlayz/Mythos-Ops` with their full git history.
+
+- Source: `SkyyPlayz/Mythos-Writer` `main` @ `ad87e0967fc9ebc6ce4f2d2a248e6087dc2265e3`
+- Destination: `SkyyPlayz/Mythos-Ops` `main` @ `6a4902141e03cc5b8525873f1ed6a57af990d5e3`
+- **Paths are unchanged** in Mythos-Ops. Every file was sha256-verified against this repo before deletion (96/96 match).
+- `design-handoff/prototype/MOVED.md` was copied but **kept here** as a redirect stub, because source comments still name `design-handoff/prototype`.
+- These files remain readable in this repo's git history (no history rewrite).
+
+## Moved paths (old path = new path in Mythos-Ops)
+
+- `BugHunt-Fisher.sh`
+- `FABLE-PICKUP.md`
+- `HANDOFF.md`
+- `SKY-2968-component-spec.md`
+- `SKY-2970-onboarding-v0-3-ux-spec.md`
+- `SKY-456-SPEC.md`
+- `design-handoff/DESIGN-SPEC.md`
+- `design-handoff/PROCESS.md`
+- `design-handoff/PROMPT.md`
+- `design-handoff/README.md`
+- `docs/OPERATIONS-LOG.md`
+- `docs/REPO_AUDIT.md`
+- `docs/a2-owner-qa-my-todo.md`
+- `docs/archive/FABLE-PICKUP.md`
+- `docs/assets/cloud-sync/step-1-provider.svg`
+- `docs/assets/cloud-sync/step-2-folder.svg`
+- `docs/assets/cloud-sync/step-3-confirm.svg`
+- `docs/assets/cloud-sync/step-4-verify.svg`
+- `docs/assets/cloud-sync/step-5-done.svg`
+- `docs/brand/README.md`
+- `docs/ci-gate-audit-2026-06.md`
+- `docs/fidelity/sky-11213-create-scene/1-setup-before-create.png`
+- `docs/fidelity/sky-11213-create-scene/2-scene-created-editor-open.png`
+- `docs/perf/traces/cold-start-empty-vault-2026-07-22.log`
+- `docs/perf/traces/cold-start-large-vault-2026-07-22.log`
+- `docs/plan058-l3-milanote-research.md`
+- `docs/qa/SKY-11600/cyber-2-softness-native-vs-1920-vs-2560.png`
+- `docs/qa/SKY-11600/ember-1-softness-control-no-visible-loss.png`
+- `docs/qa/SKY-11600/sunset-1-softness-native-vs-1920-vs-2560.png`
+- `docs/qa/SKY-11600/winter-2-baked-in-caption-3x.png`
+- `docs/qa/SKY-11600/winter-2-softness-native-vs-1920-vs-2560.png`
+- `docs/qa/SKY-1989/dataview-after-1440x900.png`
+- `docs/qa/SKY-1989/dataview-after-fixture.html`
+- `docs/qa/SKY-1989/dataview-before-1440x900.png`
+- `docs/qa/SKY-1989/dataview-before-fixture.html`
+- `docs/qa/SKY-1990/advanced-tables-after-1440x900.png`
+- `docs/qa/SKY-1990/advanced-tables-after-fixture.html`
+- `docs/qa/SKY-1990/advanced-tables-before-1440x900.png`
+- `docs/qa/SKY-1990/advanced-tables-before-fixture.html`
+- `docs/qa/SKY-1990/advanced-tables-qa-notes.md`
+- `docs/releases/BETA4-PICKUP-2026-07-15.md`
+- `docs/screenshots/boards-052-leftovers/boards-empty-board-state.png`
+- `docs/screenshots/boards-052-leftovers/boards-home-empty-thumb-folder.png`
+- `docs/screenshots/boards-1592/boards-furniture-toolbar.png`
+- `docs/screenshots/boards-1592/boards-note-thumb.png`
+- `docs/screenshots/boards-1592/boards-top-chrome.png`
+- `docs/screenshots/overlay-pop-1600/settings-pop-denser-glass.png`
+- `docs/screenshots/settings-1593/settings-dismissed.png`
+- `docs/screenshots/settings-1593/settings-open-with-x.png`
+- `docs/screenshots/vaults-1596/vaults-files-glass.png`
+- `docs/screenshots/vaults-1596/vaults-section-card.png`
+- `e2e/screenshots/sky9822-references-tab/app-1-references.png`
+- `e2e/screenshots/sky9822-references-tab/app-2-after-create.png`
+- `e2e/screenshots/sky9822-references-tab/prototype-1-references.png`
+- `handoffs/PLAN-058-L3.md`
+- `plans/BETA-2-ROADMAP.md`
+- `plans/Bug reports/BugRport1`
+- `plans/GOALS.md`
+- `plans/PROJECT_PLAN.md`
+- `plans/ProjectGoalOverView/01-overview.md`
+- `plans/ProjectGoalOverView/02-storage-and-organization.md`
+- `plans/ProjectGoalOverView/03-writing-experience-and-modes.md`
+- `plans/ProjectGoalOverView/04-brainstorm-agent.md`
+- `plans/ProjectGoalOverView/05-writing-assistant.md`
+- `plans/ProjectGoalOverView/06-archive-agent.md`
+- `plans/ProjectGoalOverView/07-scene-crafter.md`
+- `plans/ProjectGoalOverView/08-timeline-builder.md`
+- `plans/ProjectGoalOverView/09-safety-versioning-sync.md`
+- `plans/ProjectGoalOverView/10-releases-and-roadmap.md`
+- `plans/ProjectGoalOverView/12-visual-design-system.md`
+- `plans/ProjectGoalOverView/13-team-goals.md`
+- `plans/ProjectGoalOverView/14-beta4-refine-overview.md`
+- `plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`
+- `plans/ProjectGoalOverView/Mythos writer.md`
+- `plans/ProjectGoalOverView/Ui-Disign-Goal`
+- `plans/ProjectGoalOverView/questions.md`
+- `plans/bug_hunt_core_plan.md`
+- `plans/daily_run_template.md`
+- `plans/design-handoff/DESIGN-SPEC.md`
+- `plans/design-handoff/PROCESS.md`
+- `plans/design-handoff/PROMPT.md`
+- `plans/design-handoff/README.md`
+- `plans/design-handoff/prototype/MOVED.md`
+- `plans/github_issue_fishing_plan.md`
+- `scripts/b-fidelity-proof/board.html`
+- `scripts/b-fidelity-proof/capture.mjs`
+- `scripts/c-fidelity-proof/board.html`
+- `scripts/c-fidelity-proof/capture.mjs`
+- `scripts/capture-sky10575.mjs`
+- `scripts/d-fidelity-proof/board.html`
+- `scripts/d-fidelity-proof/capture.mjs`
+- `scripts/rebuild-native.js`
+- `scripts/sky-94-capture.js`
+- `scripts/sky-94-debug.js`
+- `scripts/test-bughunt-fisher-smoke.sh`

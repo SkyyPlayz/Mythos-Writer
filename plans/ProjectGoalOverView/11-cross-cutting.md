@@ -1,4 +1,4 @@
-> **⚠️ OUTDATED (2026-07-10).** Superseded by [`14-beta4-refine-overview.md`](14-beta4-refine-overview.md) and the design package in [`plans/design-handoff/v2/`](../design-handoff/v2/) (FULL-SPEC v1.1 + prototype — the prototype wins every disagreement). Commitments from this doc that remain binding are recorded in [`15-beta4-comparison-and-carryovers.md`](15-beta4-comparison-and-carryovers.md). Kept for historical context.
+> **⚠️ OUTDATED (2026-07-10).** Superseded by [`14-beta4-refine-overview.md`](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/ProjectGoalOverView/14-beta4-refine-overview.md) and the design package in [`plans/design-handoff/v2/`](../design-handoff/v2/) (FULL-SPEC v1.1 + prototype — the prototype wins every disagreement). Commitments from this doc that remain binding are recorded in [`15-beta4-comparison-and-carryovers.md`](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md). Kept for historical context.
 
 # Cross-Cutting Decisions
 
@@ -9,7 +9,7 @@ This document captures product-wide decisions that don't fit neatly inside the a
 When the user opens Mythos Writer for the first time, they pick one of three paths:
 
 1. **Start blank** — a fresh, empty Mythos Vault is created at a default path.
-2. **Import an existing Obsidian vault** — wizard with a dry-run report (see [02-storage-and-organization.md](02-storage-and-organization.md)).
+2. **Import an existing Obsidian vault** — wizard with a dry-run report (see [02-storage-and-organization.md](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/ProjectGoalOverView/02-storage-and-organization.md)).
 3. **Open the sample project** — a small, pre-built worldbuilding example that demonstrates the Universes / Story ideas layout, the three agents, and the Scene Crafter board.
 
 The sample project is the recommended path for new users so they can see the whole system before committing their own work.
@@ -40,8 +40,8 @@ Targeting **WCAG 2.1 AA** at MVP:
 - Screen-reader-friendly markup throughout the editor and sidebars.
 - A high-contrast theme.
 - Configurable font size and line spacing.
-- A reduced-motion mode that disables pulsing/parallax in the [Liquid Neon](12-visual-design-system.md) theme.
-- The Softness↔Contrast slider must keep body text ≥ 4.5:1 at every position, and compose with (not override) the discrete high-contrast theme. See [12-visual-design-system.md](12-visual-design-system.md).
+- A reduced-motion mode that disables pulsing/parallax in the [Liquid Neon](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/ProjectGoalOverView/12-visual-design-system.md) theme.
+- The Softness↔Contrast slider must keep body text ≥ 4.5:1 at every position, and compose with (not override) the discrete high-contrast theme. See [12-visual-design-system.md](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/ProjectGoalOverView/12-visual-design-system.md).
 
 ## Internationalization
 

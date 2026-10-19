@@ -1,6 +1,6 @@
 # Beta 3 — "Liquid Neon" Release Goal & End-to-End Build Plan
 
-> **Status:** 🔨 building · **Spec of record:** [`design-handoff/prototype/Mythos Writer - Liquid Neon.dc.html`](../../design-handoff/prototype/) (approved interactive prototype) · **Map:** [`design-handoff/DESIGN-SPEC.md`](../../design-handoff/DESIGN-SPEC.md) · **Process:** [`design-handoff/PROCESS.md`](../../design-handoff/PROCESS.md) · **Source line-map:** [`LIQUID-NEON-PROTOTYPE-MAP.md`](LIQUID-NEON-PROTOTYPE-MAP.md)
+> **Status:** 🔨 building · **Spec of record:** [`design-handoff/prototype/Mythos Writer - Liquid Neon.dc.html`](../../design-handoff/prototype/) (approved interactive prototype) · **Map:** [`design-handoff/DESIGN-SPEC.md`](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/design-handoff/DESIGN-SPEC.md) (private Mythos-Ops) · **Process:** [`design-handoff/PROCESS.md`](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/design-handoff/PROCESS.md) (private Mythos-Ops) · **Source line-map:** [`LIQUID-NEON-PROTOTYPE-MAP.md`](LIQUID-NEON-PROTOTYPE-MAP.md)
 >
 > **Update this file as milestones land** — fill the PR column and flip the status. It is the single resume point if the build is interrupted mid-cycle.
 

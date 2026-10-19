@@ -1,6 +1,6 @@
 # Telemetry opt-in audit (MYT-775)
 
-Reference: `PROJECT_PLAN.md §Telemetry`, `plans/ProjectGoalOverView/11-cross-cutting.md §Telemetry`.
+Reference: [`plans/PROJECT_PLAN.md` §Telemetry](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/PROJECT_PLAN.md) (private Mythos-Ops), `plans/ProjectGoalOverView/11-cross-cutting.md §Telemetry`.
 
 Project policy:
 
