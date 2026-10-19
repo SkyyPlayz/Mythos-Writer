@@ -186,10 +186,18 @@ describe('assertAiWritable manuscript and allowlist', () => {
     fs.mkdirSync(path.join(root, 'stories/ch1'), { recursive: true });
     fs.writeFileSync(path.join(root, 'stories/ch1/scene.md'), 'scene\n');
     writeManifest(root, sceneManifest('stories/ch1/scene.md'));
-    expect(assertAiWritable(root, 'STORIES/ch1/scene.MD')).toEqual({ ok: false, reason: 'not_allowlisted' });
-    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
-    expect(assertAiWritable(root, 'STORIES/ch1/scene.MD')).toEqual({ ok: false, reason: 'manuscript_target' });
-    platform.mockRestore();
+    const cased = 'STORIES/ch1/scene.MD';
+    // Linux keeps case, so the cased path is a different file. win32 and darwin
+    // fold, and NTFS also resolves the cased path onto the real scene. The
+    // mocked-win32 assertion is what makes M-B2f red on Linux.
+    if (process.platform === 'linux') {
+      expect(assertAiWritable(root, cased)).toEqual({ ok: false, reason: 'not_allowlisted' });
+      const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+      expect(assertAiWritable(root, cased)).toEqual({ ok: false, reason: 'manuscript_target' });
+      platform.mockRestore();
+    } else {
+      expect(assertAiWritable(root, cased)).toEqual({ ok: false, reason: 'manuscript_target' });
+    }
   });
 });
 
