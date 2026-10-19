@@ -3,7 +3,7 @@
 // Partner tab: one agent chat everywhere + action buttons (Update Timeline /
 // Beta Read / Writer Scan). Hands keep engines; no persona chat chips.
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Scene, Story } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
@@ -374,6 +374,17 @@ function PartnerChatView({
     ?? heartbeatBusy
     ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
+  const pastToggleRef = useRef<HTMLButtonElement>(null);
+  // FD-9 #3 — the session pill stays mounted while Past chats is closed
+  // (TC-8537-02). Escape is handled only inside this region.
+  const onPastChatsKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!pastOpen || event.key !== 'Escape') return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+    event.preventDefault();
+    setPastOpen(false);
+    pastToggleRef.current?.focus();
+  };
   // Tip cards always mounted (N4-A tips-only WA); chat stays on the partner thread.
   const [showWriterTips, setShowWriterTips] = useState(false);
 
@@ -386,12 +397,18 @@ function PartnerChatView({
         onCallChange={onCallChange}
         onEndCall={onEndCall}
         pastChats={(
-          /* Probe #3 — PAST CHATS & CALLS inside the partner header card (proto). */
-          <div className="ahp-past-chats" data-testid="ahp-past-chats">
+          /* FD-9 #3 — small neutral Past chats dropdown in the header card. */
+          <div
+            className="ahp-past-chats"
+            data-testid="ahp-past-chats"
+            onKeyDown={onPastChatsKeyDown}
+          >
             <button
+              ref={pastToggleRef}
               type="button"
               className="ahp-past-chats__toggle"
               aria-expanded={pastOpen}
+              aria-controls="ahp-past-chats-history"
               onClick={() => setPastOpen((o) => !o)}
               data-testid="ahp-past-chats-toggle"
             >
@@ -401,22 +418,28 @@ function PartnerChatView({
               </span>
               <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span>
             </button>
-            <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
+            <div
+              id="ahp-past-chats-menu"
+              className={`ahp-past-chats__menu${pastOpen ? ' ahp-past-chats__menu--open' : ''}`}
+              data-testid="ahp-past-chats-menu"
+            >
               <AgentSessionPicker
                 store={partnerSessionStore}
                 className="ahp-session-pill ahp-session-pill--dropdown"
                 busy={false}
               />
-              {pastOpen && onOpenPartnerHistory && (
-                <button
-                  type="button"
-                  className="ahp-past-chats__history-link"
-                  data-testid="ahp-partner-history-link"
-                  onClick={() => onOpenPartnerHistory()}
-                >
-                  Open full session history…
-                </button>
-              )}
+              <div id="ahp-past-chats-history" hidden={!pastOpen}>
+                {pastOpen && onOpenPartnerHistory && (
+                  <button
+                    type="button"
+                    className="ahp-past-chats__history-link"
+                    data-testid="ahp-partner-history-link"
+                    onClick={() => onOpenPartnerHistory()}
+                  >
+                    Open full session history…
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
