@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, HEADER_CSP } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy, clientCertHost, HEADER_CSP } from './security.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ELECTRON_MAIN_DIR = path.resolve(HERE, '..');
@@ -379,5 +379,88 @@ describe('markdown-it GHSA-6v5v-wf23-fmfq (smartquotes DoS) — fix verified', (
     expect(elapsedMs).toBeLessThan(100);
     // Verify output is non-empty and contains rendered markdown
     expect(output).toMatch(/&quot;|"|"/); // smart quotes or HTML entities
+  });
+});
+
+describe('installClientCertPolicy — decline, never auto-pick', () => {
+  function fakeApp() {
+    type Listener = (
+      event: { preventDefault: () => void },
+      webContents: unknown,
+      url: string,
+      list: readonly unknown[],
+      callback: (...args: unknown[]) => void,
+    ) => void;
+    const listeners: Listener[] = [];
+    return {
+      listeners,
+      on(_event: 'select-client-certificate', listener: Listener) {
+        listeners.push(listener);
+      },
+      emit(
+        webContents: unknown,
+        url: string,
+        list: readonly unknown[],
+        event: { preventDefault: () => void },
+        callback: (...args: unknown[]) => void,
+      ) {
+        for (const listener of listeners) listener(event, webContents, url, list, callback);
+      },
+    };
+  }
+
+  it('declines for a webContents stub and for null, with callback given no arguments', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const app = fakeApp();
+    installClientCertPolicy(app);
+    const list = [{ subjectName: 'CN=only-cert' }];
+    const url = 'https://mtls.example:8443/private/path?token=secret';
+
+    for (const webContents of [{ id: 7 }, null]) {
+      const event = { preventDefault: vi.fn() };
+      const callback = vi.fn();
+      app.emit(webContents, url, list, event, callback);
+      expect(event.preventDefault).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback.mock.calls[0]).toEqual([]);
+    }
+
+    expect(info).toHaveBeenCalledTimes(2);
+    for (const call of info.mock.calls) {
+      const line = call.map(String).join(' ');
+      expect(line).toContain('mtls.example:8443');
+      expect(line).not.toContain('/private');
+      expect(line).not.toContain('token');
+      expect(line).not.toContain('only-cert');
+      expect(line).not.toContain('subject');
+    }
+    info.mockRestore();
+  });
+
+  it('logs an empty host when the url is not a url, and still declines', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const app = fakeApp();
+    installClientCertPolicy(app);
+    const event = { preventDefault: vi.fn() };
+    const callback = vi.fn();
+    app.emit(null, 'not a url', [{ subjectName: 'CN=x' }], event, callback);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(callback.mock.calls[0]).toEqual([]);
+    const line = info.mock.calls.map((call) => call.map(String).join(' ')).join('\n');
+    expect(line).not.toContain('not a url');
+    expect(clientCertHost('not a url')).toBe('');
+    info.mockRestore();
+  });
+
+  it('main.ts registers the policy once, before app.whenReady', () => {
+    const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+    const calls = mainSrc.match(/installClientCertPolicy\s*\(\s*app\s*\)/g) ?? [];
+    expect(calls).toHaveLength(1);
+    const callAt = mainSrc.indexOf('installClientCertPolicy(app)');
+    const readyAt = mainSrc.indexOf('app.whenReady()');
+    expect(callAt).toBeGreaterThanOrEqual(0);
+    expect(readyAt).toBeGreaterThan(callAt);
+    const registrations = mainSrc.match(/select-client-certificate/g) ?? [];
+    expect(registrations).toHaveLength(0);
   });
 });

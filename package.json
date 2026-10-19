@@ -31,6 +31,7 @@
     "test:fidelity-harness": "node --test e2e/fidelity/own-text-dump.test.mjs",
     "test:e2e": "playwright test e2e/ --reporter=list,html",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list,html",
+    "test:e2e:packaged": "playwright test e2e/packaged-smoke.spec.ts --reporter=list",
     "test:e2e:obsidian-import-fidelity": "playwright test e2e/obsidian-import-fidelity.spec.ts --reporter=list,html",
     "test:e2e:vault-open-folder-guard": "playwright test e2e/vault-open-folder-guard-sky11132.spec.ts --reporter=list,html",
     "test:e2e:auto-update": "MYTHOS_AUTO_UPDATE=1 playwright test e2e/auto-update-beta.spec.ts --reporter=list,html",
