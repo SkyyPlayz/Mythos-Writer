@@ -20,7 +20,7 @@ CI check **and** is up to date with `main` at the time of merge.
 ### Required checks
 
 Live pull-request gates (see [`CI-PREFLIGHT.md`](CI-PREFLIGHT.md) and
-[`docs/REPO_AUDIT.md`](docs/REPO_AUDIT.md) §4.2):
+`docs/REPO_AUDIT.md` §4.2, now in the private Mythos-Ops repo):
 
 | Check name | What it validates |
 |---|---|

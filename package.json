@@ -165,7 +165,6 @@
     "fidelity:app": "npm run build:electron && node e2e/fidelity/capture-app2.mjs",
     "fidelity:both": "npm run fidelity:proto && npm run fidelity:app",
     "fidelity:verify-offline": "node e2e/fidelity/verify-offline.mjs",
-    "bughunt:report": "./BugHunt-Fisher.sh --report-only",
     "preflight": "bash scripts/preflight.sh",
     "check:prototype-freshness": "bash scripts/check-prototype-freshness.sh"
   },
