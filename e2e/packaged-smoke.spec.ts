@@ -97,7 +97,11 @@ test.describe('pkg-e2e-linux', () => {
   });
 
   test('select-client-certificate listener is registered exactly once', () => {
-    expect(clientCertListeners).toBe(1);
+    // A bare Electron 44.9.0 (and 42.11.2) App already has one internal relay
+    // for this event before user code runs: `(t,r,...o)=>{r&&r.emit(e,t,...o)}`.
+    // installClientCertPolicy adds exactly one listener, so the packaged total is 2.
+    // Removing that call leaves the internal relay only (1) and this assertion fails.
+    expect(clientCertListeners).toBe(2);
   });
 
   test('TC-01: app boots past onboarding into DesktopShell', async () => {
