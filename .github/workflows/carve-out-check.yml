@@ -7,9 +7,10 @@ name: carve-out-check
 # repeatedly missed bundled carve-outs when the file list was skimmed or
 # shrunk (see SKY-10569, SKY-10702, SKY-10974). This check makes the signal
 # structural: it labels and comments on the PR itself, so it survives even if
-# nobody re-diffs by hand. It never fails the build — carve-out paths are not
-# forbidden, they just require Ivy/human sign-off instead of a routine
-# CI-green auto-merge (see .github/copilot-instructions.md "Merge model").
+# nobody re-diffs by hand. Carve-out paths are not forbidden; they require
+# Ivy/human sign-off instead of a routine CI-green auto-merge (see
+# .github/copilot-instructions.md "Merge model"). The one hard failure is a
+# present .github/workflows/mythos-gate-auto-merge.yml, which must stay deleted.
 
 on:
   pull_request:
@@ -37,6 +38,27 @@ jobs:
             );
             const paths = files.map((f) => f.filename);
 
+            // mythos-gate-auto-merge.yml was removed from main (#1704) and must stay absent.
+            const autoMergeWorkflow = '.github/workflows/mythos-gate-auto-merge.yml';
+            if (paths.includes(autoMergeWorkflow)) {
+              core.setFailed(`${autoMergeWorkflow} must not exist`);
+              return;
+            }
+            try {
+              await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: autoMergeWorkflow,
+                ref: pr.head.sha,
+              });
+              core.setFailed(`${autoMergeWorkflow} must not exist`);
+              return;
+            } catch (e) {
+              const status = e && (e.status || (e.response && e.response.status));
+              if (status !== 404) throw e;
+              core.info(`${autoMergeWorkflow} is absent`);
+            }
+
             // Carve-out paths per .github/copilot-instructions.md "Your lane" §4:
             // .github/workflows, db/vault migrations, auth, secrets, release config.
             const carveOutPatterns = [
@@ -45,7 +67,7 @@ jobs:
               { label: 'db-migration', re: /^electron-main\/src\/db\.ts$/ },
               { label: 'auth', re: /(^|\/)auth[A-Za-z0-9._-]*\.(ts|tsx|js)$/i },
               { label: 'secrets', re: /(^|\/)\.env(\..+)?$|secrets?\.(ts|js|json|yml|yaml)$/i },
-              { label: 'release-config', re: /^\.github\/workflows\/release\.yml$|^electron-builder\.[jc]son5?$|^electron-builder\.ya?ml$/i },
+              { label: 'release-config', re: /^\.github\/workflows\/release\.yml$|^electron-builder(\.[^/]+)?\.(json5?|ya?ml|[cm]?js|ts|toml)$|^build\/|^package(-lock)?\.json$|^(frontend|electron-main|shared)\/package\.json$|^electron\.vite\.config\.[cm]?[jt]s$|^\.npmrc$/i },
             ];
 
             const hits = files
