@@ -35,7 +35,7 @@ Download the latest release from the [Releases page](https://github.com/SkyyPlay
 
 | Platform | File |
 |----------|------|
-| Windows  | `Mythos.Writer-<version>.exe` (NSIS installer) or `.zip` (portable) |
+| Windows  | `Mythos-Writer-<version>.exe` (NSIS installer) or `Mythos-Writer-<version>.zip` (portable) |
 | Linux    | `Mythos-Writer-<version>.AppImage` |
 | macOS    | Build from source (see [Local setup](#local-setup)) |
 

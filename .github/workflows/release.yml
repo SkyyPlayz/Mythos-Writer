@@ -879,13 +879,16 @@ jobs:
           fi
 
           # Defensively truncate body to ~120k chars to avoid GitHub's ~125k limit.
+          # Substring and here-strings, not a pipe into head: under pipefail that
+          # pipe dies with SIGPIPE (141) once the changelog is longer than the cap.
           # If truncated, append "…and N more" instead of failing the release.
           MAX_CHARS=122880
           BODY_LENGTH=${#CHANGELOG}
           if [ "$BODY_LENGTH" -gt "$MAX_CHARS" ]; then
-            TOTAL_COMMITS=$(printf '%s\n' "$CHANGELOG" | wc -l)
-            TRUNCATED=$(printf '%s' "$CHANGELOG" | head -c "$MAX_CHARS")
-            REMAINING=$((TOTAL_COMMITS - $(printf '%s\n' "$TRUNCATED" | wc -l)))
+            TOTAL_COMMITS=$(wc -l <<< "$CHANGELOG")
+            TRUNCATED=${CHANGELOG:0:MAX_CHARS}
+            TRUNC_LINES=$(wc -l <<< "$TRUNCATED")
+            REMAINING=$((TOTAL_COMMITS - TRUNC_LINES))
             CHANGELOG="${TRUNCATED}"$'\n'"…and $REMAINING more commits"
           fi
 
