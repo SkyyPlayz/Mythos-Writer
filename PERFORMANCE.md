@@ -44,8 +44,8 @@ and the renderer's `settingsGet IPC` / `renderer:interactive` console marks
 (forwarded to the terminal via `--enable-logging=stderr`).
 
 **Baseline — measured 2026-07-22, packaged build (`electron-vite build`),
-headless Linux via Xvfb, WSL2 host.** Raw logs committed at
-`docs/perf/traces/cold-start-*-2026-07-22.log`.
+headless Linux via Xvfb, WSL2 host.** Raw logs (`docs/perf/traces/cold-start-*-2026-07-22.log`)
+moved 2026-10-18 to the private `SkyyPlayz/Mythos-Ops` repo, same path.
 
 | Scenario | window created | fts-build | settingsGet → interactive | Total to interactive |
 |---|---:|---:|---:|---:|

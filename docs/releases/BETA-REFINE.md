@@ -7,7 +7,7 @@
 > the fix order — measured baselines and the packaged-trace procedure are in
 > [`PERFORMANCE.md`](../../PERFORMANCE.md) at repo root). Owner decisions B4-1…B4-7 in
 > [`plans/ProjectGoalOverView/00-decisions-log.md`](../../plans/ProjectGoalOverView/00-decisions-log.md).
-> Product overview: [`plans/ProjectGoalOverView/14-beta4-refine-overview.md`](../../plans/ProjectGoalOverView/14-beta4-refine-overview.md).
+> Product overview: [`plans/ProjectGoalOverView/14-beta4-refine-overview.md`](https://github.com/SkyyPlayz/Mythos-Ops/blob/main/plans/ProjectGoalOverView/14-beta4-refine-overview.md) (private Mythos-Ops).
 
 > **Round-2 rulings (B4-8…B4-11, 2026-07-10):** Suggestion Inbox kept alongside
 > autonomy toggles (all OFF + per-category certainty sliders) · Crafter drafts go
