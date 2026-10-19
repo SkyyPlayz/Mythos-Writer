@@ -167,7 +167,9 @@ describe('InconsistencyCard — action row (M12.B3)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /suggest fix/i }));
     expect(screen.queryByRole('button', { name: /update your notes/i })).not.toBeInTheDocument();
-    expect(screen.getByText('Suggested manuscript change')).toBeInTheDocument();
+    expect(screen.getByText('How to fix (AI)')).toBeInTheDocument();
+    expect(screen.getByText(/Change manuscript to say brown eyes/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply edit|apply suggested|edit before applying/i })).not.toBeInTheDocument();
   });
 });
 
@@ -231,7 +233,7 @@ describe('InconsistencyCard — Match Archive action', () => {
 });
 
 describe('InconsistencyCard — Suggest Edit action', () => {
-  it('opens suggest expand immediately when consent already given', () => {
+  it('shows read-only how to fix and does not resolve the flag', () => {
     render(
       <InconsistencyCard
         item={makeItem()}
@@ -241,75 +243,32 @@ describe('InconsistencyCard — Suggest Edit action', () => {
       />,
     );
     openSuggestStoryChange();
-    expect(screen.getByText('Suggested manuscript change')).toBeInTheDocument();
+    expect(screen.getByText('How to fix (AI)')).toBeInTheDocument();
     expect(screen.getByText(/Change manuscript to say brown eyes/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply edit|apply suggested|edit before applying/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(onResolve).not.toHaveBeenCalled();
   });
 
-  it('calls onResolve with suggest_story_change when Apply Edit clicked', async () => {
+  it('shows the same how-to-fix note when consent was never given', () => {
     render(
       <InconsistencyCard
         item={makeItem()}
-        archiveStoryEditConsentGiven={true}
+        archiveStoryEditConsentGiven={false}
         onResolve={onResolve}
         onConsentGranted={onConsentGranted}
       />,
     );
     openSuggestStoryChange();
-    // aria-label: "Apply suggested edit"
-    fireEvent.click(screen.getByRole('button', { name: /apply suggested edit/i }));
-    // M9d: the drafted story-change text rides along so the suggestion
-    // actually says what the author approved.
-    await waitFor(() =>
-      expect(onResolve).toHaveBeenCalledWith(
-        'item-1',
-        'suggest_story_change',
-        'Change manuscript to say brown eyes.',
-      ),
-    );
-  });
-
-  it('shows edit textarea when Edit before applying clicked', () => {
-    render(
-      <InconsistencyCard
-        item={makeItem()}
-        archiveStoryEditConsentGiven={true}
-        onResolve={onResolve}
-        onConsentGranted={onConsentGranted}
-      />,
-    );
-    openSuggestStoryChange();
-    // aria-label: "Edit before applying"
-    fireEvent.click(screen.getByRole('button', { name: /edit before applying/i }));
-    expect(screen.getByRole('textbox', { name: /edit suggested manuscript change/i })).toBeInTheDocument();
-  });
-
-  it('passes the author-edited draft through onResolve (M9d)', async () => {
-    render(
-      <InconsistencyCard
-        item={makeItem()}
-        archiveStoryEditConsentGiven={true}
-        onResolve={onResolve}
-        onConsentGranted={onConsentGranted}
-      />,
-    );
-    openSuggestStoryChange();
-    fireEvent.click(screen.getByRole('button', { name: /edit before applying/i }));
-    fireEvent.change(screen.getByRole('textbox', { name: /edit suggested manuscript change/i }), {
-      target: { value: 'Her eyes caught the brown of river silt.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /apply suggested edit/i }));
-    await waitFor(() =>
-      expect(onResolve).toHaveBeenCalledWith(
-        'item-1',
-        'suggest_story_change',
-        'Her eyes caught the brown of river silt.',
-      ),
-    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('How to fix (AI)')).toBeInTheDocument();
+    expect(onConsentGranted).not.toHaveBeenCalled();
+    expect(onResolve).not.toHaveBeenCalled();
   });
 });
 
 describe('InconsistencyCard — consent modal', () => {
-  it('shows consent modal when consent not yet given', () => {
+  it('does not render a manuscript-edit consent dialog', () => {
     render(
       <InconsistencyCard
         item={makeItem()}
@@ -319,68 +278,8 @@ describe('InconsistencyCard — consent modal', () => {
       />,
     );
     openSuggestStoryChange();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText(/Archive Agent — Editing Your Manuscript/i)).toBeInTheDocument();
-  });
-
-  it('skips consent modal when consent already given', () => {
-    render(
-      <InconsistencyCard
-        item={makeItem()}
-        archiveStoryEditConsentGiven={true}
-        onResolve={onResolve}
-        onConsentGranted={onConsentGranted}
-      />,
-    );
-    openSuggestStoryChange();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('calls onConsentGranted and opens suggest panel when Continue clicked with checkbox checked', async () => {
-    render(
-      <InconsistencyCard
-        item={makeItem()}
-        archiveStoryEditConsentGiven={false}
-        onResolve={onResolve}
-        onConsentGranted={onConsentGranted}
-      />,
-    );
-    openSuggestStoryChange();
-    fireEvent.click(screen.getByRole('checkbox', { name: /don't show this again/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
-    await waitFor(() => expect(onConsentGranted).toHaveBeenCalled());
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByText('Suggested manuscript change')).toBeInTheDocument();
-  });
-
-  it('does not call onConsentGranted when Continue clicked without checkbox', () => {
-    render(
-      <InconsistencyCard
-        item={makeItem()}
-        archiveStoryEditConsentGiven={false}
-        onResolve={onResolve}
-        onConsentGranted={onConsentGranted}
-      />,
-    );
-    openSuggestStoryChange();
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
-    expect(onConsentGranted).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  it('closes modal without opening expand when Cancel clicked', () => {
-    render(
-      <InconsistencyCard
-        item={makeItem()}
-        archiveStoryEditConsentGiven={false}
-        onResolve={onResolve}
-        onConsentGranted={onConsentGranted}
-      />,
-    );
-    openSuggestStoryChange();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.queryByText('Suggested manuscript change')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Archive Agent — Editing Your Manuscript/i)).not.toBeInTheDocument();
+    expect(screen.getByText('How to fix (AI)')).toBeInTheDocument();
   });
 });

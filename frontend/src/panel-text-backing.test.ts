@@ -38,7 +38,7 @@ const BASE_PANELS: ReadonlyArray<readonly [css: string, selector: string]> = [
   ['StoryNavigator.css', '.story-navigator'],
   ['TabBar.css', '.tab-bar'],
   ['VaultGraphView.css', '.vgv-toolbar'],
-  ['VaultGraphView.css', '.vgv-bottom-toolbar'],
+  ['VaultGraphView.css', '.vgv-graph-filters'],
   ['VaultGraphView.css', '.vgv-left-panel'],
   ['VaultGraphView.css', '.vgv-inspector'],
   ['pages/SceneCrafter/SceneCrafterPage.css', '.scene-crafter-page::before'],

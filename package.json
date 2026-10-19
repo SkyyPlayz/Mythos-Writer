@@ -81,7 +81,7 @@
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w electron-main",
     "test:e2e:a11y": "playwright test e2e/a11y-focus.spec.ts e2e/settings-a11y.spec.ts --reporter=list,html",
     "test:e2e:entity": "playwright test e2e/entity-system.spec.ts --reporter=list,html",
-    "test:e2e:vault-graph": "playwright test e2e/vault-graph.spec.ts --reporter=list,html",
+    "test:e2e:vault-graph": "playwright test e2e/vault-graph.spec.ts e2e/plan058-fid-r3-tip3.spec.ts --reporter=list,html",
     "test:e2e:vault-graph-v0": "playwright test e2e/vault-graph-v0.spec.ts --reporter=list,html",
     "test:e2e:entity-mention": "playwright test e2e/tests/entity-mention.spec.ts --reporter=list,html",
     "test:e2e:entity-creation": "playwright test e2e/entity-creation-edge-cases.spec.ts --reporter=list,html",

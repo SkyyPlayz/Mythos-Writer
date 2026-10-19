@@ -78,15 +78,6 @@ export default function ArchiveConfirmDialog({
             Match Archive to Story
           </button>
           <button
-            className="acd-btn acd-btn-suggest"
-            onClick={() => handleAction('suggest_story_change')}
-            disabled={busy}
-            aria-label="Create suggestion to revise manuscript"
-            title="Leave the vault unchanged and create a revision suggestion for the manuscript"
-          >
-            Suggest Story Change
-          </button>
-          <button
             className="acd-btn acd-btn-ignore"
             onClick={() => handleAction('ignore')}
             disabled={busy}

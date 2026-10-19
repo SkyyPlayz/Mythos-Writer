@@ -68,34 +68,29 @@ function truncate(text: string, maxLen: number): string {
 
 export interface InconsistencyCardProps {
   item: InconsistencyItem;
+  /** Kept so existing Continuity panel callers still typecheck. The suggest
+   *  path no longer gates on consent or applies manuscript text. */
   archiveStoryEditConsentGiven: boolean;
-  /** `note` carries the author's edited suggestion text (M9d) — the drafted
-   *  story change that lands in the suggestions inbox. */
   onResolve: (id: string, action: ResolutionAction, note?: string) => Promise<void>;
+  /** Kept so existing callers still typecheck. The consent modal is gone. */
   onConsentGranted: () => void;
 }
 
 interface ExpandState {
   /** M12.B3: `fix-choice` is the "Suggest fix" entry point for scopes that
    *  have a vault side — it offers `match` or `suggest` as sub-choices.
-   *  `story_internal` items (no vault side) skip straight to `suggest`. */
+   *  `story_internal` items (no vault side) skip straight to `suggest`.
+   *  `suggest` is read-only how-to-fix copy; it never applies manuscript text. */
   kind: 'fix-choice' | 'match' | 'suggest' | 'sources';
-  suggestText: string;
-  editMode: boolean;
-  editValue: string;
   busy: boolean;
 }
 
 export function InconsistencyCard({
   item,
-  archiveStoryEditConsentGiven,
   onResolve,
-  onConsentGranted,
 }: InconsistencyCardProps) {
   const [rationaleExpanded, setRationaleExpanded] = useState(false);
   const [expand, setExpand] = useState<ExpandState | null>(null);
-  const [showConsentModal, setShowConsentModal] = useState(false);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const excerptLabel = truncate(item.manuscriptAnchor.excerpt, 40);
@@ -107,13 +102,7 @@ export function InconsistencyCard({
   }, [item.id, onResolve]);
 
   const handleMatchArchive = useCallback(() => {
-    setExpand({
-      kind: 'match',
-      suggestText: '',
-      editMode: false,
-      editValue: '',
-      busy: false,
-    });
+    setExpand({ kind: 'match', busy: false });
   }, []);
 
   const handleMatchConfirm = useCallback(async () => {
@@ -123,43 +112,8 @@ export function InconsistencyCard({
   }, [item.id, onResolve]);
 
   const handleSuggestEdit = useCallback(() => {
-    if (!archiveStoryEditConsentGiven) {
-      setShowConsentModal(true);
-      return;
-    }
-    setExpand({
-      kind: 'suggest',
-      suggestText: item.proposedResolution.suggestStoryChange,
-      editMode: false,
-      editValue: item.proposedResolution.suggestStoryChange,
-      busy: false,
-    });
-  }, [archiveStoryEditConsentGiven, item.proposedResolution.suggestStoryChange]);
-
-  const handleConsentContinue = useCallback(() => {
-    if (dontShowAgain) {
-      onConsentGranted();
-    }
-    setShowConsentModal(false);
-    setExpand({
-      kind: 'suggest',
-      suggestText: item.proposedResolution.suggestStoryChange,
-      editMode: false,
-      editValue: item.proposedResolution.suggestStoryChange,
-      busy: false,
-    });
-  }, [dontShowAgain, item.proposedResolution.suggestStoryChange, onConsentGranted]);
-
-  const handleSuggestConfirm = useCallback(async () => {
-    if (!expand) return;
-    // The author's edited draft (or the untouched proposal) is the story
-    // change that gets suggested — pass it through so the drafted suggestion
-    // says what the author approved (M9d).
-    const noteText = expand.editMode ? expand.editValue : expand.suggestText;
-    setExpand({ ...expand, busy: true });
-    await onResolve(item.id, 'suggest_story_change', noteText);
-    setExpand(null);
-  }, [expand, item.id, onResolve]);
+    setExpand({ kind: 'suggest', busy: false });
+  }, []);
 
   const handleCancelExpand = useCallback(() => {
     setExpand(null);
@@ -175,7 +129,7 @@ export function InconsistencyCard({
       handleSuggestEdit();
       return;
     }
-    setExpand({ kind: 'fix-choice', suggestText: '', editMode: false, editValue: '', busy: false });
+    setExpand({ kind: 'fix-choice', busy: false });
   }, [item.scope, handleSuggestEdit]);
 
   // M12.B3: "Open sources" — reveals the flag's two full, untruncated
@@ -183,7 +137,7 @@ export function InconsistencyCard({
   // into a specific scene/note, so this is the anchor-level "source" reveal).
   const handleToggleSources = useCallback(() => {
     setExpand((prev) =>
-      prev?.kind === 'sources' ? null : { kind: 'sources', suggestText: '', editMode: false, editValue: '', busy: false },
+      prev?.kind === 'sources' ? null : { kind: 'sources', busy: false },
     );
   }, []);
 
@@ -192,51 +146,6 @@ export function InconsistencyCard({
 
   return (
     <>
-      {showConsentModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="ic-consent-title"
-          className="ic-consent-modal-backdrop"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowConsentModal(false); }}
-        >
-          <div className="ic-consent-modal">
-            <h2 id="ic-consent-title" className="ic-consent-title">
-              Archive Agent — Editing Your Manuscript
-            </h2>
-            <p className="ic-consent-body">
-              The Archive Agent is about to suggest a change to your manuscript text. You&apos;ll review and
-              approve every edit before it&apos;s applied — nothing changes without your confirmation.
-            </p>
-            <label className="ic-consent-checkbox-row">
-              <input
-                type="checkbox"
-                checked={dontShowAgain}
-                onChange={(e) => setDontShowAgain(e.target.checked)}
-                aria-label="Don't show this again"
-              />
-              <span>Don&apos;t show this again</span>
-            </label>
-            <div className="ic-consent-actions">
-              <button
-                type="button"
-                className="ic-btn ic-btn--primary"
-                onClick={handleConsentContinue}
-              >
-                Continue
-              </button>
-              <button
-                type="button"
-                className="ic-btn ic-btn--ghost"
-                onClick={() => setShowConsentModal(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <li
         className="ic-card"
         aria-label={`${SEVERITY_LABEL[item.severity]} ${CATEGORY_LABEL[item.category]}: ${excerptLabel}`}
@@ -415,49 +324,17 @@ export function InconsistencyCard({
             </div>
           )}
           {expand?.kind === 'suggest' && (
-            <div className="ic-suggest-preview">
-              <p className="ic-diff-label">Suggested manuscript change</p>
-              <p className="ic-diff-old">Original: {item.manuscriptAnchor.excerpt}</p>
-              {expand.editMode ? (
-                <textarea
-                  className="ic-suggest-edit-area"
-                  value={expand.editValue}
-                  onChange={(e) => setExpand((prev) => prev ? { ...prev, editValue: e.target.value } : prev)}
-                  rows={3}
-                  aria-label="Edit suggested manuscript change"
-                />
-              ) : (
-                <p className="ic-diff-new">Suggested: {expand.suggestText}</p>
-              )}
+            <div className="ic-suggest-preview" data-testid="ic-how-to-fix">
+              <p className="ic-diff-label">How to fix (AI)</p>
+              <p className="ic-diff-new">{item.proposedResolution.suggestStoryChange}</p>
               <div className="ic-expand-actions">
-                <button
-                  type="button"
-                  className="ic-btn ic-btn--primary"
-                  onClick={() => void handleSuggestConfirm()}
-                  disabled={expand.busy}
-                  aria-label="Apply suggested edit"
-                >
-                  ✓ Apply Edit
-                </button>
-                {!expand.editMode && (
-                  <button
-                    type="button"
-                    className="ic-btn ic-btn--secondary"
-                    onClick={() => setExpand((prev) => prev ? { ...prev, editMode: true } : prev)}
-                    disabled={expand.busy}
-                    aria-label="Edit before applying"
-                  >
-                    ✏ Edit before applying
-                  </button>
-                )}
                 <button
                   type="button"
                   className="ic-btn ic-btn--ghost"
                   onClick={handleCancelExpand}
-                  disabled={expand.busy}
-                  aria-label="Cancel suggested edit"
+                  aria-label="Close how to fix"
                 >
-                  ✗ Cancel
+                  Close
                 </button>
               </div>
             </div>

@@ -13,7 +13,6 @@ const BASE_ITEMS: MenuItemDef[] = [
   { id: 'open-in-writing-panel', label: 'Open in writing panel' },
   { id: 'delete', label: 'Delete', destructive: true, separator: true },
   { id: 'link-entity', label: 'Link entity' },
-  { id: 'add-to-scene', label: 'Add to scene draft' },
   { id: 'copy-markdown', label: 'Copy markdown' },
 ];
 

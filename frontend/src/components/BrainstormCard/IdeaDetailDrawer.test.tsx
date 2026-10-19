@@ -132,6 +132,12 @@ describe('IdeaDetailDrawer', () => {
     });
   });
 
+  it('does not render Add to scene draft', () => {
+    render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /add to scene draft/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/add to scene draft/i)).not.toBeInTheDocument();
+  });
+
   it('body textarea enforces 8000 char max', () => {
     render(<IdeaDetailDrawer idea={baseIdea} onClose={vi.fn()} onSave={vi.fn()} />);
     const textarea = screen.getByLabelText('Idea notes');

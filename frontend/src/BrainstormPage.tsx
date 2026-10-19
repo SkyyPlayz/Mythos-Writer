@@ -1891,7 +1891,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     } else if (action === 'open-in-writing-panel') {
       void handleOpenInWritingPanel(ideaId);
     }
-    // link-entity + add-to-scene deferred to v2
+    // link-entity deferred to v2
   }, [facts, announce, showToast, handleOpenInWritingPanel]);
 
   const handleProposalConfirm = useCallback(async (proposal: NoteProposal) => {
