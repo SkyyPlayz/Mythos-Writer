@@ -202,8 +202,7 @@
   opacity: 1;
 }
 
-.idd-add-entity-btn,
-.idd-scene-draft-btn {
+.idd-add-entity-btn {
   background: transparent;
   border: 1px dashed var(--border-subtle);
   border-radius: var(--radius-sm, 4px);
@@ -214,8 +213,7 @@
   transition: border-color 0.15s, color 0.15s;
 }
 
-.idd-add-entity-btn:hover,
-.idd-scene-draft-btn:hover {
+.idd-add-entity-btn:hover {
   border-color: var(--accent, var(--neon-cyan, #00d4ff));
   color: var(--accent, var(--neon-cyan, #00d4ff));
 }

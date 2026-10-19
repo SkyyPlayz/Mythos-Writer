@@ -80,7 +80,8 @@ describe('IdeaCard', () => {
       expect(screen.getByTestId('menu-item-edit')).toBeInTheDocument();
       expect(screen.getByTestId('menu-item-delete')).toBeInTheDocument();
       expect(screen.getByTestId('menu-item-link-entity')).toBeInTheDocument();
-      expect(screen.getByTestId('menu-item-add-to-scene')).toBeInTheDocument();
+      expect(screen.queryByTestId('menu-item-add-to-scene')).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /add to scene draft/i })).not.toBeInTheDocument();
       expect(screen.getByTestId('menu-item-copy-markdown')).toBeInTheDocument();
       expect(screen.getByTestId('menu-item-copy-vault-path')).toBeInTheDocument();
     });

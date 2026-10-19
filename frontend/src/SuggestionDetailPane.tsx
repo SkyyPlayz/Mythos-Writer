@@ -26,6 +26,28 @@ export interface UnifiedSuggestion {
   category: string | null;
   payloadJson: string | null;
   preChangeSnapshot?: string | null;
+  /** Present for suggestion rows. Manuscript accepts are status-only. */
+  targetKind?: 'vault' | 'manuscript' | string | null;
+}
+
+/** Payload kinds written by the old story-change paths. Read-only forever. */
+export function suggestionPayloadKind(suggestion: { payloadJson?: string | null }): string | null {
+  if (!suggestion.payloadJson) return null;
+  try {
+    const parsed = JSON.parse(suggestion.payloadJson) as { kind?: unknown };
+    return typeof parsed.kind === 'string' ? parsed.kind : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isLegacyAiWordingSuggestion(suggestion: { payloadJson?: string | null }): boolean {
+  const kind = suggestionPayloadKind(suggestion);
+  return kind === 'continuity_story_change' || kind === 'story-change';
+}
+
+export function isManuscriptSuggestion(suggestion: { targetKind?: string | null }): boolean {
+  return suggestion.targetKind === 'manuscript';
 }
 
 interface AuditEntry {
@@ -108,13 +130,14 @@ export default function SuggestionDetailPane({
       if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
       // Don't steal A/R/I from text inputs — user may be typing in a search/filter field
       if (isEditableTarget(e.target)) return;
+      if (isLegacyAiWordingSuggestion(suggestion)) return;
       if (e.key === 'a' || e.key === 'A') { e.stopPropagation(); onAccept(suggestion.id); return; }
       if (e.key === 'r' || e.key === 'R') { e.stopPropagation(); onReject(suggestion.id); return; }
       if ((e.key === 'i' || e.key === 'I') && onIgnore) { e.stopPropagation(); onIgnore(suggestion.id); }
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose, onAccept, onReject, onIgnore, suggestion.id]);
+  }, [onClose, onAccept, onReject, onIgnore, suggestion]);
 
   // Focus trap within the pane
   useEffect(() => {
@@ -237,8 +260,11 @@ export default function SuggestionDetailPane({
     }
   }
 
+  const legacyAiWording = isLegacyAiWordingSuggestion(suggestion);
+  const manuscriptRow = isManuscriptSuggestion(suggestion);
   const canAcceptOrReject =
-    suggestion.status === 'proposed' || suggestion.status === 'ignored';
+    !legacyAiWording &&
+    (suggestion.status === 'proposed' || suggestion.status === 'ignored');
   const canRollback = suggestion.status === 'accepted' || suggestion.status === 'applied';
   const preChangeSnapshot = suggestion.preChangeSnapshot?.trim() ? suggestion.preChangeSnapshot : null;
 
@@ -283,6 +309,9 @@ export default function SuggestionDetailPane({
         <div className="sdp-body">
           <section className="sdp-section">
             <h3 className="sdp-section-title">Rationale</h3>
+            {legacyAiWording && (
+              <p className="sdp-legacy-ai" data-testid="sdp-legacy-ai">Older suggestion (AI wording)</p>
+            )}
             <p className="sdp-rationale">{suggestion.rationale}</p>
           </section>
 
@@ -369,9 +398,9 @@ export default function SuggestionDetailPane({
                 <button
                   className="sdp-btn sdp-btn-accept"
                   onClick={() => onAccept(suggestion.id)}
-                  aria-label="Accept this suggestion (A)"
+                  aria-label={manuscriptRow ? 'Mark done (A)' : 'Accept this suggestion (A)'}
                 >
-                  Accept
+                  {manuscriptRow ? 'Mark done' : 'Accept'}
                 </button>
                 <button
                   className="sdp-btn sdp-btn-reject"

@@ -285,16 +285,6 @@
   background: var(--gs1, rgba(0, 240, 255, 0.12));
 }
 
-.msv-cmt-act--suggest_story_change {
-  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
-  color: var(--n2, #9b5fff);
-  font-weight: 600;
-}
-
-.msv-cmt-act--suggest_story_change:hover:not(:disabled) {
-  background: var(--gs2, rgba(155, 95, 255, 0.12));
-}
-
 .msv-cmt-act--ignore {
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.3));
   color: #8e9db8;

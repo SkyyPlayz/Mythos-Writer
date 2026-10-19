@@ -819,7 +819,8 @@ contextBridge.exposeInMainWorld('api', {
   vaultCreateDefaultMythos: (opts?: { parentPath?: string; vaultName?: string; seedMode?: 'default' | 'blank'; activate?: boolean }) =>
     ipcRenderer.invoke('vault:createDefaultMythos', opts ?? {}),
 
-  // Archive confirmation dialog (MYT-376)
+  // Archive confirmation dialog (MYT-376).
+  // suggest_story_change stays callable; main refuses it with { ok:false, reason:'suggest_only' }.
   archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') =>
     ipcRenderer.invoke('archive:confirm', { suggestionId, action }),
   archiveIgnoreList: () => ipcRenderer.invoke('archive:ignore-list', undefined),
