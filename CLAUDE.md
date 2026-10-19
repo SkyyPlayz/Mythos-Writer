@@ -5,15 +5,20 @@
 - Owner decisions: `plans/ProjectGoalOverView/00-decisions-log.md`. Design: `plans/design-handoff/v2/`; the prototype wins any disagreement with `FULL-SPEC.md`.
 
 ## Done = required checks green on the PR head
-Required: `ci`, `notes-windows`, `screenshot-check`. A branch with any red required check is not done.
-- `ci` aggregates lint, typecheck, unit, `build-electron` and four Playwright e2e shards (path-filtered; docs-only diffs may skip e2e).
-- `notes-windows` runs native Windows notes/vault suites that Linux CI can't see.
+Required: `ci`, `notes-windows`, `screenshot-check`. A branch with any red required check is not done. `ci-light` is not a required check.
+- A draft, or a pull request whose head ref starts with `research/bakeoff/`, runs light: `setup`, `paths-filter`, `mode`, `lint`, `typecheck`, `unit`, and `ci-light`. `ci-light` is green only when mode, lint, typecheck, and unit all succeed. The required `ci` job still runs and always exits 1 with `DRAFT-LIGHT`, so a light run can never satisfy the merge gate.
+- On a ready pull request, a push to `main`, and `workflow_dispatch`, `ci` runs the full suite. Lint, typecheck, unit, oracle-sweeps, `build-electron`, and `notes-windows` must be success. E2e shards stay path-filtered; docs-only diffs may skip them. `build-electron` has no path filter.
+- `notes-windows` runs native Windows notes/vault suites that Linux CI can't see. Light mode skips it. GitHub treats that skip as success for the required check, which is why light-mode `ci` stays red.
 - `screenshot-check`: PRs that touch renderer UI need a screenshot in the PR body or a comment, or the `screenshot-exempt` label.
 - `build-linux` / `build-windows` run on `main` pushes, `workflow_dispatch`, and `release.yml` (not on pull requests). There is no `build-macos` job.
 - A red required check that is unrelated to your diff still blocks. Report it; don't work around it.
 
 ## Never merge
 Builders never merge or enable auto-merge. `.github/workflows/mythos-gate-auto-merge.yml` was removed. A human merges only after tip-bound Critic + Shield + Probe and the required checks (`docs/MERGE_GATE.md`).
+
+Tip-freeze source of truth: Mythos-Ops `rules/gates/FORGE_TIP_FREEZE.md` (this repo's `docs/FORGE_TIP_FREEZE.md` is not that file).
+
+Freeze line: Ivy undrafts (= the freeze). Builders push code only; builders never undraft, re-draft or re-run.
 
 ## Validate locally (repo root, npm workspaces: frontend, electron-main, shared)
 ```bash
