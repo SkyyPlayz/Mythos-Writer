@@ -15,10 +15,106 @@ bad() {
   fail=1
 }
 
-if ! command -v yq >/dev/null 2>&1; then
-  echo "FAIL tools: yq is required" >&2
-  exit 1
-fi
+# Workflow YAML via PyYAML. GitHub runners ship mikefarah yq; local images often
+# ship kislyuk yq. Those flags are not the same, so the assertions do not call yq.
+wfq() {
+  python3 - "$1" "$2" "${3:-}" <<'PY'
+import json
+import sys
+import yaml
+
+path, query, arg = sys.argv[1], sys.argv[2], sys.argv[3]
+
+def norm(obj):
+    if isinstance(obj, dict):
+        out = {}
+        for key, value in obj.items():
+            if key is True:
+                name = "on"
+            elif key is False:
+                name = "off"
+            else:
+                name = str(key)
+            out[name] = norm(value)
+        return out
+    if isinstance(obj, list):
+        return [norm(item) for item in obj]
+    return obj
+
+with open(path, encoding="utf-8") as handle:
+    data = norm(yaml.safe_load(handle))
+
+def emit(value):
+    if isinstance(value, (dict, list)):
+        sys.stdout.write(json.dumps(value, separators=(",", ":")))
+    elif isinstance(value, bool):
+        sys.stdout.write("true" if value else "false")
+    elif value is None:
+        sys.stdout.write("")
+    else:
+        sys.stdout.write(str(value))
+
+def checkout(doc):
+    for step in doc["jobs"]["mode"]["steps"]:
+        if "uses" in step:
+            return step
+    return {}
+
+jobs = data.get("jobs") or {}
+if query == "ci-needs":
+    emit(jobs["ci"]["needs"])
+elif query == "ci-if":
+    emit(jobs["ci"].get("if") or "")
+elif query == "pr-types":
+    emit(data["on"]["pull_request"]["types"])
+elif query == "ci-light-if":
+    emit(jobs["ci-light"].get("if") or "")
+elif query == "job-names":
+    sys.stdout.write("\n".join(jobs.keys()))
+elif query == "job-if":
+    emit(jobs[arg].get("if") or "")
+elif query == "job-needs":
+    emit(jobs[arg].get("needs") or [])
+elif query == "has-job":
+    emit(arg in jobs)
+elif query == "mode-permissions":
+    emit(jobs["mode"].get("permissions"))
+elif query == "mode-uses":
+    emit(checkout(data).get("uses") or "")
+elif query == "mode-persist":
+    emit((checkout(data).get("with") or {}).get("persist-credentials"))
+elif query == "mode-sparse":
+    emit((checkout(data).get("with") or {}).get("sparse-checkout") or "")
+elif query == "mode-ref":
+    emit((checkout(data).get("with") or {}).get("ref") or "")
+elif query == "permissions":
+    emit(data.get("permissions"))
+elif query == "has-workflow-run":
+    on = data.get("on")
+    if isinstance(on, dict):
+        emit("workflow_run" in on)
+    elif isinstance(on, list):
+        emit("workflow_run" in on)
+    else:
+        emit(False)
+elif query == "comment-runs":
+    parts = []
+    for step in jobs["draft-ci-comment"]["steps"]:
+        run = step.get("run")
+        if isinstance(run, str):
+            parts.append(run)
+    sys.stdout.write("\n".join(parts))
+elif query == "signal-run":
+    text = ""
+    for step in jobs["ci-light"]["steps"]:
+        if step.get("id") == "signal":
+            text = step.get("run") or ""
+    sys.stdout.write(text)
+else:
+    sys.stderr.write("unknown query %s\n" % query)
+    sys.exit(2)
+PY
+}
 
 run_agg() {
   env \
@@ -105,7 +201,7 @@ if expect_exit e2e-failure 1 "${full_env[@]}" >/dev/null; then
   ok e2e-failure
 fi
 
-needs="$(yq -c '.jobs.ci.needs' "$WF")"
+needs="$(wfq "$WF" ci-needs)"
 want='["mode","lint","typecheck","unit","oracle-sweeps","build-electron","paths-filter","e2e-shard-1","e2e-shard-2","e2e-shard-3","e2e-shard-4","notes-windows"]'
 if [ "$needs" = "$want" ]; then
   ok ci-needs
@@ -113,14 +209,14 @@ else
   bad ci-needs "$needs"
 fi
 
-ci_if="$(yq -r '.jobs.ci.if' "$WF")"
+ci_if="$(wfq "$WF" ci-if)"
 if [ "$ci_if" = "always()" ]; then ok ci-always; else bad ci-always "$ci_if"; fi
 
-types="$(yq -c '.on.pull_request.types' "$WF")"
+types="$(wfq "$WF" pr-types)"
 want_types='["opened","synchronize","reopened","ready_for_review","converted_to_draft"]'
 if [ "$types" = "$want_types" ]; then ok pr-types; else bad pr-types "$types"; fi
 
-light_if="$(yq -r '.jobs["ci-light"].if' "$WF")"
+light_if="$(wfq "$WF" ci-light-if)"
 if printf '%s' "$light_if" | grep -F -q "needs.mode.outputs.full == 'false'" && printf '%s' "$light_if" | grep -q 'always()'; then
   ok ci-light-if
 else
@@ -129,8 +225,8 @@ fi
 
 while IFS= read -r job; do
   [ -n "$job" ] || continue
-  job_if="$(yq -r --arg job "$job" '.jobs[$job].if // ""' "$WF")"
-  needs_json="$(yq -c --arg job "$job" '.jobs[$job].needs // []' "$WF")"
+  job_if="$(wfq "$WF" job-if "$job")"
+  needs_json="$(wfq "$WF" job-needs "$job")"
   if grep -qx "$job" "$LIGHT"; then
     if [ "$job" = "ci-light" ]; then
       continue
@@ -146,23 +242,23 @@ while IFS= read -r job; do
       bad "needs-mode-$job" "$needs_json"
     fi
   fi
-done < <(yq -r '.jobs | keys[]' "$WF")
+done < <(wfq "$WF" job-names)
 if [ "$fail" -eq 0 ]; then ok job-partition; fi
 
 while IFS= read -r name; do
   [ -n "$name" ] || continue
-  if ! yq -e --arg name "$name" '.jobs | has($name)' "$WF" >/dev/null; then
+  if [ "$(wfq "$WF" has-job "$name")" != "true" ]; then
     bad "light-list-$name" "not a job"
   fi
 done < "$LIGHT"
 
-perm="$(yq -c '.jobs.mode.permissions' "$WF")"
+perm="$(wfq "$WF" mode-permissions)"
 if [ "$perm" = "{}" ]; then ok mode-permissions; else bad mode-permissions "$perm"; fi
 
-uses="$(yq -r '.jobs.mode.steps[] | select(.uses != null) | .uses' "$WF")"
-persist="$(yq -r '.jobs.mode.steps[] | select(.uses != null) | .with["persist-credentials"]' "$WF")"
-sparse="$(yq -r '.jobs.mode.steps[] | select(.uses != null) | .with["sparse-checkout"]' "$WF")"
-ref="$(yq -r '.jobs.mode.steps[] | select(.uses != null) | .with.ref // ""' "$WF")"
+uses="$(wfq "$WF" mode-uses)"
+persist="$(wfq "$WF" mode-persist)"
+sparse="$(wfq "$WF" mode-sparse)"
+ref="$(wfq "$WF" mode-ref)"
 case "$uses" in
   actions/checkout@[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ok checkout-pin ;;
   *) bad checkout-pin "$uses" ;;
@@ -171,7 +267,7 @@ if [ "$persist" = "false" ]; then ok persist-credentials; else bad persist-crede
 if [ "$sparse" = ".github/scripts" ]; then ok sparse-checkout; else bad sparse-checkout "$sparse"; fi
 if [ -z "$ref" ]; then ok no-ref-main; else bad no-ref-main "$ref"; fi
 
-top="$(yq -c '.permissions' "$WF")"
+top="$(wfq "$WF" permissions)"
 if [ "$top" = '{"contents":"read"}' ]; then ok ci-permissions; else bad ci-permissions "$top"; fi
 
 if grep -n 'pull_request_target' "$ROOT"/.github/workflows/*.yml >/dev/null; then
@@ -187,7 +283,7 @@ fi
 # Trigger keys only. Payload field names are not a new workflow_run trigger.
 trig_files=""
 for wf in "$ROOT"/.github/workflows/*.yml; do
-  if yq -e '.on | has("workflow_run")' "$wf" >/dev/null 2>&1; then
+  if [ "$(wfq "$wf" has-workflow-run)" = "true" ]; then
     trig_files="${trig_files} $(basename "$wf")"
   fi
 done
@@ -197,11 +293,11 @@ else
   bad hygiene-workflow-run "$trig_files"
 fi
 
-hyg_perm="$(yq -c '.permissions' "$ROOT/.github/workflows/mythos-pr-hygiene.yml")"
+hyg_perm="$(wfq "$ROOT/.github/workflows/mythos-pr-hygiene.yml" permissions)"
 want_hyg='{"contents":"read","pull-requests":"write","issues":"write","actions":"read","checks":"read"}'
 if [ "$hyg_perm" = "$want_hyg" ]; then ok hygiene-permissions; else bad hygiene-permissions "$hyg_perm"; fi
 
-if yq -e '.jobs | has("draft-ready-on-green")' "$ROOT/.github/workflows/mythos-pr-hygiene.yml" >/dev/null; then
+if [ "$(wfq "$ROOT/.github/workflows/mythos-pr-hygiene.yml" has-job draft-ready-on-green)" = "true" ]; then
   bad draft-ready-deleted "job still present"
 else
   ok draft-ready-deleted
@@ -214,7 +310,7 @@ else
   ok hygiene-header
 fi
 
-comment_run="$(yq -r '.jobs["draft-ci-comment"].steps[].run' "$ROOT/.github/workflows/mythos-pr-hygiene.yml")"
+comment_run="$(wfq "$ROOT/.github/workflows/mythos-pr-hygiene.yml" comment-runs)"
 if printf '%s' "$comment_run" | grep -F -q 'is-light-run.sh' && printf '%s' "$comment_run" | grep -F -q 'LIGHT-GREEN'; then
   ok hygiene-skips-light-green
 else
@@ -244,7 +340,7 @@ else
 fi
 rm -f "$ROOT/out-check.txt"
 
-signal="$(yq -r '.jobs["ci-light"].steps[] | select(.id == "signal") | .run' "$WF")"
+signal="$(wfq "$WF" signal-run)"
 if [ -z "$signal" ] || [ "$signal" = "null" ]; then
   bad ci-light-step "missing"
 else
