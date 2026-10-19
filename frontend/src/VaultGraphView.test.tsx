@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import VaultGraphView, {
   buildNeighbourMap,
@@ -49,6 +50,13 @@ const MIXED_VAULT_DATA: VaultGraphData = {
     { source: 'characters/ava.md', target: 'story:story-1:chapter-1:scene-1', weight: 1, crossVault: true },
   ],
 };
+
+function focusName(el: Element | null): string {
+  if (!el) return '';
+  const labelled = el.getAttribute('aria-label');
+  if (labelled) return labelled;
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
 
 beforeEach(() => {
   // GH #650: scope persists in localStorage — clear it so tests stay isolated.
@@ -338,6 +346,69 @@ describe('VaultGraphView', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /dismiss large vault notice/i })); });
     expect(screen.queryByTestId('vault-graph-truncation-banner')).not.toBeInTheDocument();
   }, 30_000);
+
+  // ─── FD-9 #25: filter bar slot ───────────────────────────────────────────────
+
+  it('renders Graph filters toolbar in the top-right slot of the card', async () => {
+    render(<VaultGraphView />);
+
+    const card = await screen.findByTestId('vault-graph-view');
+    await screen.findByRole('button', { name: /^Characters filter$/ });
+
+    const filters = within(card).getByRole('toolbar', { name: /^Graph filters$/ });
+    expect(filters.tagName).toBe('DIV');
+    expect(filters).toHaveClass('vgv-graph-filters');
+    expect(filters).not.toHaveClass('vgv-bottom-toolbar');
+    expect(filters).not.toHaveClass('vgv-filter-slot');
+
+    const header = card.querySelector('.vgv-toolbar');
+    expect(header).not.toBeNull();
+    expect(card.firstElementChild).toBe(header);
+    expect((header as HTMLElement).compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const misc = within(filters).getByRole('button', { name: /^Misc filter$/ });
+    const depth = within(filters).getByRole('slider', { name: /^Depth limit/ });
+    expect(misc.compareDocumentPosition(depth) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(within(card).getByRole('complementary', { name: /^Graph filters and forces$/ })).not.toBe(filters);
+  });
+
+  it('tabs header controls, then the eight filter chips, then Depth', async () => {
+    const user = userEvent.setup();
+    render(<VaultGraphView />);
+    await screen.findByRole('button', { name: /^Characters filter$/ });
+
+    const sequence = [
+      'Notes',
+      'Story',
+      'Both',
+      'Filters',
+      'Show story cluster',
+      'Re-layout',
+      'Search nodes',
+      'Characters filter',
+      'Locations filter',
+      'Factions filter',
+      'History filter',
+      'Systems filter',
+      'Items filter',
+      'Scenes filter',
+      'Misc filter',
+      'Depth limit: All',
+    ];
+
+    const seen: string[] = [];
+    for (let step = 0; step < sequence.length; step += 1) {
+      await user.tab();
+      seen.push(focusName(document.activeElement));
+    }
+    expect(seen).toEqual(sequence);
+
+    await user.tab();
+    expect(focusName(document.activeElement)).toBe('Toggle Characters visibility');
+  });
 
   // ─── AC-GV-06: Category chip filter ──────────────────────────────────────────
 
