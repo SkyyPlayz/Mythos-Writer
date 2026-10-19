@@ -12,7 +12,6 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../docs/screenshots/overlay-pop-1600');
-const ARTIFACTS = '/opt/cursor/artifacts';
 
 test('capture Settings denser --pop glass', async () => {
   test.setTimeout(90_000);
@@ -34,7 +33,6 @@ test('capture Settings denser --pop glass', async () => {
     JSON.stringify({ vaultRoot: storyDir, notesVaultRoot: notesDir }, null, 2),
   );
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.mkdirSync(ARTIFACTS, { recursive: true });
 
   const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
   const app = await electron.launch({
@@ -53,10 +51,6 @@ test('capture Settings denser --pop glass', async () => {
       path: path.join(OUT_DIR, 'settings-pop-denser-glass.png'),
       fullPage: false,
     });
-    fs.copyFileSync(
-      path.join(OUT_DIR, 'settings-pop-denser-glass.png'),
-      path.join(ARTIFACTS, 'settings-pop-denser-glass.png'),
-    );
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(tempRoot, { recursive: true, force: true });

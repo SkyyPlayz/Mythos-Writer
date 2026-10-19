@@ -45,7 +45,6 @@ import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const WIDTHS = [900, 936, 962, 1024] as const;
-const SHOT_DIR = '/opt/cursor/artifacts/screenshots';
 
 function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
   fs.writeFileSync(
@@ -626,7 +625,6 @@ test.describe('PLAN-058 Fid-a', () => {
     vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-vault-'));
     notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-notes-'));
     seedUserData(userData, vaultDir, notesVaultDir);
-    fs.mkdirSync(SHOT_DIR, { recursive: true });
 
     const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
     app = await electron.launch({
@@ -673,7 +671,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(zoom.setup, `FD-8 setup zoom @${w}`).toBeCloseTo(0.9, 2);
       expect(zoom.header, `FD-8 header stays 100% @${w}`).toBeCloseTo(1, 2);
       expect((zoom.setup ?? 0) * (zoom.board ?? 0), `FD-8 board picker stays 100% @${w}`).toBeCloseTo(1, 2);
-      const shot = path.join(SHOT_DIR, `plan058-fid-a-${w}.png`);
+      const shot = test.info().outputPath(`plan058-fid-a-${w}.png`);
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     }
@@ -834,7 +832,7 @@ test.describe('PLAN-058 Fid-a', () => {
         }
         expect(donors.leadOverflow, 'word count must not ellipsize @900').not.toBe('ellipsis');
       }
-      const shot = path.join(SHOT_DIR, `plan058-fid-b-${w}.png`);
+      const shot = test.info().outputPath(`plan058-fid-b-${w}.png`);
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     }
@@ -869,7 +867,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(box!.voiceOverflowsWindow, 'voice stand-in overflows the window @900').toBe(false);
       expect(box!.barOverflowsWindow, 'status bar overflows the window @900').toBe(false);
       expect(box!.barScrolls, 'status bar content overflows @900').toBe(false);
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-voice.png');
+      const shot = test.info().outputPath('plan058-fid-b-900-voice.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1152,7 +1150,7 @@ test.describe('PLAN-058 Fid-a', () => {
       const placed900 = await contentPlacement(page);
       expectSpare(placed900, 'split view @900');
       test.info().annotations.push({ type: 'split-900', description: JSON.stringify({ fit, placed900 }) });
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-split.png');
+      const shot = test.info().outputPath('plan058-fid-b-900-split.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1204,7 +1202,7 @@ test.describe('PLAN-058 Fid-a', () => {
       test.info().annotations.push({ type: 'split-1280', description: JSON.stringify(placed) });
       expectInsideContent(placed, 'split view @1280');
       expectSpare(placed, 'split view @1280');
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1280-split.png');
+      const shot = test.info().outputPath('plan058-fid-b-1280-split.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1256,7 +1254,7 @@ test.describe('PLAN-058 Fid-a', () => {
       const fit = await fixedSetFit(page);
       expect(fit, 'short scene fixed set measured @832').not.toBeNull();
       expect(fit!.occupied, `short scene overflows @832 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-832-short.png');
+      const shot = test.info().outputPath('plan058-fid-b-832-short.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1298,7 +1296,7 @@ test.describe('PLAN-058 Fid-a', () => {
         const box = await textFullyVisible(page, sel);
         expect(box?.full, `${sel} clipped at 1280 (visible ${box?.visible} of ${box?.width})`).toBe(true);
       }
-      const shot1280 = path.join(SHOT_DIR, 'plan058-fid-b-1280-title.png');
+      const shot1280 = test.info().outputPath('plan058-fid-b-1280-title.png');
       await page.screenshot({ path: shot1280 });
       expect(fs.existsSync(shot1280)).toBe(true);
 
@@ -1341,7 +1339,7 @@ test.describe('PLAN-058 Fid-a', () => {
         const box = await textFullyVisible(page, sel);
         expect(box?.full, `${sel} clipped at 1024 (visible ${box?.visible} of ${box?.width})`).toBe(true);
       }
-      const shot1024 = path.join(SHOT_DIR, 'plan058-fid-b-1024-goal.png');
+      const shot1024 = test.info().outputPath('plan058-fid-b-1024-goal.png');
       await page.screenshot({ path: shot1024 });
       expect(fs.existsSync(shot1024)).toBe(true);
     } finally {
@@ -1591,7 +1589,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(charsFallback!.display, 'character-count fallback hidden while the count is hidden').not.toBe('none');
       expect(charsFallback!.role, 'character-count fallback is a live region').toBeNull();
       expect(charsFallback!.live, 'character-count fallback is a live region').toBeNull();
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-long.png');
+      const shot = test.info().outputPath('plan058-fid-b-900-long.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
 
@@ -1666,7 +1664,7 @@ test.describe('PLAN-058 Fid-a', () => {
       const fit = await fixedSetFit(page);
       expect(fit, 'long scene fixed set measured @832').not.toBeNull();
       expect(fit!.occupied, `long scene overflows @832 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-832-long.png');
+      const shot = test.info().outputPath('plan058-fid-b-832-long.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1748,7 +1746,7 @@ test.describe('PLAN-058 Fid-a', () => {
         const box = await textFullyVisible(page, sel);
         expect(box?.full, `${sel} leaves the content box on long scene @1024 (visible ${box?.visible} of ${box?.width})`).toBe(true);
       }
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-long.png');
+      const shot = test.info().outputPath('plan058-fid-b-1024-long.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1773,7 +1771,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(fullCopies.length, `save status read ${fullCopies.length} times: ${snap}`).toBe(1);
       expect(withoutFull, `short save label also exposed: ${snap}`).not.toContain('Saved');
       expect(savedParts?.shortHidden, 'short save label is in the accessibility tree').toBe('true');
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-narrow-saved.png');
+      const shot = test.info().outputPath('plan058-fid-b-narrow-saved.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1827,7 +1825,7 @@ test.describe('PLAN-058 Fid-a', () => {
       test.info().annotations.push({ type: 'six-digit-1024', description: JSON.stringify(placed) });
       expectInsideContent(placed, '6-digit scene @1024');
       expectSpare(placed, '6-digit scene @1024');
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-six.png');
+      const shot = test.info().outputPath('plan058-fid-b-1024-six.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1879,7 +1877,7 @@ test.describe('PLAN-058 Fid-a', () => {
         const box = await textFullyVisible(page, sel);
         expect(box?.full, `${sel} leaves the content box on a 999-word scene @1024 (visible ${box?.visible} of ${box?.width})`).toBe(true);
       }
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-999.png');
+      const shot = test.info().outputPath('plan058-fid-b-1024-999.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1931,7 +1929,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(placed1008!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, 'goal hidden on 999 words @1008').not.toBe('none');
       expectInsideContent(placed1008, '999 words @1008');
       expectSpare(placed1008, '999 words @1008');
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-546-999.png');
+      const shot = test.info().outputPath('plan058-fid-b-546-999.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -1970,7 +1968,7 @@ test.describe('PLAN-058 Fid-a', () => {
       test.info().annotations.push({ type: 'hundred-790', description: JSON.stringify({ content, placed }) });
       expectInsideContent(placed, '100k @790');
       expectSpare(placed, '100k @790');
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-790-100k.png');
+      const shot = test.info().outputPath('plan058-fid-b-790-100k.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -2033,7 +2031,7 @@ test.describe('PLAN-058 Fid-a', () => {
       test.info().annotations.push({ type: 'split-100k-1024', description: JSON.stringify({ content, placed, donors }) });
       expectInsideContent(placed, '100k split @1024');
       expectSpare(placed, '100k split @1024');
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-split-100k.png');
+      const shot = test.info().outputPath('plan058-fid-b-1024-split-100k.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
@@ -2075,7 +2073,7 @@ test.describe('PLAN-058 Fid-a', () => {
         const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
         expect(saved?.full, `Saved just now clipped on 100k @${label}`).toBe(true);
       }
-      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-full-saved.png');
+      const shot = test.info().outputPath('plan058-fid-b-1024-full-saved.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
