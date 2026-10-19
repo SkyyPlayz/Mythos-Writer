@@ -40,7 +40,8 @@ import {
   type TimelineMode,
   type AeonTimelineData,
   EMPTY_AEON_DATA,
-  resolveTimelineMode,
+  isTimelineModeVisible,
+  resolveVisibleTimelineMode,
   deriveAeonTimeline,
 } from './timelineAeon';
 import {
@@ -199,12 +200,18 @@ const GROUP_BY_OPTIONS: { value: TimelineGroupBy; label: string }[] = [
   { value: 'location', label: 'Location' },
 ];
 
-/** Read the persisted view mode; legacy values ('aeon' → progress, 'track' →
- *  subway, 'axis' → progress) migrate, unknown/absent values fall back to
- *  'structure' — the §8.4 Structure-first default. */
+/** Read the persisted view mode. Legacy visible values ('aeon' / 'axis' →
+ *  progress) migrate. Hidden modes, including legacy 'track' → subway, and
+ *  unknown values fall back to 'structure' and the stored key is rewritten
+ *  so the next open does not keep pointing at a hidden surface. */
 function readStoredViewMode(): TimelineMode {
   try {
-    return resolveTimelineMode(localStorage.getItem(STORAGE_KEY_MODE)) ?? 'structure';
+    const stored = localStorage.getItem(STORAGE_KEY_MODE);
+    const visible = resolveVisibleTimelineMode(stored);
+    if (stored != null && stored !== visible) {
+      try { localStorage.setItem(STORAGE_KEY_MODE, visible); } catch { /* ignore quota errors */ }
+    }
+    return visible;
   } catch {
     // localStorage unavailable — use the default
     return 'structure';
@@ -670,11 +677,14 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   }, [story, api, aeonRetry]);
 
   const handleViewModeChange = useCallback((mode: TimelineMode) => {
-    setViewModeState(mode);
+    // Hidden modes stay in the union so existing callers compile; the chrome
+    // refuses them and lands on Structure instead.
+    const next: TimelineMode = isTimelineModeVisible(mode) ? mode : 'structure';
+    setViewModeState(next);
     // Clear the selection on view switch so no stale cross-view state lingers.
     setSelectedIds(new Set());
     setTlSelection(null);
-    try { localStorage.setItem(STORAGE_KEY_MODE, mode); } catch { /* ignore quota errors */ }
+    try { localStorage.setItem(STORAGE_KEY_MODE, next); } catch { /* ignore quota errors */ }
   }, []);
 
   const handleGroupByChange = useCallback((g: TimelineGroupBy) => {
@@ -1259,7 +1269,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
           aria-label="Timeline view mode"
           data-testid="view-mode-toggle"
         >
-          {MODE_OPTIONS.map(opt => (
+          {MODE_OPTIONS.filter(opt => isTimelineModeVisible(opt.value)).map(opt => (
             <button
               key={opt.value}
               type="button"
@@ -1363,7 +1373,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
             onChange={e => handleViewFilterChange(e.target.value)}
             data-testid="tl-view-filter"
           >
-            {VIEW_FILTER_OPTIONS.map(o => (
+            {VIEW_FILTER_OPTIONS.filter(o => isTimelineModeVisible(VIEW_FILTER_MODE[o])).map(o => (
               <option key={o} value={o}>{o}</option>
             ))}
           </select>
@@ -1372,7 +1382,10 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
               tlF.group solely in the sheet's group rows). The lanes' fixed
               BOOKS/ARCS/CHAPTERS/… taxonomy has no re-grouping concept, so the
               control is disabled outside Spreadsheet mode instead of rendering
-              as a silent no-op. */}
+              as a silent no-op. While Spreadsheet itself is hidden, the
+              selector has nothing to apply to, so it stays out of the chrome.
+              Emptying HIDDEN_TIMELINE_MODES brings the select back. */}
+          {isTimelineModeVisible('spreadsheet') && (
           <select
             id="tlr-group-select"
             className="tlr-filter-select"
@@ -1389,6 +1402,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
               </option>
             ))}
           </select>
+          )}
           <select
             className="tlr-filter-select"
             title="Show"
