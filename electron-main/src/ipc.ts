@@ -36,17 +36,6 @@ export type {
   TimelineTensionPoint,
 };
 
-// Re-export canonical payload/policy types from @mythos-writer/shared.
-// SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
-export type {
-  SuggestionPayload,
-  VaultContentPayload,
-  TypedRelationPayload,
-  ManuscriptInconsistencyPayload,
-  AutoApplyPolicy,
-  AgentBudgetUsage,
-} from '@mythos-writer/shared/types/suggestion';
-
 // ─── Channel names ───
 export const IPC_CHANNELS = {
   // Vault / filesystem operations
