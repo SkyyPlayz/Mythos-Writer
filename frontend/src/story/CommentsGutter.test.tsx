@@ -90,16 +90,14 @@ describe('CommentsGutter', () => {
     const props = makeProps([comment], { openId: 'c1' });
     render(<CommentsGutter {...props} />);
     const edit = screen.getByTestId('msv-cmt-act-match_archive-c1');
-    const suggest = screen.getByTestId('msv-cmt-act-suggest_story_change-c1');
     expect(edit).toBeEnabled();
     expect(edit).toHaveTextContent('Edit notes');
-    expect(suggest).toBeEnabled();
-    expect(suggest).toHaveTextContent('Suggest change');
-    // v2 prototype gutter (1193–1198): no Ignore in the compact row — it lives
-    // on the open comment card only.
+    expect(screen.queryByTestId('msv-cmt-act-suggest_story_change-c1')).toBeNull();
+    expect(screen.queryByRole('button', { name: /suggest change|suggest story change/i })).toBeNull();
+    // Ignore stays on the open comment card only.
     expect(screen.queryByTestId('msv-cmt-act-ignore-c1')).toBeNull();
-    fireEvent.click(suggest);
-    expect(props.onAgentAction).toHaveBeenCalledWith(comment, 'suggest_story_change');
+    fireEvent.click(edit);
+    expect(props.onAgentAction).toHaveBeenCalledWith(comment, 'match_archive');
     expect(props.onToggleOpen).not.toHaveBeenCalled(); // stopPropagation
   });
 

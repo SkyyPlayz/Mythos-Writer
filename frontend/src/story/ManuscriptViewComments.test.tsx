@@ -339,16 +339,10 @@ describe('agent actions from the gutter', () => {
       }).id;
     });
     fireEvent.click(screen.getByTestId(`msv-anchor-${id}`));
-    const suggest = screen.getByTestId('msv-copen-act-suggest_story_change');
-    expect(suggest).toHaveTextContent('Suggest story change');
-    await act(async () => {
-      fireEvent.click(suggest);
-    });
-    expect(archiveConfirm).toHaveBeenCalledWith('sug-9', 'suggest_story_change');
-    expect(commentsStore.list('story-1')).toHaveLength(0);
-    expect(document.querySelector('[data-testid="ln-toast"]')?.textContent).toContain(
-      'Suggested edit drafted — see Writing Coach'
-    );
+    expect(screen.queryByTestId('msv-copen-act-suggest_story_change')).toBeNull();
+    expect(screen.getByTestId('msv-copen-act-ignore')).toHaveTextContent('Ignore');
+    expect(archiveConfirm).not.toHaveBeenCalledWith('sug-9', 'suggest_story_change');
+    expect(commentsStore.list('story-1')).toHaveLength(1);
   });
 
   it('keeps the comment and toasts the error when the IPC fails', async () => {

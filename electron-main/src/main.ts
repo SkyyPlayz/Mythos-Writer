@@ -859,6 +859,7 @@ import {
   appendSyncEvent,
 } from './vaultSessionLock.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+import { AI_TEXT_APPLY_ENABLED } from '@mythos-writer/shared/aiSuggestOnly';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import {
   resolveWillPreventUnloadAction,
@@ -2121,7 +2122,7 @@ function toGuidedMoveError(err: unknown): unknown {
 }
 
 // ─── IPC Handlers ───
-const handlers: IpcHandlers = {
+export const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
   // at the IPC boundary. The low-level helpers also re-check traversal, so a
   // bad path is rejected twice independently.
@@ -5240,6 +5241,11 @@ const handlers: IpcHandlers = {
 
   // ─── Archive confirmation dialog (MYT-376) ───
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => {
+    // AI-SUGGEST-ONLY: refuse before any vault open, row write, or status flip.
+    // A replay of a missing id must resolve suggest_only, not throw.
+    if (payload.action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
+      return { ok: false, reason: 'suggest_only' as const };
+    }
     ensureVaultDir();
     const VALID_ARCHIVE_ACTIONS = ['match_archive', 'suggest_story_change', 'ignore'] as const;
     if (!VALID_ARCHIVE_ACTIONS.includes(payload.action as typeof VALID_ARCHIVE_ACTIONS[number])) {
@@ -11535,11 +11541,15 @@ function startArchiveContScheduler(): void {
  * archive:cont-item-resolved so every surface drops the flag live.
  * Throws when the item does not exist.
  */
-function resolveContinuityItemById(
+export function resolveContinuityItemById(
   itemId: string,
   action: import('./ipc.js').ResolutionAction,
   note?: string,
 ): import('./ipc.js').ArchiveResolveContinuityResponse {
+  // AI-SUGGEST-ONLY: refuse before lookup so a replay cannot throw or flip status.
+  if (action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
+    return { ok: false, reason: 'suggest_only' };
+  }
   const row = getContinuityIssue(itemId);
   if (!row) throw new Error(`Continuity issue not found: ${itemId}`);
 

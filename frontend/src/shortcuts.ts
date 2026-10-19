@@ -93,7 +93,8 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
     {
       label: 'Suggestion Review',
       entries: [
-        { keys: ['Enter'], action: 'Accept suggestion' },
+        { keys: ['Enter'], action: 'Mark done' },
+        { keys: ['A'], action: 'Mark done' },
         { keys: ['Delete', 'Backspace'], action: 'Reject suggestion' },
         { keys: ['I'], action: 'Ignore suggestion' },
       ],
