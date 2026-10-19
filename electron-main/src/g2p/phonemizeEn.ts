@@ -57,6 +57,17 @@ function loadEnglish(): Promise<EnglishProcessor> {
   return pending;
 }
 
+// Parse the English lexicon while main.js is still loading, before
+// app.whenReady. Playwright's electron `evaluate` holds the result promise
+// with a weak V8 inspector handle. Leaving this 3.5 MB chunk unloaded made
+// the first boot GC collect that promise ("Resulting promise was garbage
+// collected") in vault specs that evaluate immediately after launch.
+// Vitest never evaluates this: the ESM entry's JSON imports lack the type
+// attribute and throw ERR_IMPORT_ATTRIBUTE_MISSING. The CJS path stays tests-only.
+if (process.env.VITEST !== 'true') {
+  pending = loadBundled();
+}
+
 function languageTag(lang: 'a' | 'b'): 'en-US' | 'en-GB' {
   switch (lang) {
     case 'a':
