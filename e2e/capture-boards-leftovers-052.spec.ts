@@ -18,7 +18,6 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../docs/screenshots/boards-052-leftovers');
-const ARTIFACTS = '/opt/cursor/artifacts';
 
 function seed(userData: string, storyDir: string, notesDir: string): void {
   fs.mkdirSync(userData, { recursive: true });
@@ -44,7 +43,6 @@ test('capture Boards leftovers empty states + empty-thumb + folder badges', asyn
   const notesDir = path.join(tempRoot, 'notes');
   seed(userData, storyDir, notesDir);
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.mkdirSync(ARTIFACTS, { recursive: true });
 
   const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
   const app: ElectronApplication = await electron.launch({
@@ -69,10 +67,6 @@ test('capture Boards leftovers empty states + empty-thumb + folder badges', asyn
       path: path.join(OUT_DIR, 'boards-home-empty-thumb-folder.png'),
       fullPage: false,
     });
-    fs.copyFileSync(
-      path.join(OUT_DIR, 'boards-home-empty-thumb-folder.png'),
-      path.join(ARTIFACTS, 'boards-052-home-empty-thumb-folder.png'),
-    );
 
     // Enter an empty folder board for the empty-state card.
     const emptyBoard = page.getByRole('button', { name: /Board: EmptyBoard/ });
@@ -84,10 +78,6 @@ test('capture Boards leftovers empty states + empty-thumb + folder badges', asyn
         path: path.join(OUT_DIR, 'boards-empty-board-state.png'),
         fullPage: false,
       });
-      fs.copyFileSync(
-        path.join(OUT_DIR, 'boards-empty-board-state.png'),
-        path.join(ARTIFACTS, 'boards-052-empty-board-state.png'),
-      );
     }
   } finally {
     await app.close().catch(() => {});

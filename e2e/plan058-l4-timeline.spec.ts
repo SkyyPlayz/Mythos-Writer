@@ -102,7 +102,7 @@ test.describe('PLAN-058 L4 — Timeline', () => {
     await expect(page.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('trp-event-linked-note-row')).toContainText('Plot/beat.md');
     if (process.env.CAPTURE_PR_SCREENSHOT) {
-      await page.screenshot({ path: '/opt/cursor/artifacts/plan058-l4-timeline-fd2.png' });
+      await page.screenshot({ path: test.info().outputPath('plan058-l4-timeline-fd2.png') });
     }
   });
 });

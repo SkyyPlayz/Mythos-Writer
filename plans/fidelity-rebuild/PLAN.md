@@ -72,7 +72,7 @@ Everything cosmetic in the audit traces to one of these. Fix the root; the sympt
 ## §3 Phase 0 — guardrails (before any UI code merges)
 
 **P0.1 — Make the prototype runnable in-repo.**
-- **DONE at handover (Ivy, 2026-07-30):** the 859,135-byte export, `support.js`, vendored `react@18.3.1` / `react-dom@18.3.1` / `@babel/standalone@7.29.0`, a README, and `MOVED.md` stubs replacing the two stale copies (`design-handoff/prototype/`, `plans/design-handoff/prototype/`) are committed. The export was render-verified: dual-diamond ruler ✓, AI master toggle ✓.
+- **DONE at handover (Ivy, 2026-07-30):** the 859,135-byte export, `support.js`, vendored `react@18.3.1` / `react-dom@18.3.1` / `@babel/standalone@7.29.0`, a README, and `MOVED.md` stubs replacing the two stale copies (`design-handoff/prototype/`, `plans/design-handoff/prototype/`) are committed. *(2026-10-18: the `plans/design-handoff/prototype/` stub moved to the private Mythos-Ops repo; the root `design-handoff/prototype/MOVED.md` stub stays.)* The export was render-verified: dual-diamond ruler ✓, AI master toggle ✓.
 - **Remaining team task:** patch `support.js`'s loader to prefer the vendored local files over unpkg so the prototype renders fully offline; verify by rendering with network blocked.
 
 **P0.2 — Commit the fidelity harness.**
