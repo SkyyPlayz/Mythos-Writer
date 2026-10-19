@@ -17,7 +17,6 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const WIDTHS = [900, 936, 962, 1024] as const;
-const SHOT_DIR = '/opt/cursor/artifacts/screenshots';
 const ARYA_ID = 'Characters/Arya.md';
 const WINTERFELL_ID = 'Locations/Winterfell.md';
 
@@ -121,7 +120,6 @@ test.describe('PLAN-058 Fid r3 tip 3', () => {
     notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-r3-notes-'));
     seedUserData(userData, vaultDir, notesVaultDir);
     seedVault(notesVaultDir);
-    fs.mkdirSync(SHOT_DIR, { recursive: true });
     app = await launchApp(userData);
     page = await app.firstWindow();
     page.on('console', (m) => console.log('[renderer:' + m.type() + ']', m.text()));
@@ -183,7 +181,7 @@ test.describe('PLAN-058 Fid r3 tip 3', () => {
         return 'clear';
       }).toBe('clear');
 
-      await card.screenshot({ path: path.join(SHOT_DIR, `plan058-fid-r3-${w}.png`) });
+      await card.screenshot({ path: test.info().outputPath(`plan058-fid-r3-${w}.png`) });
     }
 
     const nodes = page.locator('[data-testid^="vault-node-"]');
