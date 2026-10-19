@@ -14,12 +14,19 @@ on:
         type: boolean
         default: false
 
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   MYTHOS_AUTO_UPDATE: '1'
 
 jobs:
   determine-release:
     runs-on: ubuntu-latest
+    permissions: {}
     outputs:
       is-beta: ${{ steps.check.outputs.is-beta }}
       version: ${{ steps.check.outputs.version }}
@@ -55,11 +62,17 @@ jobs:
   validate-version:
     needs: determine-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Verify tag matches package.json version
+        env:
+          TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          TAG="${{ needs.determine-release.outputs.version }}"
+          set -euo pipefail
           PKG_VERSION=$(jq -r '.version' package.json)
           if [ "v$PKG_VERSION" != "$TAG" ]; then
             echo "::error::Tag $TAG does not match package.json version v$PKG_VERSION on the checked-out commit. Merge a version-bump PR to main first (see docs/releases/RELEASING.md), then re-run."
@@ -67,171 +80,374 @@ jobs:
           fi
           echo "package.json version v$PKG_VERSION matches $TAG"
 
-  # Create the draft release so build jobs can upload directly to it.
-  # Uses softprops/action-gh-release which handles create-or-update idempotently.
+  # Create the draft release so later jobs can upload to it.
+  # C2 refuses to touch a release that has already been published.
   create-release:
     needs: [determine-release, validate-version]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - name: Refuse to overwrite a published release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.determine-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const { execFileSync } = require('child_process');
+
+          function fail(message) {
+            console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
+            process.exit(1);
+          }
+
+          function safe(value) {
+            return String(value).replace(/[\r\n]/g, ' ');
+          }
+
+          const tag = process.env.TAG || '';
+          if (!tag.trim() || /[\r\n]/.test(tag)) fail('TAG is empty or invalid');
+
+          let stdout = '';
+          let stderr = '';
+          let status = 0;
+          try {
+            stdout = execFileSync('gh', ['release', 'view', tag, '--json', 'isDraft'], {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+          } catch (err) {
+            status = typeof err.status === 'number' ? err.status : 1;
+            stdout = err.stdout ? err.stdout.toString() : '';
+            stderr = err.stderr ? err.stderr.toString() : '';
+          }
+
+          if (status !== 0) {
+            if (/release not found/i.test(stdout) || /release not found/i.test(stderr)) {
+              console.log(`No existing release for ${safe(tag)}.`);
+              process.exit(0);
+            }
+            fail(`gh release view failed for ${safe(tag)}: ${safe(stderr || stdout)}`);
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(stdout);
+          } catch (err) {
+            fail('gh release view returned unparsable JSON');
+          }
+          if (!parsed || (parsed.isDraft !== true && parsed.isDraft !== false)) {
+            fail('gh release view JSON has no boolean isDraft');
+          }
+          if (parsed.isDraft === false) {
+            fail(`Release ${safe(tag)} exists and is not a draft; refusing to overwrite a published release`);
+          }
+          console.log(`Existing release ${safe(tag)} is a draft.`);
+          EOF
       - name: Create or update draft release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.determine-release.outputs.version }}
           draft: true
+          make_latest: false
           prerelease: ${{ needs.determine-release.outputs.is-beta == 'true' }}
           body: "Release build in progress…"
 
-  # Windows build — native on hosted windows-latest (electron-builder bundles its
-  # own NSIS on Windows; no wine cross-compile needed since the repo went public).
+  # Windows build. Unsigned: legacy certificate secrets are removed, and this
+  # job cannot upload a release. It hashes the installer, zip, and channel
+  # yml, then hands those exact bytes to upload-windows.
+  # needs create-release so upload-windows cannot start before the draft exists.
   build-windows:
     needs: [determine-release, create-release]
     runs-on: windows-latest
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      win-manifest: ${{ steps.win-manifest.outputs.win-manifest }}
     defaults:
       run:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-          cache: 'npm'
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Decode Windows signing certificate
-        shell: bash
-        run: |
-          if [ -z "${WINDOWS_CERTIFICATE_BASE64:-}" ]; then
-            echo "No Windows signing certificate configured; building unsigned installer."
-            exit 0
-          fi
-          echo "$WINDOWS_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.pfx"
-          echo "WIN_CSC_LINK=$RUNNER_TEMP/certificate.pfx" >> "$GITHUB_ENV"
-        env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-
       - name: Build Windows artifacts — stable channel (NSIS + ZIP)
         if: needs.determine-release.outputs.is-beta == 'false'
         run: npx electron-vite build && npx electron-builder --win --publish never
-        env:
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
       - name: Build Windows artifacts — beta channel (NSIS + ZIP)
         if: needs.determine-release.outputs.is-beta == 'true'
         # releaseType=prerelease: bakes correct value into app-update.yml so the updater
         # searches GitHub pre-releases (where beta cuts land) via the beta.yml feed.
         run: npx electron-vite build && npx electron-builder --win --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
-        env:
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
-      - name: Upload Windows artifacts to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.determine-release.outputs.version }}
+      - name: Hash Windows release files
+        id: win-manifest
         run: |
-          gh release upload "$TAG" dist-electron/*.exe dist-electron/*.zip dist-electron/*.yml --clobber
+          set -euo pipefail
+          node <<'EOF'
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const path = require('path');
 
-  # macOS build — optional; not a dependency of publish-release.
-  # DISABLED 2026-07-14 (Skyy): Actions budget is reserved for releases the owner can
-  # actually install; macOS is a deferred platform (no Mac) and macos-latest bills at
-  # 10x Linux. The old "will be skipped when minutes are exhausted" assumption stopped
-  # holding once the budget was topped up — it would now really run and really bill.
-  # To re-enable when macOS ships, delete the `if: false` line below.
-  build-mac:
-    if: false
-    needs: [determine-release, create-release]
-    runs-on: macos-latest
-    continue-on-error: true
+          function fail(message) {
+            console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
+            process.exit(1);
+          }
+
+          function validName(name) {
+            return typeof name === 'string'
+              && name.length > 0
+              && name.length <= 255
+              && name.trim() === name
+              && !/[\0\r\n/\\]/.test(name)
+              && !name.includes('..')
+              && name !== '.'
+              && name !== '..';
+          }
+
+          const sourceDir = 'dist-electron';
+          const staging = 'win-upload';
+          const channel = /^(latest|beta|alpha)\.yml$/;
+
+          if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+            fail('dist-electron is missing');
+          }
+
+          const names = fs.readdirSync(sourceDir).filter((name) => {
+            const full = path.join(sourceDir, name);
+            if (!fs.statSync(full).isFile()) return false;
+            return name.endsWith('.exe') || name.endsWith('.zip') || channel.test(name);
+          }).sort();
+
+          if (names.length === 0) fail('win-manifest has zero entries');
+
+          const manifest = {};
+          for (const name of names) {
+            if (!validName(name)) fail('refusing to publish an invalid Windows artifact name');
+            const buf = fs.readFileSync(path.join(sourceDir, name));
+            manifest[name] = crypto.createHash('sha256').update(buf).digest('hex');
+          }
+
+          fs.rmSync(staging, { recursive: true, force: true });
+          fs.mkdirSync(staging);
+          for (const name of names) {
+            fs.copyFileSync(path.join(sourceDir, name), path.join(staging, name));
+          }
+
+          const staged = fs.readdirSync(staging).sort();
+          if (staged.length !== names.length || staged.some((name, index) => name !== names[index])) {
+            fail('staged Windows upload does not match win-manifest');
+          }
+
+          if (!process.env.GITHUB_OUTPUT) fail('GITHUB_OUTPUT is unset');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `win-manifest=${JSON.stringify(manifest)}\n`);
+          console.log(`win-manifest entries (${names.length}):`);
+          for (const name of names) console.log(`- ${name} sha256=${manifest[name]}`);
+          EOF
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-release-assets
+          path: win-upload
+          if-no-files-found: error
+          compression-level: 0
+
+  # Publishes the Windows artifact onto the draft. No checkout and no npm:
+  # the only bytes it trusts are the ones whose sha256 matches win-manifest.
+  upload-windows:
+    needs: [determine-release, build-windows]
+    runs-on: windows-latest
     permissions:
       contents: write
-
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - name: U1 Download Windows artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          fetch-depth: 0
+          name: windows-release-assets
+          path: win-artifact
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install Python setuptools (node-gyp needs distutils, removed in Python 3.12+)
-        run: pip3 install setuptools --break-system-packages
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Import Apple Developer ID certificate
-        # Secret-gated: activates automatically when APPLE_CERT_P12_BASE64 is set.
-        # Board action MYT-642 provisions the secret; no code change required then.
-        # When absent the step logs clearly and the build continues unsigned.
-        shell: bash
-        run: |
-          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
-            echo "APPLE_CERT_P12_BASE64 not set — building unsigned DMG (Gatekeeper warning expected)."
-            echo "Add Apple Developer ID secrets (see MYT-642) to enable signing + notarization."
-            exit 0
-          fi
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
-          CERT_PATH="$RUNNER_TEMP/certificate.p12"
-          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
-          security create-keychain -p actions "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security unlock-keychain -p actions "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" \
-            -P "$APPLE_CERT_P12_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
-          echo "APPLE_CERT_IMPORTED=1" >> "$GITHUB_ENV"
+      - name: U2 Recompute SHA-256 against the build manifest
         env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
-
-      - name: Build macOS artifacts (DMG + ZIP)
-        shell: bash
+          WIN_MANIFEST: ${{ needs.build-windows.outputs.win-manifest }}
+          ARTIFACT_DIR: win-artifact
         run: |
-          # Use Developer ID identity from keychain when cert was imported;
-          # otherwise fall back to ad-hoc signing (unsigned DMG, Gatekeeper warning).
-          if [ "${APPLE_CERT_IMPORTED:-}" = "1" ]; then
-            export CSC_IDENTITY_AUTO_DISCOVERY=true
-          else
-            export CSC_IDENTITY_AUTO_DISCOVERY=false
-          fi
-          if [ "${{ needs.determine-release.outputs.is-beta }}" = "true" ]; then
-            # releaseType=prerelease: bakes correct value into app-update.yml so the updater
-            # searches GitHub pre-releases (where beta cuts land) via the beta-mac.yml feed.
-            npx electron-vite build && npx electron-builder --mac dmg zip --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
-          else
-            npx electron-vite build && npx electron-builder --mac dmg zip --publish never
-          fi
-        env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          set -euo pipefail
+          node <<'EOF'
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const path = require('path');
 
-      - name: Upload macOS artifacts to release
+          function fail(message) {
+            console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
+            process.exit(1);
+          }
+
+          function validName(name) {
+            return typeof name === 'string'
+              && name.length > 0
+              && name.length <= 255
+              && name.trim() === name
+              && !/[\0\r\n/\\]/.test(name)
+              && !name.includes('..')
+              && name !== '.'
+              && name !== '..';
+          }
+
+          function parseManifest(raw) {
+            if (raw == null || String(raw).trim() === '') fail('win-manifest is empty');
+            let manifest;
+            try {
+              manifest = JSON.parse(raw);
+            } catch (err) {
+              fail('win-manifest is unparsable');
+            }
+            if (manifest == null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+              fail('win-manifest is unparsable');
+            }
+            const entries = Object.entries(manifest);
+            if (entries.length === 0) fail('win-manifest is empty');
+            for (const [name, hash] of entries) {
+              if (!validName(name)) fail('win-manifest has an invalid file name');
+              if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) {
+                fail(`win-manifest hash for ${name} is unparsable`);
+              }
+            }
+            return manifest;
+          }
+
+          const manifest = parseManifest(process.env.WIN_MANIFEST);
+          const dir = process.env.ARTIFACT_DIR;
+          if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+            fail('Windows artifact directory is missing');
+          }
+
+          const present = new Map();
+          function walk(current) {
+            for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+              const full = path.join(current, entry.name);
+              if (entry.isDirectory()) {
+                walk(full);
+                continue;
+              }
+              if (!entry.isFile()) continue;
+              if (present.has(entry.name)) fail(`duplicate artifact file name: ${entry.name}`);
+              const hash = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+              present.set(entry.name, hash);
+            }
+          }
+          walk(dir);
+
+          const missing = [];
+          const mismatch = [];
+          const extra = [];
+          for (const [name, hash] of Object.entries(manifest)) {
+            if (!present.has(name)) missing.push(name);
+            else if (present.get(name) !== hash) mismatch.push(name);
+          }
+          for (const name of present.keys()) {
+            if (!Object.prototype.hasOwnProperty.call(manifest, name)) extra.push(name);
+          }
+          if (missing.length || mismatch.length || extra.length) {
+            fail(`Windows artifact does not match win-manifest; missing=${missing.join(', ') || '-'}; mismatch=${mismatch.join(', ') || '-'}; extra=${extra.join(', ') || '-'}`);
+          }
+
+          const names = Object.keys(manifest).sort();
+          console.log(`U2 checked ${names.length} manifest entries:`);
+          for (const name of names) console.log(`- ${name} sha256=${manifest[name]}`);
+          EOF
+
+      - name: U3 Assert the release is still a draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          gh release upload "$TAG" dist-electron/*.dmg dist-electron/*.zip dist-electron/*.yml --clobber
+          set -euo pipefail
+          node <<'EOF'
+          const { execFileSync } = require('child_process');
+
+          function fail(message) {
+            console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
+            process.exit(1);
+          }
+
+          function safe(value) {
+            return String(value).replace(/[\r\n]/g, ' ');
+          }
+
+          const tag = process.env.TAG || '';
+          if (!tag.trim() || /[\r\n]/.test(tag)) fail('TAG is empty or invalid');
+
+          let stdout;
+          try {
+            stdout = execFileSync('gh', ['release', 'view', tag, '--json', 'isDraft'], {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+          } catch (err) {
+            const stderr = err && err.stderr ? err.stderr.toString() : '';
+            fail(`Refusing to upload: could not confirm release ${safe(tag)} is a draft: ${safe(stderr)}`);
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(stdout);
+          } catch (err) {
+            fail(`Refusing to upload: unparsable isDraft response for ${safe(tag)}`);
+          }
+          if (!parsed || parsed.isDraft !== true) {
+            const shown = parsed ? parsed.isDraft : 'missing';
+            fail(`Refusing to upload: release ${safe(tag)} is not a draft (isDraft=${safe(shown)})`);
+          }
+          console.log(`Release ${safe(tag)} is a draft.`);
+          EOF
+
+      - name: U4 Upload Windows artifacts to the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.determine-release.outputs.version }}
+          ARTIFACT_DIR: win-artifact
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            echo "::error::TAG is empty"
+            exit 1
+          fi
+          if [ -z "${ARTIFACT_DIR:-}" ] || [ ! -d "$ARTIFACT_DIR" ]; then
+            echo "::error::Windows artifact directory is missing"
+            exit 1
+          fi
+          files=()
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+          done < <(find "$ARTIFACT_DIR" -type f -print0)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No Windows artifact files to upload"
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber
 
   build-linux:
     needs: [determine-release, create-release]
@@ -240,15 +456,15 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -271,6 +487,51 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npx electron-vite build && npx electron-builder --linux AppImage --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
 
+      - name: Assert the release is a draft before Linux upload
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.determine-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const { execFileSync } = require('child_process');
+
+          function fail(message) {
+            console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
+            process.exit(1);
+          }
+
+          function safe(value) {
+            return String(value).replace(/[\r\n]/g, ' ');
+          }
+
+          const tag = process.env.TAG || '';
+          if (!tag.trim() || /[\r\n]/.test(tag)) fail('TAG is empty or invalid');
+
+          let stdout;
+          try {
+            stdout = execFileSync('gh', ['release', 'view', tag, '--json', 'isDraft'], {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+          } catch (err) {
+            const stderr = err && err.stderr ? err.stderr.toString() : '';
+            fail(`Refusing to upload Linux artifacts: could not confirm release ${safe(tag)} is a draft: ${safe(stderr)}`);
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(stdout);
+          } catch (err) {
+            fail(`Refusing to upload Linux artifacts: unparsable isDraft response for ${safe(tag)}`);
+          }
+          if (!parsed || parsed.isDraft !== true) {
+            const shown = parsed ? parsed.isDraft : 'missing';
+            fail(`Refusing to upload Linux artifacts: release ${safe(tag)} is not a draft (isDraft=${safe(shown)})`);
+          }
+          console.log(`Release ${safe(tag)} is a draft.`);
+          EOF
+
       - name: Upload Linux artifacts to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -279,15 +540,16 @@ jobs:
           gh release upload "$TAG" dist-electron/*.AppImage dist-electron/*.yml --clobber
 
   publish-release:
-    needs: [determine-release, build-linux, build-windows]
+    needs: [determine-release, build-windows, build-linux, upload-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate release notes
         id: changelog
@@ -318,6 +580,127 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Re-verify Windows assets on the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.determine-release.outputs.version }}
+          WIN_MANIFEST: ${{ needs.build-windows.outputs.win-manifest }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const os = require('os');
+          const path = require('path');
+          const { execFileSync } = require('child_process');
+
+          function fail(message) {
+            console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
+            process.exit(1);
+          }
+
+          function safe(value) {
+            return String(value).replace(/[\r\n]/g, ' ');
+          }
+
+          function validName(name) {
+            return typeof name === 'string'
+              && name.length > 0
+              && name.length <= 255
+              && name.trim() === name
+              && !/[\0\r\n/\\]/.test(name)
+              && !name.includes('..')
+              && name !== '.'
+              && name !== '..';
+          }
+
+          function parseManifest(raw) {
+            if (raw == null || String(raw).trim() === '') fail('win-manifest is empty');
+            let manifest;
+            try {
+              manifest = JSON.parse(raw);
+            } catch (err) {
+              fail('win-manifest is unparsable');
+            }
+            if (manifest == null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+              fail('win-manifest is unparsable');
+            }
+            const entries = Object.entries(manifest);
+            if (entries.length === 0) fail('win-manifest is empty');
+            for (const [name, hash] of entries) {
+              if (!validName(name)) fail('win-manifest has an invalid file name');
+              if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) {
+                fail(`win-manifest hash for ${name} is unparsable`);
+              }
+            }
+            return manifest;
+          }
+
+          function isWindowsAsset(name) {
+            return name.endsWith('.exe') || name.endsWith('.zip') || /^(latest|beta|alpha)\.yml$/.test(name);
+          }
+
+          function gh(args) {
+            try {
+              return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+            } catch (err) {
+              const stderr = err && err.stderr ? err.stderr.toString() : '';
+              const stdout = err && err.stdout ? err.stdout.toString() : '';
+              fail(`gh ${args.map(safe).join(' ')} failed: ${safe(stderr || stdout || err.message)}`);
+            }
+          }
+
+          const tag = process.env.TAG || '';
+          if (!tag.trim() || /[\r\n]/.test(tag)) fail('TAG is empty or invalid');
+
+          const manifest = parseManifest(process.env.WIN_MANIFEST);
+          const view = gh(['release', 'view', tag, '--json', 'assets']);
+          let assets;
+          try {
+            assets = JSON.parse(view).assets;
+          } catch (err) {
+            fail('release asset list is unparsable');
+          }
+          if (!Array.isArray(assets)) fail('release asset list is unparsable');
+
+          const assetNames = [];
+          for (const asset of assets) {
+            if (!asset || typeof asset.name !== 'string' || !validName(asset.name)) {
+              fail('release asset list has an invalid file name');
+            }
+            assetNames.push(asset.name);
+          }
+          const assetSet = new Set(assetNames);
+          if (assetSet.size !== assetNames.length) fail('release asset list has a duplicate name');
+
+          const extras = assetNames.filter((name) => isWindowsAsset(name) && !Object.prototype.hasOwnProperty.call(manifest, name));
+          const missing = [];
+          const mismatch = [];
+
+          for (const [name, expected] of Object.entries(manifest)) {
+            if (!assetSet.has(name)) {
+              missing.push(name);
+              continue;
+            }
+            const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'p3-'));
+            gh(['release', 'download', tag, '--dir', dest, '--clobber', '--pattern', name]);
+            const downloaded = fs.readdirSync(dest).filter((entry) => fs.statSync(path.join(dest, entry)).isFile());
+            if (downloaded.length !== 1 || downloaded[0] !== name) {
+              fail(`download for ${safe(name)} did not return that file`);
+            }
+            const hash = crypto.createHash('sha256').update(fs.readFileSync(path.join(dest, name))).digest('hex');
+            if (hash !== expected) mismatch.push(name);
+          }
+
+          if (extras.length || missing.length || mismatch.length) {
+            fail(`draft Windows assets do not match win-manifest; missing=${missing.join(', ') || '-'}; mismatch=${mismatch.join(', ') || '-'}; extra=${extras.join(', ') || '-'}`);
+          }
+
+          const names = Object.keys(manifest).sort();
+          console.log(`P3 checked ${names.length} manifest entries:`);
+          for (const name of names) console.log(`- ${name} sha256=${manifest[name]}`);
+          EOF
 
       - name: Update release with notes (keep as draft)
         continue-on-error: true
