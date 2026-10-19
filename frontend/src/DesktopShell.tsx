@@ -1038,8 +1038,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setShowSceneHistory(false);
   }, [selectedScene]);
 
-  const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
-    editorApiRef.current?.insertWikiLink(link, anchorText);
+  const handleEditorAcceptWikiLink = useCallback((id: string, _link: string, _anchorText: string) => {
     setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
     window.api?.suggestionsAccept?.(id).catch(() => {});
   }, []);

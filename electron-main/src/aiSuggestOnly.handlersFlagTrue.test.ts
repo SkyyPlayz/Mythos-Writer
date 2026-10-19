@@ -86,7 +86,7 @@ describe('suggest_story_change reaches the old path when the flag is true (T3)',
     });
   });
 
-  it('archive:confirm does not refuse suggest_only when the flag is true', () => {
+  it('archive:confirm does not refuse suggest_only when the flag is true', async () => {
     db.getSuggestion.mockReturnValue({
       id: 'sug-1',
       source_agent: 'archive',
@@ -103,7 +103,7 @@ describe('suggest_story_change reaches the old path when the flag is true (T3)',
       budget_exceeded: 0,
       category: 'other',
     });
-    const result = handlers[IPC_CHANNELS.ARCHIVE_CONFIRM]({
+    const result = await handlers[IPC_CHANNELS.ARCHIVE_CONFIRM]({
       suggestionId: 'sug-1',
       action: 'suggest_story_change',
     }) as { ok?: boolean; reason?: string; newSuggestionId?: string };
@@ -115,8 +115,8 @@ describe('suggest_story_change reaches the old path when the flag is true (T3)',
     expect(row.payload_json).toContain('story-change');
   });
 
-  it('upserts a continuity_story_change row instead of refusing', () => {
-    const result = resolveContinuityItemById('flag-1', 'suggest_story_change', AI_SENTENCE);
+  it('upserts a continuity_story_change row instead of refusing', async () => {
+    const result = await resolveContinuityItemById('flag-1', 'suggest_story_change', AI_SENTENCE);
     expect(result).toEqual({ ok: true });
     expect(result).not.toMatchObject({ reason: 'suggest_only' });
     expect(db.upsertSuggestion).toHaveBeenCalledTimes(1);

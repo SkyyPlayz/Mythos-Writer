@@ -72,6 +72,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const [entityNameMap, setEntityNameMap] = useState<Map<string, string>>(new Map());
   const [proposedRelations, setProposedRelations] = useState<ProposedRelation[]>([]);
   const [proposedRelationsLoading, setProposedRelationsLoading] = useState(false);
+  const [relationError, setRelationError] = useState('');
 
   // SKY-232: entity-to-entity relationships
   const [relationships, setRelationships] = useState<EntityRelationshipRow[]>([]);
@@ -261,12 +262,14 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
   const handleAcceptRelation = useCallback(
     async (suggestionId: string) => {
       try {
+        setRelationError('');
         await window.api.suggestionsAccept(suggestionId);
         setProposedRelations((prev) => prev.filter((r) => r.suggestionId !== suggestionId));
         const updated = await window.api.entityRead(entity.id);
         if (updated) onUpdated(updated);
-      } catch {
-        // silent -- user can retry
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        setRelationError(message || "1 note suggestion couldn't be saved. It's waiting for you to review.");
       }
     },
     [entity.id, onUpdated],
@@ -509,6 +512,7 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
               {proposedRelations.length > 0 && (
                 <div className="entity-det-proposed-relations" aria-label="Proposed connections">
                   <div className="entity-det-proposed-header">Proposed by Archive</div>
+                  {relationError && <p className="entity-det-error" role="alert">{relationError}</p>}
                   {proposedRelations.map((pr) => (
                     <div key={pr.suggestionId} className="entity-det-proposed-item">
                       <div className="entity-det-proposed-desc">

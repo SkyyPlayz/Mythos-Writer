@@ -272,6 +272,23 @@ export function writeVaultFileAtomic(
 }
 
 /**
+ * Write `content` to an absolute path the AI write guard already canonicalised.
+ * Does not re-join a caller-supplied relative path.
+ */
+export function writeVaultFileAtomicAbs(
+  absPath: string,
+  content: string,
+): { path: string; bytes: number } {
+  const buf = Buffer.from(content, 'utf-8');
+  if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
+  const dir = path.dirname(absPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  writeFileAtomic(absPath, buf);
+  markSelfWrite(absPath);
+  return { path: absPath, bytes: buf.byteLength };
+}
+
+/**
  * Generic atomic write for arbitrary absolute paths (e.g. export targets outside the vault).
  * Does NOT enforce the vault sandbox — callers are responsible for path safety.
  */
@@ -1947,13 +1964,14 @@ interface ProvenanceFields {
   suggestion_id?: string;
 }
 
-export function mergeProvenanceFrontmatter(
+export function composeProvenanceContent(
   vaultRoot: string,
   filePath: string,
   provenance: ProvenanceFields,
-  newProse: string
-): void {
-  const fullPath = safePath(vaultRoot, filePath);
+  newProse: string,
+  absPath?: string,
+): string {
+  const fullPath = absPath ?? safePath(vaultRoot, filePath);
 
   let existingFm: Frontmatter = {};
   try {
@@ -1976,7 +1994,16 @@ export function mergeProvenanceFrontmatter(
     updatedAt: provenance.timestamp,
   };
 
-  const content = serializeFrontmatter(merged, newProse);
+  return serializeFrontmatter(merged, newProse);
+}
+
+export function mergeProvenanceFrontmatter(
+  vaultRoot: string,
+  filePath: string,
+  provenance: ProvenanceFields,
+  newProse: string,
+): void {
+  const content = composeProvenanceContent(vaultRoot, filePath, provenance, newProse);
   writeVaultFileAtomic(vaultRoot, filePath, content);
 }
 

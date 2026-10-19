@@ -858,7 +858,16 @@ import {
   checkLockfile,
   appendSyncEvent,
 } from './vaultSessionLock.js';
-import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+import {
+  applyVaultWriteLocked,
+  rollbackVaultWriteLocked,
+  performAutoMark,
+  SuggestionRefusedError,
+  writeGuardedContinuityNote,
+  writeGuardedArchiveEntity,
+  commitSuggestionWrite,
+} from './suggestionApply.js';
+import { aiWriteLockKey, withAiFileLock } from './vault/aiWriteGuard.js';
 import { AI_TEXT_APPLY_ENABLED } from '@mythos-writer/shared/aiSuggestOnly';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import {
@@ -2309,17 +2318,18 @@ export const handlers: IpcHandlers = {
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
-        const auditId = crypto.randomUUID();
-        const { finalStatus, snapshotPath } = applyVaultWrite(payload.suggestion, getVaultRoot(), now);
-        updateSuggestionStatus(payload.suggestion.id, finalStatus, now, 'auto-apply');
-        insertAuditLog({
-          id: auditId,
-          suggestion_id: payload.suggestion.id,
-          action: finalStatus === 'applied' ? 'apply' : 'accept',
-          snapshot_path: snapshotPath,
-          actor: 'auto_applied',
-          created_at: now,
-        });
+        if (performAutoMark(payload.suggestion).markAccepted) {
+          const auditId = crypto.randomUUID();
+          updateSuggestionStatus(payload.suggestion.id, 'accepted', now, 'auto-apply');
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: payload.suggestion.id,
+            action: 'accept',
+            snapshot_path: null,
+            actor: 'auto_applied',
+            created_at: now,
+          });
+        }
       } else if (result.budgetExceeded) {
         updateSuggestionBudgetExceeded(payload.suggestion.id, true);
       }
@@ -2327,24 +2337,15 @@ export const handlers: IpcHandlers = {
 
     return { id: payload.suggestion.id };
   },
-  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => {
+  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: async (payload: SuggestionsAcceptPayload) => {
     ensureVaultDir();
     const now = new Date().toISOString();
     const auditId = crypto.randomUUID();
     const suggestion = getSuggestion(payload.id);
     if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
 
-    const { finalStatus, snapshotPath } = applyVaultWrite(suggestion, getVaultRoot(), now);
-    updateSuggestionStatus(payload.id, finalStatus, now);
-    insertAuditLog({
-      id: auditId,
-      suggestion_id: payload.id,
-      action: finalStatus === 'applied' ? 'apply' : 'accept',
-      snapshot_path: snapshotPath,
-      actor: payload.actor ?? 'user',
-      created_at: now,
-    });
-    return { id: payload.id, status: finalStatus, auditId };
+    const result = await applyVaultWriteLocked(suggestion, getVaultRoot(), now);
+    return commitSuggestionWrite(payload.id, result, now, payload.actor ?? 'user', auditId);
   },
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => {
     ensureVaultDir();
@@ -2379,7 +2380,7 @@ export const handlers: IpcHandlers = {
     });
     return { id: payload.id, auditId };
   },
-  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => {
+  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: async (payload: SuggestionsRollbackPayload) => {
     ensureVaultDir();
     const now = new Date().toISOString();
     const auditId = crypto.randomUUID();
@@ -2390,7 +2391,7 @@ export const handlers: IpcHandlers = {
     }
 
     const applyEntry = listAuditLog(payload.id).find((e) => e.action === 'apply');
-    const restoredPath = rollbackVaultWrite(
+    const restoredPath = await rollbackVaultWriteLocked(
       payload.id,
       getVaultRoot(),
       applyEntry?.snapshot_path ?? null,
@@ -2435,16 +2436,26 @@ export const handlers: IpcHandlers = {
     });
     return { id: payload.id, status: 'ignored' as const };
   },
-  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => {
+  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: async (payload: SuggestionsBatchActionPayload) => {
     ensureVaultDir();
-    const ids = payload.ids.slice(0, 200);
     const actor = payload.actor ?? 'user';
+    const rows = payload.ids.slice(0, 200).map((id) => ({ id, suggestion: getSuggestion(id) }));
+    if (payload.action === 'accept') {
+      rows.sort((a, b) => {
+        const pathA = a.suggestion?.target_path ?? '';
+        const pathB = b.suggestion?.target_path ?? '';
+        if (pathA < pathB) return -1;
+        if (pathA > pathB) return 1;
+        if (a.id < b.id) return -1;
+        if (a.id > b.id) return 1;
+        return 0;
+      });
+    }
     const succeeded: string[] = [];
     const failed: Array<{ id: string; reason: string }> = [];
 
-    for (const id of ids) {
+    for (const { id, suggestion } of rows) {
       try {
-        const suggestion = getSuggestion(id);
         if (!suggestion) {
           failed.push({ id, reason: 'not found' });
           continue;
@@ -2453,16 +2464,8 @@ export const handlers: IpcHandlers = {
         const auditId = crypto.randomUUID();
 
         if (payload.action === 'accept') {
-          const { finalStatus, snapshotPath } = applyVaultWrite(suggestion, getVaultRoot(), now);
-          updateSuggestionStatus(id, finalStatus, now);
-          insertAuditLog({
-            id: auditId,
-            suggestion_id: id,
-            action: finalStatus === 'applied' ? 'apply' : 'accept',
-            snapshot_path: snapshotPath,
-            actor,
-            created_at: now,
-          });
+          const result = await applyVaultWriteLocked(suggestion, getVaultRoot(), now);
+          commitSuggestionWrite(id, result, now, actor, auditId);
         } else if (payload.action === 'reject') {
           updateSuggestionStatus(id, 'rejected');
           insertAuditLog({
@@ -2486,7 +2489,10 @@ export const handlers: IpcHandlers = {
         }
         succeeded.push(id);
       } catch (err) {
-        failed.push({ id, reason: (err as Error).message ?? 'unknown error' });
+        const reason = err instanceof SuggestionRefusedError
+          ? err.reason
+          : ((err as Error).message ?? 'unknown error');
+        failed.push({ id, reason });
       }
     }
 
@@ -5240,7 +5246,7 @@ export const handlers: IpcHandlers = {
   },
 
   // ─── Archive confirmation dialog (MYT-376) ───
-  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => {
+  [IPC_CHANNELS.ARCHIVE_CONFIRM]: async (payload: ArchiveConfirmPayload) => {
     // AI-SUGGEST-ONLY: refuse before any vault open, row write, or status flip.
     // A replay of a missing id must resolve suggest_only, not throw.
     if (payload.action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
@@ -5263,11 +5269,13 @@ export const handlers: IpcHandlers = {
     if (!suggestion) {
       const continuityRow = getContinuityIssue(payload.suggestionId);
       if (continuityRow) {
-        const outcome = resolveContinuityItemById(
+        const outcome = await resolveContinuityItemById(
           payload.suggestionId,
           confirmActionToResolution(payload.action),
         );
-        return { ok: outcome.ok, auditId };
+        return outcome.reason
+          ? { ok: outcome.ok, auditId, reason: outcome.reason }
+          : { ok: outcome.ok, auditId };
       }
       throw new Error(`Suggestion not found: ${payload.suggestionId}`);
     }
@@ -5298,14 +5306,19 @@ export const handlers: IpcHandlers = {
     if (payload.action === 'match_archive') {
       // Update vault entity property to match manuscript value.
       if (entityId && propKey && scenePhrase) {
+        let manifest: ReturnType<typeof readManifest>;
         try {
-          const manifest = readManifest(getManifestPath());
-          const entity = manifest.entities.find((e) => e.id === entityId);
-          if (entity) {
-            const updatedProperties = { ...(entity.properties ?? {}), [propKey]: scenePhrase };
-            updateEntity(getVaultRoot(), manifest, entityId, { properties: updatedProperties });
-          }
-        } catch { /* non-fatal — still record the audit */ }
+          manifest = readManifest(getManifestPath());
+        } catch {
+          return { ok: false, reason: 'no_manifest' as const };
+        }
+        const entity = manifest.entities.find((e) => e.id === entityId);
+        if (entity?.path) {
+          const guarded = await withAiFileLock(aiWriteLockKey(getVaultRoot(), entity.path), () =>
+            writeGuardedArchiveEntity(getVaultRoot(), manifest, entityId, { [propKey]: scenePhrase }),
+          );
+          if (!guarded.ok) return { ok: false, reason: guarded.reason };
+        }
       }
       updateSuggestionStatus(payload.suggestionId, 'applied', now);
       insertAuditLog({
@@ -11541,11 +11554,11 @@ function startArchiveContScheduler(): void {
  * archive:cont-item-resolved so every surface drops the flag live.
  * Throws when the item does not exist.
  */
-export function resolveContinuityItemById(
+export async function resolveContinuityItemById(
   itemId: string,
   action: import('./ipc.js').ResolutionAction,
   note?: string,
-): import('./ipc.js').ArchiveResolveContinuityResponse {
+): Promise<import('./ipc.js').ArchiveResolveContinuityResponse> {
   // AI-SUGGEST-ONLY: refuse before lookup so a replay cannot throw or flip status.
   if (action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
     return { ok: false, reason: 'suggest_only' };
@@ -11567,6 +11580,8 @@ export function resolveContinuityItemById(
     if (row.scope === 'story_internal') {
       return { ok: false, reason: 'note_not_found' };
     }
+    ensureVaultDir();
+    try { ensureNotesVaultDir(); } catch { /* story root is still searched */ }
     // The flagged note lives in the Notes Vault (Continuity Peek entities) or
     // the Story Vault (manifest entity notes, where scans index from) — try
     // both roots, patching wherever the note actually is.
@@ -11583,7 +11598,18 @@ export function resolveContinuityItemById(
     if (root === null) return { ok: false, reason: 'note_not_found' };
     const patched = applyExcerptPatch(content, row.vault_excerpt, row.proposed_match_archive);
     if (patched === null) return { ok: false, reason: 'excerpt_not_found' };
-    writeVaultFileAtomic(root, row.vault_note_path, patched);
+    const notesRoot = getNotesVaultRoot();
+    const storyRoot = getVaultRoot();
+    const guarded = await withAiFileLock(aiWriteLockKey(root, row.vault_note_path), () =>
+      writeGuardedContinuityNote({
+        storyRoot,
+        notesRoot,
+        foundRoot: root as string,
+        relPath: row.vault_note_path,
+        nextContent: patched,
+      }),
+    );
+    if (!guarded.ok) return { ok: false, reason: guarded.reason };
     changedFrom = row.vault_excerpt;
     changedTo = row.proposed_match_archive;
   } else if (action === 'suggest_story_change') {

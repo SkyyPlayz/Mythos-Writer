@@ -13,7 +13,7 @@ import type { SuggestionStatus } from './shared/types/suggestion.js';
 
 // ─── Domain types ───
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
-export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore';
+export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore' | 'refuse';
 export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';
 export type UnifiedSuggestionStatus = 'proposed' | 'accepted' | 'applied' | 'rejected' | 'ignored' | 'rolled_back';
 
