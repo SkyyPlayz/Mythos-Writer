@@ -4,7 +4,7 @@
 // phonemization run everywhere. The full model inference runs only when the
 // bundled weights are present on disk (dev / a checkout that ran the build-time
 // fetch) — CI without the 86MB model skips it, exactly like voice-real-binary.
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,6 +21,17 @@ import {
   KOKORO_SAMPLE_RATE,
   type KokoroAssets,
 } from './kokoro.js';
+
+// Vitest externalizes this dependency and Node 22 rejects its ESM JSON imports
+// (ERR_IMPORT_ATTRIBUTE_MISSING). The CJS build require()s those lexicons.
+// The mock is hoisted above imports, so the loader cannot be an import binding.
+const { EnglishG2P } = vi.hoisted(() => {
+  const { createRequire } = process.getBuiltinModule('module');
+  const loaded = createRequire(import.meta.url)('phonemize/en-g2p') as { default?: unknown };
+  return { EnglishG2P: loaded.default ?? loaded };
+});
+
+vi.mock('phonemize/en-g2p', () => ({ default: EnglishG2P }));
 
 const KOKORO_DIR =
   process.env.MYTHOS_KOKORO_DIR ?? path.join(__dirname, '..', 'resources', 'kokoro');
@@ -145,8 +156,7 @@ describe('phonemizeText', () => {
   it('produces a non-empty IPA string for real prose', async () => {
     const ipa = await phonemizeText('Hello, this is a test.', 'a');
     expect(ipa.length).toBeGreaterThan(0);
-    // eSpeak IPA for "hello" contains the l-sound; sanity that it is phonemes,
-    // not the raw text.
+    // Sanity that the result is phonemes, not the raw text.
     expect(ipa).not.toContain('Hello');
   });
   it('keeps punctuation and normalizes to phonemes only', async () => {

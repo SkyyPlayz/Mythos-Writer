@@ -27,6 +27,6 @@ satisfied by this notice and the upstream model card.
 Runtime dependencies (not bundled here, installed via npm)
 ----------------------------------------------------------
     onnxruntime-web   MIT        — WASM inference runtime
-    phonemizer        Apache-2.0 — grapheme-to-phoneme
+    phonemize         MIT        — grapheme-to-phoneme (English en-g2p)
 
 Full Apache-2.0 text: https://www.apache.org/licenses/LICENSE-2.0
