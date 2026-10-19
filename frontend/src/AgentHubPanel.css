@@ -703,7 +703,9 @@
    The menu shell stays mounted (session pill, TC-8537-02) and is hidden
    until the toggle opens it. The pill paints through the closed shell. */
 .ahp-partner .partner-card .ahp-past-chats {
-  display: inline-flex;
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   width: auto;
@@ -761,15 +763,13 @@
 
 .ahp-past-chats__menu--open {
   visibility: visible;
-  position: absolute;
-  z-index: 5;
-  top: calc(100% + 4px);
-  left: 0;
+  position: static;
+  flex: 1 0 100%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  min-width: 220px;
+  box-sizing: border-box;
   padding: 8px;
   border-radius: 10px;
   border: 1px solid var(--border-default);
