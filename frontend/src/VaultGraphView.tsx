@@ -1763,6 +1763,62 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           aria-label="Search nodes"
         />
       </header>
+      {/* FD-9 #25: content-sized cluster pinned to the card's top-right.
+          It follows the header in the DOM so Tab order is header controls,
+          then the chips, then Depth. CSS order paints it above the header. */}
+      <div className="vgv-graph-filters" role="toolbar" aria-label="Graph filters">
+        <div className="vgv-chips" role="group" aria-label="Category filters">
+          {visibleChips.map((chip) => (
+            <CategoryChip
+              key={chip.key}
+              chipKey={chip.key}
+              label={chip.label}
+              active={activeCategories.has(chip.key)}
+              onToggle={handleToggleCategory}
+              onShowOnly={handleShowOnly}
+              onShowAll={handleShowAll}
+            />
+          ))}
+          {hiddenCount > 0 && !chipsExpanded && (
+            <button
+              type="button"
+              className="vgv-chip vgv-chip--overflow"
+              onClick={() => setChipsExpanded(true)}
+              aria-label={`Show ${hiddenCount} more category filters`}
+            >
+              +{hiddenCount} more
+            </button>
+          )}
+          {chipsExpanded && CHIP_DEFS.length > MAX_VISIBLE_CHIPS && (
+            <button
+              type="button"
+              className="vgv-chip vgv-chip--overflow"
+              onClick={() => setChipsExpanded(false)}
+              aria-label="Collapse category filters"
+            >
+              Less
+            </button>
+          )}
+        </div>
+
+        <div className="vgv-depth-wrap">
+          <label htmlFor="vgv-depth-slider" className="vgv-depth-label">
+            Depth: {depthLabel}
+          </label>
+          <input
+            id="vgv-depth-slider"
+            type="range"
+            className="vgv-depth-slider"
+            min={1}
+            max={DEPTH_UNLIMITED}
+            step={1}
+            value={depthLimit}
+            onChange={(e) => setDepthLimit(Number(e.target.value))}
+            aria-label={`Depth limit: ${depthLabel}`}
+            aria-valuetext={depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit)}
+          />
+        </div>
+      </div>
 
       <div
         className="sr-only"
@@ -2240,61 +2296,6 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
         </div>
       </div>
       </div>{/* end vgv-body */}
-
-      {/* Bottom toolbar — category chips + depth slider (spec: 40px) */}
-      <footer className="vgv-bottom-toolbar" role="toolbar" aria-label="Graph filters">
-        <div className="vgv-chips" role="group" aria-label="Category filters">
-          {visibleChips.map((chip) => (
-            <CategoryChip
-              key={chip.key}
-              chipKey={chip.key}
-              label={chip.label}
-              active={activeCategories.has(chip.key)}
-              onToggle={handleToggleCategory}
-              onShowOnly={handleShowOnly}
-              onShowAll={handleShowAll}
-            />
-          ))}
-          {hiddenCount > 0 && !chipsExpanded && (
-            <button
-              type="button"
-              className="vgv-chip vgv-chip--overflow"
-              onClick={() => setChipsExpanded(true)}
-              aria-label={`Show ${hiddenCount} more category filters`}
-            >
-              +{hiddenCount} more
-            </button>
-          )}
-          {chipsExpanded && CHIP_DEFS.length > MAX_VISIBLE_CHIPS && (
-            <button
-              type="button"
-              className="vgv-chip vgv-chip--overflow"
-              onClick={() => setChipsExpanded(false)}
-              aria-label="Collapse category filters"
-            >
-              Less
-            </button>
-          )}
-        </div>
-
-        <div className="vgv-depth-wrap">
-          <label htmlFor="vgv-depth-slider" className="vgv-depth-label">
-            Depth: {depthLabel}
-          </label>
-          <input
-            id="vgv-depth-slider"
-            type="range"
-            className="vgv-depth-slider"
-            min={1}
-            max={DEPTH_UNLIMITED}
-            step={1}
-            value={depthLimit}
-            onChange={(e) => setDepthLimit(Number(e.target.value))}
-            aria-label={`Depth limit: ${depthLabel}`}
-            aria-valuetext={depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit)}
-          />
-        </div>
-      </footer>
     </section>
   );
 }
