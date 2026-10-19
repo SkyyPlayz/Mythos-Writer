@@ -13,7 +13,10 @@ name: carve-out-check
 # present .github/workflows/mythos-gate-auto-merge.yml, which must stay deleted.
 
 on:
-  pull_request:
+  # The workflow file that runs is the default branch's copy. pull_request
+  # would execute the merge commit, and a PR could grade its own change.
+  # Nothing from the pull request is checked out or executed.
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -27,7 +30,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Flag carve-out paths for human/Ivy review
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -36,7 +39,7 @@ jobs:
               github.rest.pulls.listFiles,
               { owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number }
             );
-            const paths = files.map((f) => f.filename);
+            const paths = files.flatMap((f) => [f.filename, f.previous_filename].filter(Boolean));
 
             // mythos-gate-auto-merge.yml was removed from main (#1704) and must stay absent.
             const autoMergeWorkflow = '.github/workflows/mythos-gate-auto-merge.yml';
@@ -67,12 +70,23 @@ jobs:
               { label: 'db-migration', re: /^electron-main\/src\/db\.ts$/ },
               { label: 'auth', re: /(^|\/)auth[A-Za-z0-9._-]*\.(ts|tsx|js)$/i },
               { label: 'secrets', re: /(^|\/)\.env(\..+)?$|secrets?\.(ts|js|json|yml|yaml)$/i },
-              { label: 'release-config', re: /^\.github\/workflows\/release\.yml$|^electron-builder(\.[^/]+)?\.(json5?|ya?ml|[cm]?js|ts|toml)$|^build\/|^package(-lock)?\.json$|^(frontend|electron-main|shared)\/package\.json$|^electron\.vite\.config\.[cm]?[jt]s$|^\.npmrc$/i },
+              { label: 'release-config', re: /^\.github\/workflows\/release\.yml$|^electron-builder(\.[^/]+)?\.(json5?|ya?ml|[cm]?[jt]s|toml)$|^electron-builder\.[jc]son5?$|^build\/|^(npm-shrinkwrap|package(-lock)?)\.json$|^(frontend|electron-main|shared)\/(npm-shrinkwrap|package(-lock)?)\.json$|^electron\.vite\.config\.[cm]?[jt]s$|(^|\/)\.npmrc$|^electron-builder\.env$|^(frontend\/)?postcss\.config\.[cm]?[jt]s$|^(frontend\/)?\.postcssrc(\.(json|ya?ml|[cm]?[jt]s))?$/i },
             ];
 
-            const hits = files
-              .map((f) => ({ filename: f.filename, match: carveOutPatterns.find((p) => p.re.test(f.filename)) }))
-              .filter((h) => h.match);
+            const hits = [];
+            for (const f of files) {
+              const checked = [f.filename, f.previous_filename].filter(Boolean);
+              let match = null;
+              for (const candidate of checked) {
+                const found = carveOutPatterns.find((p) => p.re.test(candidate));
+                if (found) {
+                  match = found;
+                  break;
+                }
+              }
+              if (!match) continue;
+              hits.push({ filename: f.filename, previous: f.previous_filename || '', checked, match });
+            }
 
             const marker = '<!-- carve-out-check -->';
             const { data: comments } = await github.rest.issues.listComments({
@@ -99,7 +113,10 @@ jobs:
             }
 
             const grouped = [...new Set(hits.map((h) => h.match.label))].join(', ');
-            const list = hits.map((h) => `- \`${h.filename}\` (${h.match.label})`).join('\n');
+            const list = hits.map((h) => {
+              const checked = h.checked.map((p) => `\`${p}\``).join(', ');
+              return `- \`${h.filename}\` (${h.match.label}); checked ${checked}`;
+            }).join('\n');
             const body = [
               marker,
               '## ⚠️ Carve-out review required',

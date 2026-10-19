@@ -159,9 +159,9 @@ jobs:
           body: "Release build in progress…"
 
   # Windows build. Unsigned: legacy certificate secrets are removed, and this
-  # job cannot upload a release. It copies each installer to the GitHub-safe
-  # name already written in the channel yml (url/path), hashes those names,
-  # then hands those exact bytes to upload-windows.
+  # job cannot upload a release. It copies (does not rename) each installer to
+  # the dashed url/path name in the channel yml and hashes that name. A space
+  # or a GitHub space-to-dot name fails, so the upload name is stored unchanged.
   # needs create-release so upload-windows cannot start before the draft exists.
   build-windows:
     needs: [determine-release, create-release]
@@ -205,10 +205,152 @@ jobs:
         run: |
           set -euo pipefail
           node <<'EOF'
+          function parseChannelYml(text) {
+            if (typeof text !== 'string' || text.trim() === '') throw new Error('unparsable');
+            const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+            let i = 0;
+
+            function unquote(raw) {
+              if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) return JSON.parse(raw);
+              if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+                return raw.slice(1, -1).replace(/''/g, "'");
+              }
+              if (/^-?(0|[1-9]\d*)$/.test(raw)) return Number(raw);
+              return raw;
+            }
+
+            function indentOf(line) {
+              let n = 0;
+              while (line[n] === ' ') n += 1;
+              if (line[n] === '\t') throw new Error('unparsable');
+              return n;
+            }
+
+            function skipBlanks() {
+              while (i < lines.length && (lines[i].trim() === '' || /^\s*#/.test(lines[i]))) i += 1;
+            }
+
+            function readBlock(parentIndent, indicator) {
+              const fold = indicator[0] === '>';
+              const chomp = indicator.endsWith('-') ? 'strip' : indicator.endsWith('+') ? 'keep' : 'clip';
+              const chunks = [];
+              let blockIndent = -1;
+              while (i < lines.length) {
+                const line = lines[i];
+                if (line.trim() === '') {
+                  if (blockIndent === -1) {
+                    i += 1;
+                    continue;
+                  }
+                  chunks.push('');
+                  i += 1;
+                  continue;
+                }
+                const ind = indentOf(line);
+                if (ind <= parentIndent) break;
+                if (blockIndent === -1) blockIndent = ind;
+                if (ind < blockIndent) break;
+                chunks.push(line.slice(blockIndent));
+                i += 1;
+              }
+              if (fold) {
+                let out = '';
+                for (let c = 0; c < chunks.length; c += 1) {
+                  if (c === 0) out += chunks[c];
+                  else if (chunks[c] === '' || chunks[c - 1] === '') out += '\n' + chunks[c];
+                  else out += ' ' + chunks[c];
+                }
+                if (chomp !== 'keep') out = out.replace(/\n+$/, '');
+                if (chomp === 'clip' && chunks.length > 0) out += '\n';
+                if (chomp === 'keep') out += '\n';
+                return out;
+              }
+              const joined = chunks.join('\n');
+              if (chomp === 'strip') return joined;
+              if (chomp === 'keep') return joined + '\n';
+              return chunks.length ? joined + '\n' : joined;
+            }
+
+            function readPair(keyIndent, body) {
+              const colon = body.indexOf(':');
+              if (colon <= 0) throw new Error('unparsable');
+              const key = body.slice(0, colon);
+              if (!/^[A-Za-z0-9_]+$/.test(key)) throw new Error('unparsable');
+              const rest = body.slice(colon + 1).trim();
+              i += 1;
+              if (rest === '>' || rest === '>-' || rest === '>+' || rest === '|' || rest === '|-' || rest === '|+') {
+                return [key, readBlock(keyIndent, rest)];
+              }
+              if (rest !== '') return [key, unquote(rest)];
+              skipBlanks();
+              if (i >= lines.length) return [key, null];
+              const nextIndent = indentOf(lines[i]);
+              if (nextIndent <= keyIndent) return [key, null];
+              const nextBody = lines[i].slice(nextIndent);
+              if (nextBody.startsWith('- ')) return [key, readSeq(nextIndent)];
+              return [key, readMap(nextIndent)];
+            }
+
+            function readMap(expected) {
+              const obj = {};
+              while (true) {
+                skipBlanks();
+                if (i >= lines.length) break;
+                const ind = indentOf(lines[i]);
+                if (ind < expected) break;
+                if (ind !== expected) throw new Error('unparsable');
+                const body = lines[i].slice(ind);
+                if (body.startsWith('- ')) break;
+                const [key, value] = readPair(ind, body);
+                if (Object.prototype.hasOwnProperty.call(obj, key)) throw new Error('unparsable');
+                obj[key] = value;
+              }
+              return obj;
+            }
+
+            function readSeq(dashIndent) {
+              const arr = [];
+              while (true) {
+                skipBlanks();
+                if (i >= lines.length) break;
+                const ind = indentOf(lines[i]);
+                if (ind < dashIndent) break;
+                if (ind !== dashIndent) throw new Error('unparsable');
+                const body = lines[i].slice(ind);
+                if (!body.startsWith('- ')) break;
+                const after = body.slice(2);
+                const keyIndent = ind + 2;
+                const [key, value] = readPair(keyIndent, after);
+                const item = {};
+                item[key] = value;
+                while (true) {
+                  skipBlanks();
+                  if (i >= lines.length) break;
+                  const ind2 = indentOf(lines[i]);
+                  if (ind2 < keyIndent) break;
+                  if (ind2 === dashIndent && lines[i].slice(ind2).startsWith('- ')) break;
+                  if (ind2 !== keyIndent) throw new Error('unparsable');
+                  const [k2, v2] = readPair(ind2, lines[i].slice(ind2));
+                  if (Object.prototype.hasOwnProperty.call(item, k2)) throw new Error('unparsable');
+                  item[k2] = v2;
+                }
+                arr.push(item);
+              }
+              return arr;
+            }
+
+            skipBlanks();
+            if (i >= lines.length || indentOf(lines[i]) !== 0) throw new Error('unparsable');
+            const doc = readMap(0);
+            skipBlanks();
+            if (i < lines.length) throw new Error('unparsable');
+            if (doc == null || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('unparsable');
+            return doc;
+          }
+
           const crypto = require('crypto');
           const fs = require('fs');
           const path = require('path');
-          const yaml = require('js-yaml');
 
           function fail(message) {
             console.log(`::error::${String(message).replace(/[\r\n]/g, ' ')}`);
@@ -219,15 +361,17 @@ jobs:
             return String(value).replace(/[\r\n]/g, ' ');
           }
 
-          function validName(name) {
-            return typeof name === 'string'
-              && name.length > 0
-              && name.length <= 255
-              && name.trim() === name
-              && !/[\0\r\n/\\]/.test(name)
-              && !name.includes('..')
-              && name !== '.'
-              && name !== '..';
+          function isPublishName(name) {
+            if (typeof name !== 'string') return false;
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) return false;
+            if (name.length > 255 || name.includes('..')) return false;
+            if (/^(latest|beta|alpha)\.yml$/i.test(name)) return true;
+            const ext = name.match(/\.(exe|zip)$/i);
+            if (!ext) return false;
+            const stem = name.slice(0, -ext[0].length);
+            if (!stem.includes('-')) return false;
+            if (/[A-Za-z]\.[A-Za-z]/.test(stem)) return false;
+            return true;
           }
 
           function sha512(buf) {
@@ -236,7 +380,7 @@ jobs:
 
           const sourceDir = 'dist-electron';
           const staging = 'win-upload';
-          const channelRe = /^(latest|beta|alpha)\.yml$/;
+          const channelRe = /^(latest|beta|alpha)\.yml$/i;
 
           if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
             fail('dist-electron is missing');
@@ -260,12 +404,23 @@ jobs:
             bySha512.set(digest, list);
           }
 
-          // Publish names come from the channel yml url/path strings. The bytes
-          // are the file whose sha512 the yml already recorded. No rename rule.
+          // Publish names are the channel yml url/path strings, copied (not renamed).
+          // Those strings are the dashed names. A space, or a dot standing in for a
+          // space, is not that name, so GitHub is never asked to rename the upload.
           const publish = new Map();
 
           function feedName(channelName, raw, label) {
-            if (!validName(raw)) fail(`${channelName} ${label} ${safe(raw)} has no matching file`);
+            if (typeof raw !== 'string' || raw.length === 0 || /[\0\r\n]/.test(raw)) {
+              fail(`${channelName} ${label} has no matching file`);
+            }
+            if (/\s/.test(raw)) fail(`refusing to publish a spaced name: ${safe(raw)}`);
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(raw) || raw.includes('..') || raw.length > 255) {
+              fail(`refusing to publish an invalid Windows artifact name: ${safe(raw)}`);
+            }
+            if (/[A-Za-z]\.[A-Za-z]/.test(raw) && !/^(latest|beta|alpha)\.yml$/i.test(raw)) {
+              fail(`refusing to publish a GitHub space-to-dot name: ${safe(raw)}`);
+            }
+            if (!isPublishName(raw)) fail(`refusing to publish an invalid Windows artifact name: ${safe(raw)}`);
             return raw;
           }
 
@@ -274,6 +429,9 @@ jobs:
             if (matches.length === 0) fail(`${channelName} url ${feed} has no matching file`);
             if (matches.length > 1) fail(`${channelName} url ${feed} matches more than one file`);
             const sourceName = matches[0];
+            if (sourceName.includes(' ') && feed === sourceName.replace(/ /g, '.')) {
+              fail(`refusing to publish a GitHub space-to-dot name: ${safe(feed)}`);
+            }
             const existing = publish.get(feed);
             if (existing && existing.sourceName !== sourceName) {
               fail(`${channelName} url ${feed} maps to conflicting files`);
@@ -285,9 +443,10 @@ jobs:
           }
 
           for (const channelName of channels) {
+            if (!isPublishName(channelName)) fail(`refusing to publish an invalid Windows artifact name: ${safe(channelName)}`);
             let doc;
             try {
-              doc = yaml.load(fs.readFileSync(path.join(sourceDir, channelName), 'utf8'));
+              doc = parseChannelYml(fs.readFileSync(path.join(sourceDir, channelName), 'utf8'));
             } catch (err) {
               fail(`${channelName} is unparsable`);
             }
@@ -331,7 +490,7 @@ jobs:
           fs.mkdirSync(staging);
           const manifest = {};
           for (const name of names) {
-            if (!validName(name)) fail('refusing to publish an invalid Windows artifact name');
+            if (!isPublishName(name)) fail(`refusing to publish an invalid Windows artifact name: ${safe(name)}`);
             const item = publish.get(name);
             const dest = path.join(staging, name);
             fs.writeFileSync(dest, item.buf);
@@ -392,14 +551,16 @@ jobs:
           }
 
           function validName(name) {
-            return typeof name === 'string'
-              && name.length > 0
-              && name.length <= 255
-              && name.trim() === name
-              && !/[\0\r\n/\\]/.test(name)
-              && !name.includes('..')
-              && name !== '.'
-              && name !== '..';
+            if (typeof name !== 'string') return false;
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) return false;
+            if (name.length > 255 || name.includes('..')) return false;
+            if (/^(latest|beta|alpha)\.yml$/i.test(name)) return true;
+            const ext = name.match(/\.(exe|zip)$/i);
+            if (!ext) return false;
+            const stem = name.slice(0, -ext[0].length);
+            if (!stem.includes('-')) return false;
+            if (/[A-Za-z]\.[A-Za-z]/.test(stem)) return false;
+            return true;
           }
 
           function parseManifest(raw) {
@@ -551,6 +712,7 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
@@ -639,33 +801,33 @@ jobs:
 
       - name: Generate release notes
         id: changelog
+        env:
+          TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          TAG="${{ needs.determine-release.outputs.version }}"
-          PREV_TAG=$(git tag -l --sort=-version:refname --merged HEAD "v*" | grep -v "$TAG" | head -1 || echo "")
-
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            echo "::error::TAG is empty"
+            exit 1
+          fi
+          PREV_TAG=$(git tag -l --sort=-version:refname --merged HEAD "v*" | grep -v -F "$TAG" | head -1 || true)
           if [ -z "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --oneline --format="- %h %s" | head -50)
+            CHANGELOG=$(git log --oneline --format="- %h %s" | head -50 || true)
           else
-            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --oneline --format="- %h %s")
+            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --oneline --format="- %h %s" || true)
           fi
 
           # Defensively truncate body to ~120k chars to avoid GitHub's ~125k limit.
           # If truncated, append "…and N more" instead of failing the release.
           MAX_CHARS=122880
           BODY_LENGTH=${#CHANGELOG}
-          if [ $BODY_LENGTH -gt $MAX_CHARS ]; then
-            # Count how many commits we're truncating
-            TOTAL_COMMITS=$(echo "$CHANGELOG" | wc -l)
-            TRUNCATED=$(echo "$CHANGELOG" | head -c $MAX_CHARS)
-            REMAINING=$((TOTAL_COMMITS - $(echo "$TRUNCATED" | wc -l)))
+          if [ "$BODY_LENGTH" -gt "$MAX_CHARS" ]; then
+            TOTAL_COMMITS=$(printf '%s\n' "$CHANGELOG" | wc -l)
+            TRUNCATED=$(printf '%s' "$CHANGELOG" | head -c "$MAX_CHARS")
+            REMAINING=$((TOTAL_COMMITS - $(printf '%s\n' "$TRUNCATED" | wc -l)))
             CHANGELOG="${TRUNCATED}"$'\n'"…and $REMAINING more commits"
           fi
 
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          printf '%s' "$CHANGELOG" > "$RUNNER_TEMP/notes.md"
 
       - name: Re-verify Windows assets on the draft release
         env:
@@ -675,6 +837,149 @@ jobs:
         run: |
           set -euo pipefail
           node <<'EOF'
+          function parseChannelYml(text) {
+            if (typeof text !== 'string' || text.trim() === '') throw new Error('unparsable');
+            const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+            let i = 0;
+
+            function unquote(raw) {
+              if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) return JSON.parse(raw);
+              if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+                return raw.slice(1, -1).replace(/''/g, "'");
+              }
+              if (/^-?(0|[1-9]\d*)$/.test(raw)) return Number(raw);
+              return raw;
+            }
+
+            function indentOf(line) {
+              let n = 0;
+              while (line[n] === ' ') n += 1;
+              if (line[n] === '\t') throw new Error('unparsable');
+              return n;
+            }
+
+            function skipBlanks() {
+              while (i < lines.length && (lines[i].trim() === '' || /^\s*#/.test(lines[i]))) i += 1;
+            }
+
+            function readBlock(parentIndent, indicator) {
+              const fold = indicator[0] === '>';
+              const chomp = indicator.endsWith('-') ? 'strip' : indicator.endsWith('+') ? 'keep' : 'clip';
+              const chunks = [];
+              let blockIndent = -1;
+              while (i < lines.length) {
+                const line = lines[i];
+                if (line.trim() === '') {
+                  if (blockIndent === -1) {
+                    i += 1;
+                    continue;
+                  }
+                  chunks.push('');
+                  i += 1;
+                  continue;
+                }
+                const ind = indentOf(line);
+                if (ind <= parentIndent) break;
+                if (blockIndent === -1) blockIndent = ind;
+                if (ind < blockIndent) break;
+                chunks.push(line.slice(blockIndent));
+                i += 1;
+              }
+              if (fold) {
+                let out = '';
+                for (let c = 0; c < chunks.length; c += 1) {
+                  if (c === 0) out += chunks[c];
+                  else if (chunks[c] === '' || chunks[c - 1] === '') out += '\n' + chunks[c];
+                  else out += ' ' + chunks[c];
+                }
+                if (chomp !== 'keep') out = out.replace(/\n+$/, '');
+                if (chomp === 'clip' && chunks.length > 0) out += '\n';
+                if (chomp === 'keep') out += '\n';
+                return out;
+              }
+              const joined = chunks.join('\n');
+              if (chomp === 'strip') return joined;
+              if (chomp === 'keep') return joined + '\n';
+              return chunks.length ? joined + '\n' : joined;
+            }
+
+            function readPair(keyIndent, body) {
+              const colon = body.indexOf(':');
+              if (colon <= 0) throw new Error('unparsable');
+              const key = body.slice(0, colon);
+              if (!/^[A-Za-z0-9_]+$/.test(key)) throw new Error('unparsable');
+              const rest = body.slice(colon + 1).trim();
+              i += 1;
+              if (rest === '>' || rest === '>-' || rest === '>+' || rest === '|' || rest === '|-' || rest === '|+') {
+                return [key, readBlock(keyIndent, rest)];
+              }
+              if (rest !== '') return [key, unquote(rest)];
+              skipBlanks();
+              if (i >= lines.length) return [key, null];
+              const nextIndent = indentOf(lines[i]);
+              if (nextIndent <= keyIndent) return [key, null];
+              const nextBody = lines[i].slice(nextIndent);
+              if (nextBody.startsWith('- ')) return [key, readSeq(nextIndent)];
+              return [key, readMap(nextIndent)];
+            }
+
+            function readMap(expected) {
+              const obj = {};
+              while (true) {
+                skipBlanks();
+                if (i >= lines.length) break;
+                const ind = indentOf(lines[i]);
+                if (ind < expected) break;
+                if (ind !== expected) throw new Error('unparsable');
+                const body = lines[i].slice(ind);
+                if (body.startsWith('- ')) break;
+                const [key, value] = readPair(ind, body);
+                if (Object.prototype.hasOwnProperty.call(obj, key)) throw new Error('unparsable');
+                obj[key] = value;
+              }
+              return obj;
+            }
+
+            function readSeq(dashIndent) {
+              const arr = [];
+              while (true) {
+                skipBlanks();
+                if (i >= lines.length) break;
+                const ind = indentOf(lines[i]);
+                if (ind < dashIndent) break;
+                if (ind !== dashIndent) throw new Error('unparsable');
+                const body = lines[i].slice(ind);
+                if (!body.startsWith('- ')) break;
+                const after = body.slice(2);
+                const keyIndent = ind + 2;
+                const [key, value] = readPair(keyIndent, after);
+                const item = {};
+                item[key] = value;
+                while (true) {
+                  skipBlanks();
+                  if (i >= lines.length) break;
+                  const ind2 = indentOf(lines[i]);
+                  if (ind2 < keyIndent) break;
+                  if (ind2 === dashIndent && lines[i].slice(ind2).startsWith('- ')) break;
+                  if (ind2 !== keyIndent) throw new Error('unparsable');
+                  const [k2, v2] = readPair(ind2, lines[i].slice(ind2));
+                  if (Object.prototype.hasOwnProperty.call(item, k2)) throw new Error('unparsable');
+                  item[k2] = v2;
+                }
+                arr.push(item);
+              }
+              return arr;
+            }
+
+            skipBlanks();
+            if (i >= lines.length || indentOf(lines[i]) !== 0) throw new Error('unparsable');
+            const doc = readMap(0);
+            skipBlanks();
+            if (i < lines.length) throw new Error('unparsable');
+            if (doc == null || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('unparsable');
+            return doc;
+          }
+
           const crypto = require('crypto');
           const fs = require('fs');
           const os = require('os');
@@ -690,15 +995,28 @@ jobs:
             return String(value).replace(/[\r\n]/g, ' ');
           }
 
-          function validName(name) {
-            return typeof name === 'string'
-              && name.length > 0
-              && name.length <= 255
-              && name.trim() === name
-              && !/[\0\r\n/\\]/.test(name)
-              && !name.includes('..')
-              && name !== '.'
-              && name !== '..';
+          function isPublishName(name) {
+            if (typeof name !== 'string') return false;
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) return false;
+            if (name.length > 255 || name.includes('..')) return false;
+            if (/^(latest|beta|alpha)\.yml$/i.test(name)) return true;
+            const ext = name.match(/\.(exe|zip)$/i);
+            if (!ext) return false;
+            const stem = name.slice(0, -ext[0].length);
+            if (!stem.includes('-')) return false;
+            if (/[A-Za-z]\.[A-Za-z]/.test(stem)) return false;
+            return true;
+          }
+
+          function isChannelYml(name) {
+            return /^(latest|beta|alpha)\.yml$/i.test(name);
+          }
+
+          function linuxAllowed(name) {
+            const lower = String(name).toLowerCase();
+            if (lower.endsWith('.appimage')) return true;
+            if (lower === 'latest-linux.yml' || lower === 'beta-linux.yml') return true;
+            return false;
           }
 
           function parseManifest(raw) {
@@ -715,16 +1033,12 @@ jobs:
             const entries = Object.entries(manifest);
             if (entries.length === 0) fail('win-manifest is empty');
             for (const [name, hash] of entries) {
-              if (!validName(name)) fail('win-manifest has an invalid file name');
+              if (!isPublishName(name)) fail('win-manifest has an invalid file name');
               if (typeof hash !== 'string' || !/^[0-9a-f]{64}$/.test(hash)) {
                 fail(`win-manifest hash for ${name} is unparsable`);
               }
             }
             return manifest;
-          }
-
-          function isWindowsAsset(name) {
-            return name.endsWith('.exe') || name.endsWith('.zip') || /^(latest|beta|alpha)\.yml$/.test(name);
           }
 
           function gh(args) {
@@ -752,7 +1066,7 @@ jobs:
 
           const assetNames = [];
           for (const asset of assets) {
-            if (!asset || typeof asset.name !== 'string' || !validName(asset.name)) {
+            if (!asset || typeof asset.name !== 'string' || asset.name.length === 0 || /[\0\r\n]/.test(asset.name)) {
               fail('release asset list has an invalid file name');
             }
             assetNames.push(asset.name);
@@ -760,9 +1074,9 @@ jobs:
           const assetSet = new Set(assetNames);
           if (assetSet.size !== assetNames.length) fail('release asset list has a duplicate name');
 
-          const extras = assetNames.filter((name) => isWindowsAsset(name) && !Object.prototype.hasOwnProperty.call(manifest, name));
           const missing = [];
           const mismatch = [];
+          const downloadedFiles = new Map();
 
           for (const [name, expected] of Object.entries(manifest)) {
             if (!assetSet.has(name)) {
@@ -775,23 +1089,74 @@ jobs:
             if (downloaded.length !== 1 || downloaded[0] !== name) {
               fail(`download for ${safe(name)} did not return that file`);
             }
-            const hash = crypto.createHash('sha256').update(fs.readFileSync(path.join(dest, name))).digest('hex');
+            const full = path.join(dest, name);
+            const hash = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
             if (hash !== expected) mismatch.push(name);
+            downloadedFiles.set(name, full);
           }
 
-          if (extras.length || missing.length || mismatch.length) {
-            fail(`draft Windows assets do not match win-manifest; missing=${missing.join(', ') || '-'}; mismatch=${mismatch.join(', ') || '-'}; extra=${extras.join(', ') || '-'}`);
+          const feedNames = new Set();
+          for (const [name, filePath] of downloadedFiles) {
+            if (!isChannelYml(name)) continue;
+            let doc;
+            try {
+              doc = parseChannelYml(fs.readFileSync(filePath, 'utf8'));
+            } catch (err) {
+              fail(`${safe(name)} is unparsable`);
+            }
+            if (doc == null || typeof doc !== 'object' || Array.isArray(doc)) fail(`${safe(name)} is unparsable`);
+            if (!Array.isArray(doc.files) || doc.files.length === 0) fail(`${safe(name)} has no file urls`);
+            for (const file of doc.files) {
+              if (file == null || typeof file !== 'object' || Array.isArray(file) || typeof file.url !== 'string') {
+                fail(`${safe(name)} file entry is unparsable`);
+              }
+              feedNames.add(file.url);
+              if (!Object.prototype.hasOwnProperty.call(manifest, file.url)) {
+                fail(`${safe(name)} url ${safe(file.url)} has no manifest entry`);
+              }
+              if (!downloadedFiles.has(file.url)) {
+                fail(`${safe(name)} url ${safe(file.url)} has no downloaded file`);
+              }
+            }
+            if (Object.prototype.hasOwnProperty.call(doc, 'path')) {
+              if (typeof doc.path !== 'string') fail(`${safe(name)} path is unparsable`);
+              feedNames.add(doc.path);
+              if (!Object.prototype.hasOwnProperty.call(manifest, doc.path)) {
+                fail(`${safe(name)} path ${safe(doc.path)} has no manifest entry`);
+              }
+              if (!downloadedFiles.has(doc.path)) {
+                fail(`${safe(name)} path ${safe(doc.path)} has no downloaded file`);
+              }
+            }
           }
 
+          for (const name of Object.keys(manifest)) {
+            if (isChannelYml(name)) continue;
+            if (!feedNames.has(name)) fail(`${safe(name)} is not a channel yml url`);
+          }
+
+          const denied = assetNames.filter((name) => !Object.prototype.hasOwnProperty.call(manifest, name) && !linuxAllowed(name));
           const names = Object.keys(manifest).sort();
           console.log(`P3 checked ${names.length} manifest entries:`);
           for (const name of names) console.log(`- ${name} sha256=${manifest[name]}`);
+
+          if (denied.length || missing.length || mismatch.length) {
+            fail(`draft Windows assets do not match win-manifest; missing=${missing.join(', ') || '-'}; mismatch=${mismatch.join(', ') || '-'}; extra=${denied.join(', ') || '-'}`);
+          }
           EOF
 
       - name: Update release with notes (keep as draft)
-        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          gh release edit "$TAG" --notes "${{ steps.changelog.outputs.notes }}" --draft
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            echo "::error::TAG is empty"
+            exit 1
+          fi
+          if [ ! -f "$RUNNER_TEMP/notes.md" ]; then
+            echo "::error::release notes file is missing"
+            exit 1
+          fi
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --draft
