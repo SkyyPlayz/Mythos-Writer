@@ -1,10 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { FieldType, CustomFieldDef } from '../settingsPanelTypes';
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-interface SceneFieldsSectionProps {}
-
-export default function SceneFieldsSection(_props: SceneFieldsSectionProps) {
+export default function SceneFieldsSection() {
   const [customFields, setCustomFields] = useState<CustomFieldDef[]>([]);
   const [customFieldsDirty, setCustomFieldsDirty] = useState(false);
   const [customFieldsSavedOk, setCustomFieldsSavedOk] = useState(false);
