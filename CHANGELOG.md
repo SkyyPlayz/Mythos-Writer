@@ -17,6 +17,7 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
 - **Timeline views** — the timeline shows Structure and Progress. Plotlines, Spreadsheet, Tension, Relationships, and Subway are hidden from the view switcher; saved timeline data is unchanged. ([#1695](https://github.com/SkyyPlayz/Mythos-Writer/pull/1695))
 - **Graph filters sit at the top-right of the graph card** — the category chips and depth control are a compact bar on the card, and Tab still reaches them after the header controls. ([PR #1715](https://github.com/SkyyPlayz/Mythos-Writer/pull/1715))
+- Electron 44.9.0 (from 42). macOS 13+ required. File dialogs remember the last folder again. Client-certificate requests are declined, not auto-answered. ([#1728](https://github.com/SkyyPlayz/Mythos-Writer/pull/1728))
 - **Theme "Neon Classic" is now "Neon Nebula"** — display name only; the stored preset key is unchanged. (SKY-11589)
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 

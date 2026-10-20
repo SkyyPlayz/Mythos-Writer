@@ -167,8 +167,8 @@ describe('NotesTabPanel — Open in Brainstorm (SKY-3201 AC2)', () => {
 // mutates the board without explicit user accept in Suggestion Inbox.
 describe('scene_crafter_card guard (SKY-3201 / Beta2 owner-locked)', () => {
   it('scene_crafter_card is EXCLUDED from the auto-apply kind set', async () => {
-    const { ProposalCard } = await import('./components/BrainstormCard/ProposalCard');
-    type NoteProposalKind = Parameters<typeof ProposalCard>[0]['proposals'][number]['kind'];
+    const { ProposalCard: _ProposalCard } = await import('./components/BrainstormCard/ProposalCard');
+    type NoteProposalKind = Parameters<typeof _ProposalCard>[0]['proposals'][number]['kind'];
     const AUTO_APPLY_KINDS: NoteProposalKind[] = ['character', 'location', 'item', 'faction', 'scene_card', 'inbox'];
     expect(AUTO_APPLY_KINDS).not.toContain('scene_crafter_card');
   });

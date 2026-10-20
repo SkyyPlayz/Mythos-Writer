@@ -1,6 +1,7 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
-import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy } from './security.js';
+import { defaultFor, rememberFrom, vaultOpenDefaultPath } from './dialogDefaults.js';
 import {
   registerAiActivityIpcHandlers,
   registerAiActivity,
@@ -2191,7 +2192,9 @@ export const handlers: IpcHandlers = {
       properties: ['openDirectory', 'createDirectory'],
       title: 'Open Vault Folder',
       buttonLabel: 'Open as Vault',
+      defaultPath: vaultOpenDefaultPath(getVaultRoot()),
     });
+    rememberFrom('vault', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { vaultRoot: null, cancelled: true };
     }
@@ -4313,7 +4316,9 @@ export const handlers: IpcHandlers = {
       properties: ['openFile'],
       title: 'Import story',
       filters: [filter, { name: 'All files', extensions: ['*'] }],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { filePath: null, cancelled: true };
     }
@@ -5447,7 +5452,9 @@ export const handlers: IpcHandlers = {
       buttonLabel: 'Set Background',
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { filePath: null, cancelled: true };
     }
@@ -5666,7 +5673,9 @@ export const handlers: IpcHandlers = {
       title,
       buttonLabel: 'Select',
       filters,
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { path: null, cancelled: true, registrationToken: null };
     }
@@ -6268,7 +6277,9 @@ export const handlers: IpcHandlers = {
       buttonLabel: 'Set Icon',
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { filePath: null, cancelled: true };
     }
@@ -7282,7 +7293,9 @@ export const handlers: IpcHandlers = {
       title: 'Restore App Data from Backup',
       filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
       properties: ['openFile'],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', res);
     if (res.canceled || !res.filePaths[0]) return { restored: false, cancelled: true, details: [] };
     const archivePath = res.filePaths[0];
     await shutdownJobService();
@@ -8585,7 +8598,9 @@ export const handlers: IpcHandlers = {
       title: 'Import Template',
       filters: [{ name: 'Mythos Template', extensions: ['mythostemplate'] }],
       properties: ['openFile'],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', res);
     if (res.canceled || !res.filePaths[0]) return { ok: true as const, cancelled: true };
     return importTemplate(app.getPath('userData'), res.filePaths[0]);
   },
@@ -11802,6 +11817,11 @@ function setupAgentPersonaIpc(): void {
 // where a failed GPU process otherwise blocks the window from ever appearing.
 // Must be called before the app 'ready' event.
 app.disableHardwareAcceleration();
+
+// Electron 44 auto-picks a client certificate when this event is unhandled,
+// including for net and utility-process requests where webContents is null.
+// Register before ready and before any BrowserWindow.
+installClientCertPolicy(app);
 
 process.on('unhandledRejection', (reason) => {
   console.error('[main] Unhandled promise rejection:', reason);
