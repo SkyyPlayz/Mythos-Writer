@@ -46,7 +46,7 @@ const BYTE_MARKERS = [
   'libspeechd',
   'enable-speech-dispatcher',
 ];
-const PACKAGE_NAME_MARKERS = ['kokoro-js', 'phonemizer'];
+const PACKAGE_NAME_MARKERS = ['kokoro-js', 'phonemizer', 'espeak', 'sherpa-onnx', 'pinyin-pro'];
 const SCRIPT_RANGES = {
   kana: { start: 12352, end: 12543 },
   hangul: { start: 44032, end: 55215 },
@@ -215,6 +215,7 @@ describe('dependency deny list', () => {
       scriptRanges: Record<string, { start: number; end: number; ceiling: number }>;
     };
     expect(markers.byteMarkers).toEqual(BYTE_MARKERS);
+    expect(markers.byteMarkers).not.toContain('espeak');
     expect(markers.packageNameMarkers).toEqual(PACKAGE_NAME_MARKERS);
     for (const [name, range] of Object.entries(SCRIPT_RANGES)) {
       expect(markers.scriptRanges[name]?.start).toBe(range.start);
@@ -300,6 +301,32 @@ describe('deny scan', () => {
     expect(result.problems.some((line) => line.includes('node_modules/phonemizer'))).toBe(true);
     expect(result.problems.some((line) => line.includes('kokoro-js') && line.includes('package.json'))).toBe(true);
     expect(result.problems.some((line) => line.includes('readme.txt'))).toBe(false);
+  });
+
+  it('matches espeak, sherpa-onnx, and pinyin-pro by package name and not as a bare espeak byte', () => {
+    const dir = tempDir();
+    const { config } = writeConfig(dir, []);
+    expect(config.byteMarkers).not.toContain('espeak');
+    expect(config.packageNameMarkers).toEqual(PACKAGE_NAME_MARKERS);
+    const bundle = path.join(dir, 'bundle');
+    mkdirSync(path.join(bundle, 'node_modules', 'espeak'), { recursive: true });
+    mkdirSync(path.join(bundle, 'node_modules', 'pinyin-pro'), { recursive: true });
+    mkdirSync(path.join(bundle, 'node_modules', 'sherpa-onnx'), { recursive: true });
+    writeFileSync(path.join(bundle, 'node_modules', 'espeak', 'index.js'), 'exports.ok = true;\n');
+    writeFileSync(path.join(bundle, 'node_modules', 'pinyin-pro', 'index.js'), 'exports.ok = true;\n');
+    writeFileSync(path.join(bundle, 'node_modules', 'sherpa-onnx', 'index.js'), 'exports.ok = true;\n');
+    writeFileSync(
+      path.join(bundle, 'package.json'),
+      JSON.stringify({ dependencies: { espeak: '1.0.0', 'pinyin-pro': '3.29.5', 'sherpa-onnx': '1.0.0' } }),
+    );
+    writeFileSync(path.join(bundle, 'prose.txt'), 'espeak and pinyin-pro appear here as words\n');
+    const result = deny.scanBundle(bundle, config);
+    expect(result.problems.some((line) => line.includes('node_modules/espeak'))).toBe(true);
+    expect(result.problems.some((line) => line.includes('node_modules/pinyin-pro'))).toBe(true);
+    expect(result.problems.some((line) => line.includes('node_modules/sherpa-onnx'))).toBe(true);
+    expect(result.problems.some((line) => line.includes('package.json') && line.includes('"espeak"'))).toBe(true);
+    expect(result.problems.some((line) => line.includes('package.json') && line.includes('"pinyin-pro"'))).toBe(true);
+    expect(result.problems.some((line) => line.includes('prose.txt'))).toBe(false);
   });
 
   it('fails script ceilings and does not let the allowlist bypass them', () => {
