@@ -7,6 +7,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { assertAiWritable, withAiFileLock } from './aiWriteGuard.js';
+import { NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS } from '../vault.js';
 import {
   createMythosFile,
   manifestCachePathFor,
@@ -322,6 +323,42 @@ describe('assertAiWritable class C (M-B2i)', () => {
     expect(assertAiWritable(story, 'Universes/U/Characters/x.md', {
       classC: { notesRoot: story, storyRoot: story },
     })).toEqual({ ok: false, reason: 'not_allowlisted' });
+  });
+
+  function writeUniverseNote(notes: string, folder: string): string {
+    const parts = ['Universes', 'My First Universe', folder, 'x.md'];
+    fs.mkdirSync(path.join(notes, ...parts.slice(0, -1)), { recursive: true });
+    fs.writeFileSync(path.join(notes, ...parts), 'x\n');
+    return parts.join('/');
+  }
+
+  it('refuses a universe Scenes note (M-B2i)', () => {
+    const { story, notes } = pair();
+    const rel = writeUniverseNote(notes, 'Scenes');
+    expect(assertAiWritable(notes, rel, { classC: { notesRoot: notes, storyRoot: story } })).toEqual({
+      ok: false,
+      reason: 'not_allowlisted',
+    });
+  });
+
+  it('derives class C from the example universe dirs and excludes manuscript folders', () => {
+    // The guard lowercases NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS into its class C set.
+    const derived = NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS.map((name) => name.toLowerCase());
+    expect(derived).toEqual(['characters', 'locations', 'factions', 'history', 'systems', 'items']);
+    expect(derived).not.toContain('scenes');
+    expect(derived).not.toContain('chapters');
+    expect(derived).not.toContain('manuscript');
+
+    const { story, notes } = pair();
+    const opts = { classC: { notesRoot: notes, storyRoot: story } };
+    for (const name of NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS) {
+      const rel = writeUniverseNote(notes, name);
+      expect(assertAiWritable(notes, rel, opts).ok).toBe(true);
+    }
+    for (const banned of ['Scenes', 'Chapters', 'manuscript']) {
+      const rel = writeUniverseNote(notes, banned);
+      expect(assertAiWritable(notes, rel, opts)).toEqual({ ok: false, reason: 'not_allowlisted' });
+    }
   });
 
   it('does not need a manifest inside the notes root', () => {
