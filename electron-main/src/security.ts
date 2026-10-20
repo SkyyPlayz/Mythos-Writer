@@ -86,6 +86,42 @@ export function installCspHeaders(session: Session): void {
 }
 
 /**
+ * Electron 44 fires `select-client-certificate` for `net` and utility-process
+ * requests too, with `webContents === null`. An unhandled event auto-picks the
+ * first matching certificate. Decline every request: no certificate, and no
+ * cert subject, path, or query in the log (host only).
+ *
+ * Call once, at main-process module load, before `app.whenReady()`.
+ */
+export function installClientCertPolicy(electronApp: {
+  on: (
+    event: 'select-client-certificate',
+    listener: (
+      event: { preventDefault: () => void },
+      webContents: unknown,
+      url: string,
+      certificateList: readonly unknown[],
+      callback: () => void,
+    ) => void,
+  ) => void;
+}): void {
+  electronApp.on('select-client-certificate', (event, _webContents, url, _list, callback) => {
+    event.preventDefault();
+    console.info(`[client-cert] declined ${clientCertHost(url)}`);
+    callback();
+  });
+}
+
+/** URL host only. A value that is not a URL contributes nothing — never the raw string. */
+export function clientCertHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Window-open handler factory — deny external popups by default.
  *
  * Returning `{ action: 'deny' }` blocks `window.open`, target=_blank links,
