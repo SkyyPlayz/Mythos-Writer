@@ -67,7 +67,7 @@ describe('safeVaultJoin', () => {
       fs.symlinkSync(os.tmpdir(), path.join(tmpDir, 'escape-dir'));
       expect(() =>
         safeVaultJoin(tmpDir, 'escape-dir/new.md', { writeMode: true }),
-      ).toThrow(/parent symlink escapes vault/);
+      ).toThrow(/Path traversal denied: .*\(symlink escape detected\)/);
     });
 
     it('allows a symlink pointing inside the vault', () => {
