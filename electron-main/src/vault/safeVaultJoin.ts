@@ -92,18 +92,49 @@ function isLinkStat(st: fs.Stats, p: string): boolean {
  * lstat the leaf. ENOENT/ENOTDIR → null. ELOOP → loop error.
  * Any other error is logged and rethrown (never treated as absent).
  */
+function throwSymlinkLoop(relPath: string): never {
+  logVaultRefusal('ELOOP', relPath);
+  throw new Error(`Path traversal denied: ${relPath} (symlink loop)`);
+}
+
 function lstatLeaf(p: string, relPath: string): fs.Stats | null {
   try {
     return fs.lstatSync(p);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ENOENT' || code === 'ENOTDIR') return null;
-    if (code === 'ELOOP') {
-      logVaultRefusal('ELOOP', relPath);
-      throw new Error(`Path traversal denied: ${relPath} (symlink loop)`);
-    }
+    if (code === 'ELOOP') throwSymlinkLoop(relPath);
     logVaultRefusal(code ?? 'LSTAT', relPath);
     throw err;
+  }
+}
+
+/**
+ * existsSync follows links and treats a Windows file-symlink loop as absent,
+ * so a write of `d/x.md` through `d -> d` used to return the path. lstat of
+ * that child is ENOENT on win32 (the loop is not reported until an ancestor
+ * is stat'd). A successful lstat of a symlink ancestor is resolved here.
+ * An ELOOP from lstat of the path itself is left to lstatLeaf: mapping that
+ * to null must stay visible.
+ */
+function symlinkAncestorStopsWalk(ancestor: string, relPath: string): 'stop' | 'continue' | 'posix-loop' {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(ancestor);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP') return 'posix-loop';
+    if (code === 'ENOENT' || code === 'ENOTDIR') return 'continue';
+    throw err;
+  }
+  if (!isLinkStat(st, ancestor)) return 'continue';
+  try {
+    fs.realpathSync.native(ancestor);
+    return 'stop';
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP') throwSymlinkLoop(relPath);
+    throw new Error(`Path traversal denied: ${relPath} (parent symlink escapes vault)`);
   }
 }
 
@@ -179,7 +210,13 @@ export function safeVaultJoin(
     // realpath that ancestor, then reattach the remaining suffix so a
     // symlinked vault root with deeply-nested empty parents is still allowed.
     let ancestor = resolved;
+    let posixLoop = false;
     while (!fs.existsSync(ancestor)) {
+      if (!posixLoop) {
+        const stopped = symlinkAncestorStopsWalk(ancestor, relPath);
+        if (stopped === 'stop') break;
+        if (stopped === 'posix-loop') posixLoop = true;
+      }
       const parent = path.dirname(ancestor);
       if (parent === ancestor) break;
       ancestor = parent;
