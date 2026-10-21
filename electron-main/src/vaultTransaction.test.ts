@@ -271,4 +271,101 @@ describe('vaultTransaction', () => {
     expect(undo.response.filesRestored).toBe(1);
     expect(undo.response.filesSkipped).toBe(undo.conflicts.length);
   });
+
+  it('refuses undo for a different vault root, writes nothing, and clears the undo slot', () => {
+    const alliesOriginal = 'allies-before';
+    const alliesNext = 'allies-after';
+    writeNote('Jasper Thorne.md', 'note-before');
+    writeNote('Allies.md', alliesOriginal);
+    applyVaultTransaction({
+      notesRoot,
+      storyRoot,
+      fromPath: 'Jasper.md',
+      toPath: 'Jasper Thorne.md',
+      oldStem: 'Jasper',
+      newStem: 'Jasper Thorne',
+      changes: [
+        {
+          side: 'notes',
+          kind: 'note',
+          relPath: 'Allies.md',
+          newContent: alliesNext,
+          linkCount: 1,
+          mode: 'update-display',
+        },
+      ],
+    });
+
+    const otherNotes = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-tx-other-notes-'));
+    const writes: string[] = [];
+    const spy: VaultWriter = (root, relPath, content) => {
+      writes.push(relPath);
+      writeVaultFileAtomic(root, relPath, content);
+    };
+    try {
+      const refused = undoVaultTransaction({
+        notesRoot: otherNotes,
+        storyRoot,
+        writeFile: spy,
+      });
+      expect(refused.response.undone).toBe(false);
+      expect(refused.response.reason).toBe('The project has changed since the rename.');
+      expect(writes).toEqual([]);
+      expect(fs.existsSync(path.join(notesRoot, 'Jasper Thorne.md'))).toBe(true);
+      expect(fs.existsSync(path.join(notesRoot, 'Jasper.md'))).toBe(false);
+      expect(readNote('Allies.md')).toBe(alliesNext);
+
+      const again = undoVaultTransaction({ notesRoot, storyRoot, writeFile: spy });
+      expect(again.response.undone).toBe(false);
+      expect(again.response.reason).toBe('Nothing to undo.');
+      expect(writes).toEqual([]);
+      expect(readNote('Allies.md')).toBe(alliesNext);
+      expect(fs.existsSync(path.join(notesRoot, 'Jasper Thorne.md'))).toBe(true);
+    } finally {
+      fs.rmSync(otherNotes, { recursive: true, force: true });
+    }
+  });
+
+  it('rolls back the rename and does not recreate a file deleted after planning', () => {
+    writeNote('Jasper Thorne.md', 'The man himself.');
+    writeNote('Allies.md', 'See [[Jasper]] for details.');
+    writeNote('Enemies.md', 'Feared by [[Jasper|Jay]].');
+    const planned = [
+      {
+        side: 'notes' as const,
+        kind: 'note' as const,
+        relPath: 'Allies.md',
+        newContent: 'See [[Jasper Thorne]] for details.',
+        linkCount: 1,
+        mode: 'update-display' as const,
+      },
+      {
+        side: 'notes' as const,
+        kind: 'note' as const,
+        relPath: 'Enemies.md',
+        newContent: 'Feared by [[Jasper Thorne|Jay]].',
+        linkCount: 1,
+        mode: 'update-display' as const,
+      },
+    ];
+    fs.rmSync(path.join(notesRoot, 'Enemies.md'));
+
+    expect(() =>
+      applyVaultTransaction({
+        notesRoot,
+        storyRoot,
+        fromPath: 'Jasper.md',
+        toPath: 'Jasper Thorne.md',
+        oldStem: 'Jasper',
+        newStem: 'Jasper Thorne',
+        changes: planned,
+      }),
+    ).toThrow(/rolled back/);
+
+    expect(fs.existsSync(path.join(notesRoot, 'Jasper.md'))).toBe(true);
+    expect(fs.existsSync(path.join(notesRoot, 'Jasper Thorne.md'))).toBe(false);
+    expect(readNote('Jasper.md')).toBe('The man himself.');
+    expect(readNote('Allies.md')).toBe('See [[Jasper]] for details.');
+    expect(fs.existsSync(path.join(notesRoot, 'Enemies.md'))).toBe(false);
+  });
 });
