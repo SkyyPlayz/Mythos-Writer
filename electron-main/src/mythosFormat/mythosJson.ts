@@ -26,7 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultFileAtomic } from '../vault.js';
 
 export const MYTHOS_JSON_FILENAME = 'mythos.json';
 export const MYTHOS_FORMAT_VERSION = 2 as const;
@@ -297,7 +297,7 @@ export function tryReadMythosFile(mythosRoot: string): MythosFile | null {
 
 /** Atomic write (temp + rename via writeFileAtomic). */
 export function writeMythosFile(mythosRoot: string, file: MythosFile): void {
-  writeFileAtomic(mythosJsonPath(mythosRoot), serializeMythosFile(file));
+  writeVaultFileAtomic(mythosRoot, MYTHOS_JSON_FILENAME, serializeMythosFile(file));
   invalidateDetectionCache(mythosRoot);
 }
 

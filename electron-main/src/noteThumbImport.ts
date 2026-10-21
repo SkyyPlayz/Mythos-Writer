@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from './vault.js';
+import { writeVaultFileAtomic } from './vault.js';
 
 /** Same set as the BG_PICK dialog — no SVG (never serve user SVG as markup). */
 export const THUMB_IMPORT_MIME: Record<string, string> = {
@@ -80,8 +80,7 @@ export function importNoteThumbAttachment(
     }
     const data = fs.readFileSync(sourceAbsPath);
     const relPath = uniqueAttachmentRelPath(vaultRoot, path.basename(sourceAbsPath));
-    const destAbs = path.join(vaultRoot, ...relPath.split('/'));
-    writeFileAtomic(destAbs, data);
+    writeVaultFileAtomic(vaultRoot, relPath, data);
     return { ok: true, relPath };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

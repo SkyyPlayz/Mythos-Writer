@@ -100,6 +100,8 @@ Both filters compose: selecting a folder and a tag shows only notes that satisfy
 
 Click a scene in the left rail to open it in the editor. The editor uses rich text with Markdown storage: what you write is saved as standard Markdown files, so they remain readable outside the app.
 
+Saving a note no longer follows a symbolic link at the note's path, so a link pointing outside the vault can't make the app write there. Saving a note that is a symbolic link now shows: Couldn't save <name>: it's a shortcut (symbolic link). Save it under a new name instead.
+
 Standard text formatting:
 
 | Shortcut | Effect |

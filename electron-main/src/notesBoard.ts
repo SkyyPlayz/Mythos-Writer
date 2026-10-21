@@ -43,7 +43,7 @@ import crypto from 'node:crypto';
 import {
   parseFrontmatter,
   serializeFrontmatter,
-  writeFileAtomic,
+  writeVaultFileAtomic,
   listVaultFiles,
   markSelfWrite,
 } from './vault.js';
@@ -308,8 +308,13 @@ function readBoardFileRaw(folderAbsPath: string): BoardFile | null {
   return sanitizeBoardFile(parsed as Record<string, unknown>);
 }
 
-function writeBoardFileRaw(folderAbsPath: string, board: BoardFile): void {
-  writeFileAtomic(sidecarPath(folderAbsPath), JSON.stringify(board, null, 2));
+function boardSidecarRel(folderRelPath: string): string {
+  const folder = folderRelPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  return folder ? `${folder}/${BOARD_SIDECAR_FILE_NAME}` : BOARD_SIDECAR_FILE_NAME;
+}
+
+function writeBoardFileRaw(vaultRoot: string, folderRelPath: string, board: BoardFile): void {
+  writeVaultFileAtomic(vaultRoot, boardSidecarRel(folderRelPath), JSON.stringify(board, null, 2));
 }
 
 function resolveFolderAbs(vaultRoot: string, folderRelPath: string): string {
@@ -387,14 +392,15 @@ export function resolveId(kind: NotesBoardItemKind, absPath: string): string | n
  * the other's handler body starts, so there is no read-then-write race that
  * could mint two different ids for the same entity.
  */
-export function resolveOrAssignId(kind: NotesBoardItemKind, absPath: string): string {
+export function resolveOrAssignId(kind: NotesBoardItemKind, absPath: string, vaultRoot: string): string {
   const existing = resolveId(kind, absPath);
   if (existing) return existing;
 
   const id = crypto.randomUUID();
+  const rel = path.relative(vaultRoot, absPath).split(path.sep).join('/');
   if (kind === 'folder') {
     const board = readBoardFileRaw(absPath) ?? defaultBoardFile();
-    writeBoardFileRaw(absPath, { ...board, id, updated: new Date().toISOString() });
+    writeBoardFileRaw(vaultRoot, rel, { ...board, id, updated: new Date().toISOString() });
   } else {
     let raw: string;
     try {
@@ -407,7 +413,7 @@ export function resolveOrAssignId(kind: NotesBoardItemKind, absPath: string): st
     // frontmatter key's presence/value and leaves `prose` (the note body)
     // byte-for-byte untouched. Same idiom notesTagWrangler.ts uses to
     // rewrite one frontmatter field without disturbing the rest.
-    writeFileAtomic(absPath, serializeFrontmatter({ ...frontmatter, id }, prose));
+    writeVaultFileAtomic(vaultRoot, rel, serializeFrontmatter({ ...frontmatter, id }, prose));
     // SKY-11186: this is the app's own write, not an external edit — without
     // the mark, the first drag of every never-arranged card would bounce back
     // through the Notes watcher as a vault change (board reload, tree
@@ -492,7 +498,7 @@ export function getBoard(vaultRoot: string, folderRelPath: string): Board {
   // resurrect one), matching vaultIcons.ts's rewriteIconsOnMove returning
   // null for a no-op.
   if (rawBoard && changed) {
-    writeBoardFileRaw(folderAbs, { ...gcBoard, updated: new Date().toISOString() });
+    writeBoardFileRaw(vaultRoot, folderRelPath, { ...gcBoard, updated: new Date().toISOString() });
   }
 
   return {
@@ -513,6 +519,8 @@ interface PendingBoardWrite {
   pendingLayout: Record<string, Partial<BoardLayoutEntry>>;
   /** Per-key pending colour; null means "clear". Last call in the window wins. */
   pendingColors: Record<string, string | null>;
+  vaultRoot: string;
+  folderRelPath: string;
 }
 
 // Keyed by board folder's absolute path — one buffer per board file, so a
@@ -526,7 +534,7 @@ function isUnder(childAbs: string, rootAbs: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-function schedulePendingWrite(folderAbs: string): PendingBoardWrite {
+function schedulePendingWrite(folderAbs: string, vaultRoot: string, folderRelPath: string): PendingBoardWrite {
   const existing = pendingWrites.get(folderAbs);
   if (existing) clearTimeout(existing.timer);
 
@@ -538,6 +546,8 @@ function schedulePendingWrite(folderAbs: string): PendingBoardWrite {
     timer,
     pendingLayout: existing?.pendingLayout ?? {},
     pendingColors: existing?.pendingColors ?? {},
+    vaultRoot: existing?.vaultRoot ?? vaultRoot,
+    folderRelPath: existing?.folderRelPath ?? folderRelPath,
   };
   pendingWrites.set(folderAbs, entry);
   return entry;
@@ -580,7 +590,7 @@ function flushBoardWrite(folderAbs: string): void {
 
   if (changed) {
     board.updated = new Date().toISOString();
-    writeBoardFileRaw(folderAbs, board);
+    writeBoardFileRaw(entry.vaultRoot, entry.folderRelPath, board);
   }
 }
 
@@ -619,10 +629,10 @@ export function patchLayout(
   const folderAbs = resolveFolderAbs(vaultRoot, folderRelPath);
   const itemAbs = path.join(folderAbs, itemRelPath);
   const { kind, prefix } = statItemKind(itemAbs, itemRelPath);
-  const id = resolveOrAssignId(kind, itemAbs);
+  const id = resolveOrAssignId(kind, itemAbs, vaultRoot);
   const key = `${prefix}:${id}`;
 
-  const entry = schedulePendingWrite(folderAbs);
+  const entry = schedulePendingWrite(folderAbs, vaultRoot, folderRelPath);
   entry.pendingLayout[key] = { ...entry.pendingLayout[key], ...patch };
 
   return { key, id };
@@ -638,10 +648,10 @@ export function patchColors(
   const folderAbs = resolveFolderAbs(vaultRoot, folderRelPath);
   const itemAbs = path.join(folderAbs, itemRelPath);
   const { kind, prefix } = statItemKind(itemAbs, itemRelPath);
-  const id = resolveOrAssignId(kind, itemAbs);
+  const id = resolveOrAssignId(kind, itemAbs, vaultRoot);
   const key = `${prefix}:${id}`;
 
-  const entry = schedulePendingWrite(folderAbs);
+  const entry = schedulePendingWrite(folderAbs, vaultRoot, folderRelPath);
   entry.pendingColors[key] = color;
 
   return { key, id };
@@ -700,7 +710,7 @@ export function furnitureCreate(
   const created: BoardFurnitureItem = { ...item, id: crypto.randomUUID() };
   board.furniture = [...board.furniture, created];
   board.updated = new Date().toISOString();
-  writeBoardFileRaw(folderAbs, board);
+  writeBoardFileRaw(vaultRoot, folderRelPath, board);
   return created;
 }
 
@@ -720,7 +730,7 @@ export function furnitureUpdate(
   });
   if (!updated) return null;
   board.updated = new Date().toISOString();
-  writeBoardFileRaw(folderAbs, board);
+  writeBoardFileRaw(vaultRoot, folderRelPath, board);
   return updated;
 }
 
@@ -749,7 +759,7 @@ export function cascadeLinesForKey(
   const changed = board.furniture.length !== before;
   if (changed) {
     board.updated = new Date().toISOString();
-    writeBoardFileRaw(folderAbs, board);
+    writeBoardFileRaw(vaultRoot, folderRelPath, board);
   }
   return { changed };
 }
@@ -783,7 +793,7 @@ export function furnitureTrashPermanent(
   };
   board.trash = [...board.trash, record];
   board.updated = new Date().toISOString();
-  writeBoardFileRaw(folderAbs, board);
+  writeBoardFileRaw(vaultRoot, folderRelPath, board);
   return { record };
 }
 
@@ -801,7 +811,7 @@ export function furnitureDelete(
   const withoutItem = board.furniture.filter((f) => f.id !== furnitureId);
   board.furniture = dropLinesReferencing(withoutItem, key);
   board.updated = new Date().toISOString();
-  writeBoardFileRaw(folderAbs, board);
+  writeBoardFileRaw(vaultRoot, folderRelPath, board);
   return { deleted: true };
 }
 
@@ -883,7 +893,8 @@ export function createBoardItem(
   } else {
     itemPath = uniqueChildName(folderAbs, NEW_NOTE_BASE_NAME, '.md');
     const abs = path.join(folderAbs, itemPath);
-    writeFileAtomic(abs, '');
+    const noteRel = folderRelPath ? `${folderRelPath.replace(/\\/g, '/')}/${itemPath}` : itemPath;
+    writeVaultFileAtomic(vaultRoot, noteRel, '');
     // The app's own write — without the mark, chokidar's `add` would bounce
     // straight back as an external vault change (reindex, graph work, a board
     // reload) for a file the canvas is already rendering. The IPC handler
@@ -1031,7 +1042,7 @@ export function itemDeleteStub(
 
   if (changed) {
     board.updated = new Date().toISOString();
-    writeBoardFileRaw(folderAbs, board);
+    writeBoardFileRaw(vaultRoot, folderRelPath, board);
   }
   return { key };
 }
