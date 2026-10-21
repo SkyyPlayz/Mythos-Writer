@@ -78,8 +78,16 @@ function logVaultRefusal(code: string, rel: string): void {
   console.error(`vault-write-refused ${JSON.stringify({ code, rel: safe })}`);
 }
 
-function isLinkStat(st: fs.Stats, p: string): boolean {
-  if (st.isSymbolicLink()) return true;
+/**
+ * `lstatResult` must come from `lstat`, not `stat` or `fstat`.
+ * `stat` of a symlink-to-file reports `isFile()` and would hide the link.
+ * Callers: `lstatLeaf`, and `symlinkAncestorStopsWalk`'s `lstatSync`.
+ * A regular file skips `readlinkSync`. A directory reparse point is not a
+ * file, so the junction fallback still calls `readlinkSync`.
+ */
+function isLinkStat(lstatResult: fs.Stats, p: string): boolean {
+  if (lstatResult.isSymbolicLink()) return true;
+  if (lstatResult.isFile()) return false;
   try {
     fs.readlinkSync(p);
     return true;

@@ -96,8 +96,17 @@ function hooksFor(deps: NoFollowDeps): NoFollowHooks {
   return testHooks ?? deps.hooks;
 }
 
-function isLinkStats(st: fs.Stats | fs.BigIntStats, p: string, fsImpl: typeof fs): boolean {
-  if (st.isSymbolicLink()) return true;
+/**
+ * `lstatResult` must come from `lstat`, not `stat` or `fstat`.
+ * `stat` of a symlink-to-file reports `isFile()` and would hide the link.
+ * Callers pass `lstatSync` only: the pre-write target, the temp file, the
+ * post-write target, append's leaf, and `assertFixedTmpNotLink`.
+ * A regular file skips `readlinkSync`. A directory reparse point is not a
+ * file, so the junction fallback still calls `readlinkSync`.
+ */
+function isLinkStats(lstatResult: fs.Stats | fs.BigIntStats, p: string, fsImpl: typeof fs): boolean {
+  if (lstatResult.isSymbolicLink()) return true;
+  if (lstatResult.isFile()) return false;
   try {
     fsImpl.readlinkSync(p);
     return true;
@@ -266,7 +275,8 @@ export function writeNoFollowAtomic(
   const rel = options.rel ?? path.basename(absPath);
   const fsImpl = deps.fs;
   if (options.mkdir) {
-    fsImpl.mkdirSync(path.dirname(absPath), { recursive: true });
+    const dir = path.dirname(absPath);
+    if (!fsImpl.existsSync(dir)) fsImpl.mkdirSync(dir, { recursive: true });
   }
 
   let pre: fs.BigIntStats | null = null;

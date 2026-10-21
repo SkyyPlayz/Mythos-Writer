@@ -205,6 +205,15 @@ function perfPct(oldMs: number, newMs: number): number {
   return ((newMs - oldMs) / oldMs) * 100;
 }
 
+function perfMedian(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+  }
+  return sorted[mid] ?? 0;
+}
+
 const PROFILE_FS_METHODS = [
   'lstatSync',
   'existsSync',
@@ -343,6 +352,37 @@ describe('PR A symlink writes', () => {
     expect(() => writeVaultFileAtomic(root, 'dang.md', 'x')).toThrow(/symlink leaf|LEAF_LINK/);
     expect(fs.lstatSync(path.join(root, 'dang.md')).isSymbolicLink()).toBe(true);
     expect(fs.existsSync(path.join(root, 'missing-inside.md'))).toBe(false);
+  });
+
+  it('refuses a file symlink leaf from lstat when readlink is unavailable', () => {
+    if (skipSymlink()) return;
+    const outside = path.join(tmp, 'outside-file.txt');
+    fs.writeFileSync(outside, 'KEEP');
+    const link = path.join(root, 'leaf.md');
+    fs.symlinkSync(outside, link);
+    const st = fs.lstatSync(link);
+    expect(st.isSymbolicLink()).toBe(true);
+    expect(st.isFile()).toBe(false);
+    const readlink = vi.spyOn(fs, 'readlinkSync').mockImplementation(() => {
+      throw Object.assign(new Error('readlink disabled'), { code: 'EINVAL' });
+    });
+    try {
+      expect(() => safeVaultJoin(root, 'leaf.md', { writeMode: true })).toThrow(/symlink leaf not allowed on write/);
+      expect(() => writeNoFollowAtomic(link, 'nope', { rel: 'leaf.md' })).toThrow(/LEAF_LINK/);
+    } finally {
+      readlink.mockRestore();
+    }
+    expect(fs.readFileSync(outside, 'utf8')).toBe('KEEP');
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+  });
+
+  it('mkdirs a missing parent and skips mkdir when the parent exists', () => {
+    writeVaultFileAtomic(root, 'nested/note.md', 'body');
+    expect(fs.readFileSync(path.join(root, 'nested', 'note.md'), 'utf8')).toBe('body');
+    const mkdir = vi.spyOn(fs, 'mkdirSync');
+    writeVaultFileAtomic(root, 'nested/note.md', 'next');
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(fs.readFileSync(path.join(root, 'nested', 'note.md'), 'utf8')).toBe('next');
   });
 
   it('A3 reads an in-vault leaf link and refuses the write', () => {
@@ -1191,29 +1231,60 @@ describe('PR A symlink writes', () => {
     }
 
     const saveN = 60;
-    const oldSaveSamples: number[] = [];
-    const newSaveSamples: number[] = [];
-    for (let i = 0; i < saveN; i++) {
-      oldSaveSamples.push(time(() => prePrWriteFileAtomic(oldFile, payload)));
-      newSaveSamples.push(time(() => writeVaultFileAtomic(root, 'new-save.md', payload)));
+    const repeats = 3;
+    const repeatRows: Array<{
+      oldSaveP50: number;
+      oldSaveP95: number;
+      newSaveP50: number;
+      newSaveP95: number;
+      oldJoinP50: number;
+      oldJoinP95: number;
+      newJoinP50: number;
+      newJoinP95: number;
+    }> = [];
+    for (let repeat = 0; repeat < repeats; repeat++) {
+      const oldSaveSamples: number[] = [];
+      const newSaveSamples: number[] = [];
+      for (let i = 0; i < saveN; i++) {
+        oldSaveSamples.push(time(() => prePrWriteFileAtomic(oldFile, payload)));
+        newSaveSamples.push(time(() => writeVaultFileAtomic(root, 'new-save.md', payload)));
+      }
+      const oldSave = perfStats(oldSaveSamples);
+      const newSave = perfStats(newSaveSamples);
+      const oldJoinSamples: number[] = [];
+      const newJoinSamples: number[] = [];
+      for (let i = 0; i < 5000; i++) {
+        const rel = `n${i}.md`;
+        oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
+        newJoinSamples.push(
+          time(() => {
+            safeVaultJoin(root, rel, { writeMode: true });
+          }),
+        );
+      }
+      const oldJoin = perfStats(oldJoinSamples);
+      const newJoin = perfStats(newJoinSamples);
+      repeatRows.push({
+        oldSaveP50: oldSave.p50,
+        oldSaveP95: oldSave.p95,
+        newSaveP50: newSave.p50,
+        newSaveP95: newSave.p95,
+        oldJoinP50: oldJoin.p50,
+        oldJoinP95: oldJoin.p95,
+        newJoinP50: newJoin.p50,
+        newJoinP95: newJoin.p95,
+      });
     }
-    const oldSave = perfStats(oldSaveSamples);
-    const newSave = perfStats(newSaveSamples);
-    const pairedSave = perfStats(newSaveSamples.map((ms, i) => ms - (oldSaveSamples[i] ?? 0)));
-
-    const oldJoinSamples: number[] = [];
-    const newJoinSamples: number[] = [];
-    for (let i = 0; i < 5000; i++) {
-      const rel = `n${i}.md`;
-      oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
-      newJoinSamples.push(
-        time(() => {
-          safeVaultJoin(root, rel, { writeMode: true });
-        }),
-      );
-    }
-    const oldJoin = perfStats(oldJoinSamples);
-    const newJoin = perfStats(newJoinSamples);
+    const med = {
+      oldSaveP50: perfMedian(repeatRows.map((row) => row.oldSaveP50)),
+      oldSaveP95: perfMedian(repeatRows.map((row) => row.oldSaveP95)),
+      newSaveP50: perfMedian(repeatRows.map((row) => row.newSaveP50)),
+      newSaveP95: perfMedian(repeatRows.map((row) => row.newSaveP95)),
+      oldJoinP50: perfMedian(repeatRows.map((row) => row.oldJoinP50)),
+      oldJoinP95: perfMedian(repeatRows.map((row) => row.oldJoinP95)),
+      newJoinP50: perfMedian(repeatRows.map((row) => row.newJoinP50)),
+      newJoinP95: perfMedian(repeatRows.map((row) => row.newJoinP95)),
+    };
 
     const profileN = 20;
     const oldProfile = profileFsCalls(profileN, () => prePrWriteFileAtomic(oldFile, payload));
@@ -1228,17 +1299,25 @@ describe('PR A symlink writes', () => {
         .join('\n');
     };
 
-    const saveDeltaP95 = newSave.p95 - oldSave.p95;
-    const joinDeltaP95 = newJoin.p95 - oldJoin.p95;
+    const saveP50Delta = med.newSaveP50 - med.oldSaveP50;
+    const saveP95Delta = med.newSaveP95 - med.oldSaveP95;
+    const joinP50Delta = med.newJoinP50 - med.oldJoinP50;
+    const repeatLog = repeatRows
+      .map(
+        (row, index) =>
+          `PERF-REPEAT ${index + 1} save old_p50=${fmt(row.oldSaveP50)} old_p95=${fmt(row.oldSaveP95)} new_p50=${fmt(row.newSaveP50)} new_p95=${fmt(row.newSaveP95)} join old_p50=${fmt(row.oldJoinP50)} old_p95=${fmt(row.oldJoinP95)} new_p50=${fmt(row.newJoinP50)} new_p95=${fmt(row.newJoinP95)}`,
+      )
+      .join('\n');
     console.log(
       [
+        repeatLog,
         'PERF-TABLE-BEGIN',
         `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
         `| --- | ---: | ---: | ---: | ---: | ---: | ---: |`,
-        `| per-save overwrite | ${fmt(oldSave.p50)} | ${fmt(oldSave.p95)} | ${fmt(newSave.p50)} | ${fmt(newSave.p95)} | ${fmt(perfPct(oldSave.p50, newSave.p50))} | ${fmt(perfPct(oldSave.p95, newSave.p95))} |`,
-        `| 5k join per call | ${fmt(oldJoin.p50)} | ${fmt(oldJoin.p95)} | ${fmt(newJoin.p50)} | ${fmt(newJoin.p95)} | ${fmt(perfPct(oldJoin.p50, newJoin.p50))} | ${fmt(perfPct(oldJoin.p95, newJoin.p95))} |`,
+        `| per-save overwrite | ${fmt(med.oldSaveP50)} | ${fmt(med.oldSaveP95)} | ${fmt(med.newSaveP50)} | ${fmt(med.newSaveP95)} | ${fmt(perfPct(med.oldSaveP50, med.newSaveP50))} | ${fmt(perfPct(med.oldSaveP95, med.newSaveP95))} |`,
+        `| 5k join per call | ${fmt(med.oldJoinP50)} | ${fmt(med.oldJoinP95)} | ${fmt(med.newJoinP50)} | ${fmt(med.newJoinP95)} | ${fmt(perfPct(med.oldJoinP50, med.newJoinP50))} | ${fmt(perfPct(med.oldJoinP95, med.newJoinP95))} |`,
         'PERF-TABLE-END',
-        `PERF-PAIRED-SAVE delta_p50=${fmt(pairedSave.p50)} delta_p95=${fmt(pairedSave.p95)} min=${fmt(pairedSave.min)} max=${fmt(pairedSave.max)}`,
+        `PERF-DELTAS save_p50=${fmt(saveP50Delta)} save_p95=${fmt(saveP95Delta)} join_p50=${fmt(joinP50Delta)}`,
         `PERF-PROBE cold_ms=${fmt(probeCold)} warm_ms=${fmt(probeWarm)}`,
         'PERF-BREAKDOWN-BEGIN',
         bucketLine('old', oldProfile),
@@ -1253,24 +1332,13 @@ describe('PR A symlink writes', () => {
     expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
     expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
 
-    // p95(new) - p95(old), milliseconds. Platforms do not share a ceiling.
-    // Linux, this test, two runs on the agent VM (2026-10-21):
-    //   per-save p95 delta 0.520 ms and 0.003 ms; paired delta p50 0.065 / 0.071,
-    //   paired p95 0.612 / 0.248. Join p95 delta 0.013 ms and 0.005 ms.
-    //   Ceilings: 3 ms per save, 0.25 ms per join call.
-    // win32, notes-windows job 119160263253 on 75cdab7fd48de37b4921c2c0ab95b89f07ceddcd:
-    //   per-save old p50 13.410 / p95 26.526, new p50 14.811 / p95 29.190,
-    //   so p95(new)-p95(old) = 2.664 ms. Paired delta p50 0.469, p95 17.526,
-    //   min -17.658, max 26.081 (fdatasync on that runner moves both ways).
-    //   Join old p95 0.616, new p95 0.773, delta 0.157 ms.
-    //   Save ceiling 12 ms = measured 2.664 plus 9 ms, about half the paired
-    //   p95 swing, so a one-sided fsync blip can pass and a real slowdown
-    //   past 12 ms cannot. Join ceiling 0.50 ms is about 3× the measured
-    //   0.157 ms. Neither number is the Linux ceiling.
-    const saveDeltaCeiling = process.platform === 'win32' ? 12 : 3;
-    const joinDeltaCeiling = process.platform === 'win32' ? 0.5 : 0.25;
-    expect(newJoin.p95).toBeLessThan(2);
-    expect(saveDeltaP95).toBeLessThan(saveDeltaCeiling);
-    expect(joinDeltaP95).toBeLessThan(joinDeltaCeiling);
-  });
+    // Owner ruling. Median of 3 repeats. Both platforms.
+    // per-save p50(new) - p50(old) <= 1 ms.
+    // p95(new) - p95(old) <= 3 ms on Linux, <= 8 ms on win32.
+    // join p50(new) - p50(old) <= 0.05 ms per call.
+    const saveP95Ceiling = process.platform === 'win32' ? 8 : 3;
+    expect(saveP50Delta).toBeLessThanOrEqual(1);
+    expect(saveP95Delta).toBeLessThanOrEqual(saveP95Ceiling);
+    expect(joinP50Delta).toBeLessThanOrEqual(0.05);
+  }, 60000);
 });
