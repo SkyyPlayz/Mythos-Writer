@@ -13,7 +13,7 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
 ### Fixed
-- Updated the build tool (vite) to close a high-severity security advisory in the dev server. ([#1745](https://github.com/SkyyPlayz/Mythos-Writer/pull/PR))
+- Updated the build tool (vite) to close a high-severity security advisory in the dev server. ([#1745](https://github.com/SkyyPlayz/Mythos-Writer/pull/1745))
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed
