@@ -2,7 +2,8 @@
 // bulk skip-and-list, and the rename cascade standing in for vaultTransaction
 // until #1746 is on main.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { execFileSync } from 'child_process';
+import childProcess, { execFileSync } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -34,6 +35,7 @@ import {
   symlinkSkipLine,
 } from './writeErrors.js';
 import { volumeUnsupportedText } from './writeErrorText.js';
+import { renameSyncWithRetry } from './renameSyncWithRetry.js';
 import { writeManifestBytes, writeVaultFileNoFollow } from './vaultFileWrite.js';
 import {
   commitEpubTargetExport,
@@ -96,6 +98,183 @@ beforeAll(() => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+const PRE_PR_NULL_BYTE_RE = /\u0000/;
+const PRE_PR_WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
+const PRE_PR_UNC_RE = /^\\\\/;
+const PRE_PR_ENCODED_DOTDOT_RE = /(?:%2e){2}|(?:%252e){2}/i;
+
+/**
+ * `writeFileAtomic` as it stood on main 5b4c93d1 (temp, fdatasync, rename).
+ * The perf test runs this beside the current writer in one process.
+ */
+function prePrWriteFileAtomic(absPath: string, data: Buffer | string): void {
+  const dir = path.dirname(absPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${absPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
+  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeSync(fd, buf);
+    fs.fdatasyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    renameSyncWithRetry(tmp, absPath);
+  } catch (err) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* ignore cleanup errors */
+    }
+    throw err;
+  }
+}
+
+function prePrIsWithinVault(realVaultRoot: string, candidate: string): boolean {
+  return candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
+}
+
+/**
+ * Write-mode `safeVaultJoin` as it stood on main 5b4c93d1.
+ * Missing parents walk with existsSync only; the leaf is not lstat'd.
+ */
+function prePrSafeVaultJoin(vaultRoot: string, relPath: string): string {
+  if (typeof relPath !== 'string') {
+    throw new Error('Path traversal denied: path must be a string');
+  }
+  if (PRE_PR_NULL_BYTE_RE.test(relPath)) {
+    throw new Error(`Path traversal denied: ${JSON.stringify(relPath)} (null byte in path)`);
+  }
+  if (PRE_PR_WINDOWS_DRIVE_RE.test(relPath) || PRE_PR_UNC_RE.test(relPath)) {
+    throw new Error(`Path traversal denied: ${relPath} (absolute Windows path)`);
+  }
+  if (PRE_PR_ENCODED_DOTDOT_RE.test(relPath)) {
+    throw new Error(`Path traversal denied: ${relPath} (encoded traversal sequence)`);
+  }
+
+  const realVaultRoot = fs.realpathSync.native(vaultRoot);
+  const resolved = path.resolve(vaultRoot, relPath);
+  let ancestor = resolved;
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relPath}`);
+
+  const realAncestor = fs.realpathSync.native(ancestor);
+  if (!prePrIsWithinVault(realVaultRoot, realAncestor)) {
+    const msg =
+      ancestor === resolved
+        ? `Path traversal denied: ${relPath} (symlink escape detected)`
+        : `Path traversal denied: ${relPath} (parent symlink escapes vault)`;
+    throw new Error(msg);
+  }
+
+  const remainder = path.relative(ancestor, resolved);
+  const realTarget = path.resolve(realAncestor, remainder);
+  if (!prePrIsWithinVault(realVaultRoot, realTarget)) {
+    throw new Error(`Path traversal denied: ${relPath}`);
+  }
+  return realTarget;
+}
+
+interface PerfStats {
+  p50: number;
+  p95: number;
+  min: number;
+  max: number;
+}
+
+function perfStats(values: number[]): PerfStats {
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (q: number): number =>
+    sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * q) - 1))] ?? 0;
+  return {
+    p50: at(0.5),
+    p95: at(0.95),
+    min: sorted[0] ?? 0,
+    max: sorted[sorted.length - 1] ?? 0,
+  };
+}
+
+function perfPct(oldMs: number, newMs: number): number {
+  if (oldMs === 0) return newMs === 0 ? 0 : Number.POSITIVE_INFINITY;
+  return ((newMs - oldMs) / oldMs) * 100;
+}
+
+const PROFILE_FS_METHODS = [
+  'lstatSync',
+  'existsSync',
+  'openSync',
+  'writeSync',
+  'fdatasyncSync',
+  'fsyncSync',
+  'fstatSync',
+  'closeSync',
+  'renameSync',
+  'mkdirSync',
+  'readlinkSync',
+  'statSync',
+  'statfsSync',
+  'unlinkSync',
+] as const;
+
+interface ProfileBucket {
+  calls: number;
+  ms: number;
+}
+
+function profileFsCalls(samples: number, run: () => void): Map<string, ProfileBucket> {
+  const buckets = new Map<string, ProfileBucket>();
+  const add = (name: string, ms: number): void => {
+    const bucket = buckets.get(name) ?? { calls: 0, ms: 0 };
+    bucket.calls += 1;
+    bucket.ms += ms;
+    buckets.set(name, bucket);
+  };
+  const timeFn = <T extends (...args: never[]) => unknown>(name: string, orig: T): T =>
+    ((...args: never[]) => {
+      const start = performance.now();
+      try {
+        return orig(...args);
+      } finally {
+        add(name, performance.now() - start);
+      }
+    }) as T;
+
+  const fsMutable = fs as unknown as Record<string, (...args: never[]) => unknown>;
+  const saved: Array<[string, (...args: never[]) => unknown]> = [];
+  for (const name of PROFILE_FS_METHODS) {
+    const orig = fsMutable[name];
+    if (typeof orig !== 'function') continue;
+    saved.push([name, orig]);
+    fsMutable[name] = timeFn(name, orig);
+  }
+  const origNative = fs.realpathSync.native;
+  fs.realpathSync.native = timeFn('realpathSync.native', origNative);
+
+  const origExec = childProcess.execFileSync;
+  let execWrapped = false;
+  try {
+    childProcess.execFileSync = timeFn('execFileSync', origExec);
+    execWrapped = true;
+  } catch {
+    execWrapped = false;
+  }
+
+  try {
+    for (let i = 0; i < samples; i++) run();
+    if (!execWrapped) add('execFileSync-wrap-failed', 0);
+    return buckets;
+  } finally {
+    for (const [name, orig] of saved) fsMutable[name] = orig;
+    fs.realpathSync.native = origNative;
+    if (execWrapped) childProcess.execFileSync = origExec;
+  }
+}
 
 describe('PR A symlink writes', () => {
   let tmp: string;
@@ -987,76 +1166,107 @@ describe('PR A symlink writes', () => {
   });
 
   it('measures the added save cost', () => {
-    const samples = (run: () => void, n: number): number[] => {
-      const out: number[] = [];
-      for (let i = 0; i < n; i++) {
-        const start = performance.now();
-        run();
-        out.push(performance.now() - start);
-      }
-      return out;
+    const time = (run: () => void): number => {
+      const start = performance.now();
+      run();
+      return performance.now() - start;
     };
-    const p95 = (values: number[]): number => {
-      const sorted = [...values].sort((a, b) => a - b);
-      return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] ?? 0;
-    };
+    const fmt = (n: number): string => (Number.isFinite(n) ? n.toFixed(3) : 'inf');
     const payload = Buffer.from('hello');
-    const rawDir = path.join(root, 'raw');
-    const guardedDir = path.join(root, 'guarded');
-    fs.mkdirSync(rawDir);
-    fs.mkdirSync(guardedDir);
-    const raw = samples(() => {
-      const file = path.join(rawDir, `n-${Date.now()}-${Math.random()}.txt`);
-      const fd = fs.openSync(file, 'w');
-      fs.writeSync(fd, payload);
-      fs.fdatasyncSync(fd);
-      fs.closeSync(fd);
-    }, 40);
-    const guarded = samples(() => {
-      const file = path.join(guardedDir, `n-${Date.now()}-${Math.random()}.txt`);
-      writeNoFollowAtomic(file, payload, { durable: true });
-    }, 40);
-    const priorAtomic = samples(() => {
-      const file = path.join(rawDir, `prior-${Math.random()}.txt`);
-      const tmpFile = `${file}.prior.tmp`;
-      const fd = fs.openSync(tmpFile, 'w');
-      fs.writeSync(fd, payload);
-      fs.fdatasyncSync(fd);
-      fs.closeSync(fd);
-      fs.renameSync(tmpFile, file);
-    }, 40);
-    const rawP95 = p95(raw);
-    const guardedP95 = p95(guarded);
-    const priorP95 = p95(priorAtomic);
-    const delta = guardedP95 - rawP95;
-    const added = guardedP95 - priorP95;
 
-    const joinStart = performance.now();
-    for (let i = 0; i < 5000; i++) safeVaultJoin(root, `n${i}.md`, { writeMode: true });
-    const joinMs = performance.now() - joinStart;
-    const baseStart = performance.now();
+    resetVolumeProbeCache();
+    const probeCold = time(() => {
+      probeVolumeKind(root);
+    });
+    const probeWarm = time(() => {
+      probeVolumeKind(root);
+    });
+
+    const oldFile = path.join(root, 'old-save.md');
+    prePrWriteFileAtomic(oldFile, payload);
+    writeVaultFileAtomic(root, 'new-save.md', payload);
+    for (let i = 0; i < 4; i++) {
+      prePrWriteFileAtomic(oldFile, payload);
+      writeVaultFileAtomic(root, 'new-save.md', payload);
+    }
+
+    const saveN = 60;
+    const oldSaveSamples: number[] = [];
+    const newSaveSamples: number[] = [];
+    for (let i = 0; i < saveN; i++) {
+      oldSaveSamples.push(time(() => prePrWriteFileAtomic(oldFile, payload)));
+      newSaveSamples.push(time(() => writeVaultFileAtomic(root, 'new-save.md', payload)));
+    }
+    const oldSave = perfStats(oldSaveSamples);
+    const newSave = perfStats(newSaveSamples);
+    const pairedSave = perfStats(newSaveSamples.map((ms, i) => ms - (oldSaveSamples[i] ?? 0)));
+
+    const oldJoinSamples: number[] = [];
+    const newJoinSamples: number[] = [];
     for (let i = 0; i < 5000; i++) {
-      fs.realpathSync.native(root);
-      const resolved = path.resolve(root, `n${i}.md`);
-      try {
-        fs.lstatSync(resolved);
-      } catch {
-        /* absent leaf */
-      }
-      const parent = path.dirname(resolved);
-      if (fs.existsSync(parent)) fs.realpathSync.native(parent);
+      const rel = `n${i}.md`;
+      oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
+      newJoinSamples.push(
+        time(() => {
+          safeVaultJoin(root, rel, { writeMode: true });
+        }),
+      );
     }
-    const baseMs = performance.now() - baseStart;
-    const overhead = baseMs === 0 ? 0 : ((joinMs - baseMs) / baseMs) * 100;
+    const oldJoin = perfStats(oldJoinSamples);
+    const newJoin = perfStats(newJoinSamples);
+
+    const profileN = 20;
+    const oldProfile = profileFsCalls(profileN, () => prePrWriteFileAtomic(oldFile, payload));
+    const newProfile = profileFsCalls(profileN, () => writeVaultFileAtomic(root, 'new-save.md', payload));
+    const bucketLine = (label: string, buckets: Map<string, ProfileBucket>): string => {
+      const rows = [...buckets.entries()].sort((a, b) => b[1].ms - a[1].ms);
+      return rows
+        .map(
+          ([name, bucket]) =>
+            `${label} ${name} calls=${bucket.calls} total_ms=${bucket.ms.toFixed(3)} per_save_ms=${(bucket.ms / profileN).toFixed(3)}`,
+        )
+        .join('\n');
+    };
+
+    const saveDeltaP95 = newSave.p95 - oldSave.p95;
+    const joinDeltaP95 = newJoin.p95 - oldJoin.p95;
     console.log(
-      `PERF-VAULT-SYMLINK write p95 guarded ${guardedP95.toFixed(3)} ms raw ${rawP95.toFixed(3)} ms delta ${delta.toFixed(3)} ms prior-atomic ${priorP95.toFixed(3)} ms added ${added.toFixed(3)} ms; 5k join ${joinMs.toFixed(1)} ms (${(joinMs / 5000).toFixed(4)} ms/call) baseline ${baseMs.toFixed(1)} ms overhead ${overhead.toFixed(2)}%`,
+      [
+        'PERF-TABLE-BEGIN',
+        `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
+        `| --- | ---: | ---: | ---: | ---: | ---: | ---: |`,
+        `| per-save overwrite | ${fmt(oldSave.p50)} | ${fmt(oldSave.p95)} | ${fmt(newSave.p50)} | ${fmt(newSave.p95)} | ${fmt(perfPct(oldSave.p50, newSave.p50))} | ${fmt(perfPct(oldSave.p95, newSave.p95))} |`,
+        `| 5k join per call | ${fmt(oldJoin.p50)} | ${fmt(oldJoin.p95)} | ${fmt(newJoin.p50)} | ${fmt(newJoin.p95)} | ${fmt(perfPct(oldJoin.p50, newJoin.p50))} | ${fmt(perfPct(oldJoin.p95, newJoin.p95))} |`,
+        'PERF-TABLE-END',
+        `PERF-PAIRED-SAVE delta_p50=${fmt(pairedSave.p50)} delta_p95=${fmt(pairedSave.p95)} min=${fmt(pairedSave.min)} max=${fmt(pairedSave.max)}`,
+        `PERF-PROBE cold_ms=${fmt(probeCold)} warm_ms=${fmt(probeWarm)}`,
+        'PERF-BREAKDOWN-BEGIN',
+        bucketLine('old', oldProfile),
+        bucketLine('new', newProfile),
+        'PERF-BREAKDOWN-END',
+      ].join('\n'),
     );
-    expect(joinMs / 5000).toBeLessThan(2);
-    // fdatasync p95 on a Windows runner moves by tens of ms between samples.
-    // The stable budget is the join itself. Linux keeps the tight ceilings.
-    if (process.platform !== 'win32') {
-      expect(delta).toBeLessThan(20);
-      expect(added).toBeLessThan(5);
-    }
+
+    expect(fs.readFileSync(oldFile).equals(payload)).toBe(true);
+    expect(fs.readFileSync(path.join(root, 'new-save.md')).equals(payload)).toBe(true);
+    const realRoot = fs.realpathSync.native(root);
+    expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
+    expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
+
+    // p95(new) - p95(old), milliseconds. Platforms do not share a ceiling.
+    // Linux, this test, two runs on the agent VM (2026-10-21):
+    //   per-save p95 delta 0.520 ms and 0.003 ms; paired delta p50 0.065 / 0.071,
+    //   paired p95 0.612 / 0.248. Join p95 delta 0.013 ms and 0.005 ms.
+    //   Ceilings: 3 ms per save, 0.25 ms per join call.
+    // win32 interim cap, until the notes-windows run of this same comparison:
+    //   40 ms per save, 2 ms per join call. Previous notes-windows fsync p95
+    //   deltas against a syscall baseline were 3.429 ms and 33.643 ms, so 40 ms
+    //   still fails a large blowup. The follow-up commit replaces these two
+    //   numbers with ceilings taken from that run and cites them here.
+    const saveDeltaCeiling = process.platform === 'win32' ? 40 : 3;
+    const joinDeltaCeiling = process.platform === 'win32' ? 2 : 0.25;
+    expect(newJoin.p95).toBeLessThan(2);
+    expect(saveDeltaP95).toBeLessThan(saveDeltaCeiling);
+    expect(joinDeltaP95).toBeLessThan(joinDeltaCeiling);
   });
 });
