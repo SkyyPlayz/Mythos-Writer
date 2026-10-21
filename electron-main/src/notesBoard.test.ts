@@ -67,7 +67,7 @@ describe('resolveId / resolveOrAssignId — notes', () => {
       '---\ntitle: Idea\ntags: [a, b]\n---\n# Idea\n\nSome body text.\n',
     );
     const abs = path.join(root, 'Idea.md');
-    const id = resolveOrAssignId('note', abs);
+    const id = resolveOrAssignId('note', abs, root);
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
 
     const raw = fs.readFileSync(abs, 'utf-8');
@@ -81,13 +81,13 @@ describe('resolveId / resolveOrAssignId — notes', () => {
     expect(isRecentSelfWrite(abs)).toBe(true);
 
     // Idempotent: calling again returns the SAME id, doesn't mint a new one.
-    expect(resolveOrAssignId('note', abs)).toBe(id);
+    expect(resolveOrAssignId('note', abs, root)).toBe(id);
   });
 
   it('assigns an id to a note with no frontmatter at all', () => {
     writeNote(root, 'Bare.md', 'Just prose, no frontmatter.\n');
     const abs = path.join(root, 'Bare.md');
-    const id = resolveOrAssignId('note', abs);
+    const id = resolveOrAssignId('note', abs, root);
     const { frontmatter, prose } = parseFrontmatter(fs.readFileSync(abs, 'utf-8'));
     expect(frontmatter.id).toBe(id);
     expect(prose).toBe('Just prose, no frontmatter.\n');
@@ -114,12 +114,12 @@ describe('resolveId / resolveOrAssignId — folders', () => {
   it('resolveOrAssignId mints and persists a folder id in its own sidecar', () => {
     fs.mkdirSync(path.join(root, 'Characters'));
     const abs = path.join(root, 'Characters');
-    const id = resolveOrAssignId('folder', abs);
+    const id = resolveOrAssignId('folder', abs, root);
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     const sidecar = readSidecar(abs);
     expect(sidecar.id).toBe(id);
     expect(sidecar.version).toBe(2);
-    expect(resolveOrAssignId('folder', abs)).toBe(id);
+    expect(resolveOrAssignId('folder', abs, root)).toBe(id);
   });
 
   it('assigning a folder id does not disturb existing layout/furniture already in its sidecar', () => {
@@ -139,7 +139,7 @@ describe('resolveId / resolveOrAssignId — folders', () => {
         view: { zoom: 100, panX: 0, panY: 0 },
       }),
     );
-    const id = resolveOrAssignId('folder', abs);
+    const id = resolveOrAssignId('folder', abs, root);
     const sidecar = readSidecar(abs);
     expect(sidecar.id).toBe(id);
     expect(sidecar.layout).toEqual({ 'n:existing-id': { x: 1, y: 2 } });
@@ -248,7 +248,7 @@ describe('path→id resolution survives external rename (spec test 3, id-layer h
 
   it('a folder keeps its own id across a real fs.renameSync (sidecar moves with it)', () => {
     fs.mkdirSync(path.join(root, 'Old Folder'));
-    const folderId = resolveOrAssignId('folder', path.join(root, 'Old Folder'));
+    const folderId = resolveOrAssignId('folder', path.join(root, 'Old Folder'), root);
 
     fs.renameSync(path.join(root, 'Old Folder'), path.join(root, 'New Folder'));
 

@@ -43,7 +43,7 @@
     "test:e2e:timeline-wikilinks": "playwright test e2e/tests/sky-11615-timeline-wikilinks.spec.ts --reporter=list,html",
     "test:e2e:paragraph-editing": "playwright test e2e/paragraph-editing.spec.ts --reporter=list,html",
     "test:e2e:jobs-responsiveness": "playwright test e2e/tests/m12-scale-architecture-acceptance.spec.ts -g \"starting a large vault scan\" --reporter=list,html",
-    "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts --reporter=list,html",
+    "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts e2e/vault-symlink-write.spec.ts --reporter=list,html",
     "test:e2e:notes-drag": "playwright test e2e/notes-tree-drag-sky8891.spec.ts --reporter=list,html",
     "test:e2e:scene-notes-promote": "playwright test e2e/scene-notes-promote.spec.ts --reporter=list,html",
     "test:e2e:seed-once": "playwright test e2e/notes-seed-once-sky9028.spec.ts e2e/notes-seed-once-defaults-sky9028.spec.ts --reporter=list,html",

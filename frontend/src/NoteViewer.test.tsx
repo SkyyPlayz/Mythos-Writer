@@ -721,6 +721,20 @@ describe('NoteViewer save-failure surfacing (GH#616)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('toasts the approved shortcut text and keeps a generic failure as one alert', async () => {
+    const shortcut = "Couldn't save Test.md: it's a shortcut (symbolic link). Save it under a new name instead.";
+    writeNotesVault.mockResolvedValue({ path: 'Notes/Test.md', bytes: 0, error: shortcut });
+
+    await loadAndFlush();
+
+    const toast = await screen.findByTestId('app-toast');
+    expect(toast.textContent).toContain("it's a shortcut (symbolic link)");
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts.length).toBeGreaterThan(1);
+    expect(alerts.some((node) => node.textContent?.includes(shortcut))).toBe(true);
+    expect(screen.queryByText(/^Saved /)).toBeNull();
+  });
+
   it('surfaces a Story-vault note save failure through the same alert', async () => {
     // Story-vault notes still route through writeNotesVault; a failure there must
     // be surfaced identically rather than silently dropped.

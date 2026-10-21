@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_VAULT_DIRNAME, agentVaultRootFor, mythosRootForStoryVault } from './mythosJson.js';
-import { writeFileAtomic } from '../vault.js';
+import { vaultRelPath, writeVaultFileAtomic } from '../vault.js';
 import { sanitizeIpcError } from '../ipcErrors.js';
 
 /** Channel name for agentsVault:clearMemory (kept here to avoid circular ipc.ts import). */
@@ -129,7 +129,7 @@ export function ensureAgentsPartnerFiles(mythosRoot: string): {
     const abs = path.join(agentRoot, file);
     if (!fs.existsSync(abs)) {
       const body = file === PARTNER_MD ? DEFAULT_PARTNER_MD : DEFAULT_HAND_MD[file as HandFileName];
-      writeFileAtomic(abs, body);
+      writeVaultFileAtomic(mythosRoot, vaultRelPath(mythosRoot, abs), body);
       created.push(file);
     }
   }
@@ -146,7 +146,7 @@ export function readPartnerMd(mythosRoot: string): string | null {
 
 export function writePartnerMd(mythosRoot: string, content: string): void {
   ensureAgentsPartnerFiles(mythosRoot);
-  writeFileAtomic(partnerFilePath(mythosRoot, PARTNER_MD), content);
+  writeVaultFileAtomic(mythosRoot, vaultRelPath(mythosRoot, partnerFilePath(mythosRoot, PARTNER_MD)), content);
 }
 
 /** Sync identity fields into partner.md (preserves unknown body lines). */
@@ -178,7 +178,7 @@ export function syncPartnerIdentityToFile(
   });
   if (!sawName) next.splice(2, 0, `name: ${identity.name}`);
   if (!sawIcon) next.splice(sawName ? 3 : 3, 0, `icon: ${identity.icon}`);
-  writeFileAtomic(abs, `${next.join('\n').replace(/\n+$/, '')}\n`);
+  writeVaultFileAtomic(mythosRoot, vaultRelPath(mythosRoot, abs), `${next.join('\n').replace(/\n+$/, '')}\n`);
 }
 
 export function parsePartnerIdentityFromFile(mythosRoot: string): { name: string | null; icon: string | null } {

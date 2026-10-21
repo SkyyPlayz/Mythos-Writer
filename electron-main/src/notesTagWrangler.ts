@@ -2,7 +2,8 @@
 // No Electron dependency; fully testable in Node.
 import fs from 'fs';
 import path from 'path';
-import { parseFrontmatter, serializeFrontmatter, writeFileAtomic } from './vault.js';
+import { parseFrontmatter, serializeFrontmatter, writeVaultFileAtomic } from './vault.js';
+import { isSymlinkWriteRefusal, symlinkSkipLine } from './vault/writeErrors.js';
 
 // ─── Public types ───
 
@@ -20,10 +21,12 @@ export interface TagEntry {
 
 export interface TagRenameResult {
   affectedFiles: number;
+  skipped: string[];
 }
 
 export interface TagMergeResult {
   affectedFiles: number;
+  skipped: string[];
 }
 
 // ─── Internal helpers ───
@@ -34,7 +37,10 @@ function collectNotesMdFiles(dir: string, base = ''): string[] {
   if (!fs.existsSync(dir)) return results;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
-    if (entry.isSymbolicLink()) continue;
+    if (entry.isSymbolicLink()) {
+      if (entry.name.endsWith('.md')) results.push(base ? `${base}/${entry.name}` : entry.name);
+      continue;
+    }
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       results.push(...collectNotesMdFiles(path.join(dir, entry.name), rel));
@@ -154,7 +160,7 @@ export function renameNotesTag(
   oldTag: string,
   newTag: string,
 ): TagRenameResult {
-  if (!oldTag || !newTag || oldTag === newTag) return { affectedFiles: 0 };
+  if (!oldTag || !newTag || oldTag === newTag) return { affectedFiles: 0, skipped: [] };
 
   const files = collectNotesMdFiles(notesRoot);
   const affected: Array<{ relPath: string; content: string; newContent: string }> = [];
@@ -181,17 +187,18 @@ export function renameNotesTag(
     affected.push({ relPath, content, newContent });
   }
 
-  if (affected.length === 0) return { affectedFiles: 0 };
+  if (affected.length === 0) return { affectedFiles: 0, skipped: [] };
 
   // Write backup before mutating any file
   saveTagBackup(notesRoot, { operation: 'rename', oldTag, newTag, files: affected });
 
-  // Apply changes
+  const skipped: string[] = [];
+  let written = 0;
   for (const { relPath, newContent } of affected) {
-    writeFileAtomic(path.join(notesRoot, relPath), newContent);
+    if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) written++;
   }
 
-  return { affectedFiles: affected.length };
+  return { affectedFiles: written, skipped };
 }
 
 /**
@@ -206,7 +213,7 @@ export function mergeNotesTags(
   sourceTag: string,
   targetTag: string,
 ): TagMergeResult {
-  if (!sourceTag || !targetTag || sourceTag === targetTag) return { affectedFiles: 0 };
+  if (!sourceTag || !targetTag || sourceTag === targetTag) return { affectedFiles: 0, skipped: [] };
 
   const files = collectNotesMdFiles(notesRoot);
   const affected: Array<{ relPath: string; content: string; newContent: string }> = [];
@@ -231,15 +238,17 @@ export function mergeNotesTags(
     affected.push({ relPath, content, newContent });
   }
 
-  if (affected.length === 0) return { affectedFiles: 0 };
+  if (affected.length === 0) return { affectedFiles: 0, skipped: [] };
 
   saveTagBackup(notesRoot, { operation: 'merge', oldTag: sourceTag, newTag: targetTag, files: affected });
 
+  const skipped: string[] = [];
+  let written = 0;
   for (const { relPath, newContent } of affected) {
-    writeFileAtomic(path.join(notesRoot, relPath), newContent);
+    if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) written++;
   }
 
-  return { affectedFiles: affected.length };
+  return { affectedFiles: written, skipped };
 }
 
 // ─── Backup helper ───
@@ -271,6 +280,18 @@ function saveTagBackup(
     timestamp: ts,
     files: data.files.map((f) => ({ relPath: f.relPath, content: f.content })),
   };
-  const dest = path.join(backupDir, `${ts}.json`);
-  writeFileAtomic(dest, JSON.stringify(entry, null, 2));
+  writeVaultFileAtomic(notesRoot, `.tag-wrangler/backups/${ts}.json`, JSON.stringify(entry, null, 2));
+}
+
+function writeNoteOrSkip(notesRoot: string, relPath: string, content: string, skipped: string[]): boolean {
+  try {
+    writeVaultFileAtomic(notesRoot, relPath, content);
+    return true;
+  } catch (err) {
+    if (isSymlinkWriteRefusal(err)) {
+      skipped.push(symlinkSkipLine(relPath));
+      return false;
+    }
+    throw err;
+  }
 }

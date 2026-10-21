@@ -233,6 +233,7 @@ interface MythosMigrationRunResult {
     notesChecked: number;
     mismatches: string[];
   };
+  skippedSymlinks?: string[];
 }
 
 interface EntityRelation {
@@ -1177,7 +1178,7 @@ interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
     readVault: (path: string) => Promise<{ content: string; path: string }>;
-    writeVault: (path: string, content: string) => Promise<{ path: string; bytes: number }>;
+    writeVault: (path: string, content: string) => Promise<{ path: string; bytes: number; error?: string; code?: string }>;
     listVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> }>;
     deleteVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     readManifest: () => Promise<unknown>;
@@ -1762,7 +1763,7 @@ interface Window {
     // symmetry. All paths resolve under the separately-configured notes vault
     // root via safeVaultIpcJoin on the main side.
     readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
-    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
+    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { path: string; bytes: number; error: string; code?: string }>;
     // SKY-11360: brainstorm/idea board — agent state stored in the Agent Vault
     // (not the Notes Vault). The main process owns the path.
     brainstormBoard: {
@@ -1996,8 +1997,8 @@ interface Window {
     dailyNoteGetStreak: () => Promise<{ streakDays: number; todayExists: boolean }>;
     // SKY-193: Tag Wrangler
     notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
-    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
-    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
+    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number; skipped?: string[] }>;
+    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number; skipped?: string[] }>;
     // SKY-55: per-scene / per-tier notes (sceneId may be a tier-prefixed node key)
     notesGet?: (sceneId: string) => Promise<{ content: string }>;
     notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
