@@ -1258,13 +1258,17 @@ describe('PR A symlink writes', () => {
     //   per-save p95 delta 0.520 ms and 0.003 ms; paired delta p50 0.065 / 0.071,
     //   paired p95 0.612 / 0.248. Join p95 delta 0.013 ms and 0.005 ms.
     //   Ceilings: 3 ms per save, 0.25 ms per join call.
-    // win32 interim cap, until the notes-windows run of this same comparison:
-    //   40 ms per save, 2 ms per join call. Previous notes-windows fsync p95
-    //   deltas against a syscall baseline were 3.429 ms and 33.643 ms, so 40 ms
-    //   still fails a large blowup. The follow-up commit replaces these two
-    //   numbers with ceilings taken from that run and cites them here.
-    const saveDeltaCeiling = process.platform === 'win32' ? 40 : 3;
-    const joinDeltaCeiling = process.platform === 'win32' ? 2 : 0.25;
+    // win32, notes-windows job 119160263253 on 75cdab7fd48de37b4921c2c0ab95b89f07ceddcd:
+    //   per-save old p50 13.410 / p95 26.526, new p50 14.811 / p95 29.190,
+    //   so p95(new)-p95(old) = 2.664 ms. Paired delta p50 0.469, p95 17.526,
+    //   min -17.658, max 26.081 (fdatasync on that runner moves both ways).
+    //   Join old p95 0.616, new p95 0.773, delta 0.157 ms.
+    //   Save ceiling 12 ms = measured 2.664 plus 9 ms, about half the paired
+    //   p95 swing, so a one-sided fsync blip can pass and a real slowdown
+    //   past 12 ms cannot. Join ceiling 0.50 ms is about 3× the measured
+    //   0.157 ms. Neither number is the Linux ceiling.
+    const saveDeltaCeiling = process.platform === 'win32' ? 12 : 3;
+    const joinDeltaCeiling = process.platform === 'win32' ? 0.5 : 0.25;
     expect(newJoin.p95).toBeLessThan(2);
     expect(saveDeltaP95).toBeLessThan(saveDeltaCeiling);
     expect(joinDeltaP95).toBeLessThan(joinDeltaCeiling);
