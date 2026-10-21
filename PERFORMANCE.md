@@ -211,7 +211,7 @@ is correctly `setInterval`-gated, not a tight loop). The actual driver is
 `backdrop-filter`, but not through the pollers or through `prefers-reduced-
 motion` failing to apply as *design* intent — it fails to apply as a
 *mechanism*: launching the packaged app with Electron's
-`--force-prefers-reduced-motion` (the flag `e2e/perf/ui-runtime/launch.ts`
+`--force-prefers-reduced-motion` (the flag `e2e/helpers/launchApp.ts`
 uses for every metric except §4 target 3) does **not** flip the
 `(prefers-reduced-motion: reduce)` media query in this Electron/Chromium
 build. Confirmed directly against the packaged app:

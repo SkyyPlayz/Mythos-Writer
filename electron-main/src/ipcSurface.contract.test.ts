@@ -10,12 +10,18 @@
 // (string literal, same-file const, or imported CONST.PROP). That is the
 // 56-count. Following a same-file helper that `.send`s its parameter
 // (ai-activity update/terminal) is the other method and yields 58. Listeners
-// for those two helper channels are matched, so the method difference is not
-// frozen as a gap.
+// for those two helper channels are matched. push-without-listener walks the
+// combined set (direct sends ∪ helper sends), so dropping either listener is
+// a new gap.
+//
+// Census counts are a summary. The lock is the exact sorted name lists
+// (IPC channel values, handlers, main listeners, push channels), the sorted
+// exposeInMainWorld key → channel snapshot, and the handler ↔ preload invoke
+// map in both directions.
 //
 // Exact equality: a new gap fails, and an allowlist entry whose gap was fixed
 // fails until this list shrinks. Paired channels do not need a new test file;
-// update the census figures below when the surface grows without a new gap.
+// update the frozen lists when the surface grows without a new gap.
 
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
@@ -77,7 +83,25 @@ interface Surface {
     helperSendChannels: number;
     allowlist: number;
   };
+  /** Exact sorted channel-name lists. Counts above are the lengths (pushes = combined). */
+  names: {
+    ipcChannels: string[];
+    handlers: string[];
+    mainListeners: string[];
+    pushChannels: string[];
+  };
+  /** `world key channels|NON_IPC`, sorted. One line per exposeInMainWorld key. */
+  exposed: string[];
+  /**
+   * Handler → preload invoke, both directions, sorted.
+   * `channel <- key,key` or `channel <- NONE` for every ipcMain handler.
+   * `channel -> HANDLER` or `channel -> NO_HANDLER` for every preload invoke.
+   */
+  handlerToInvoke: string[];
+  invokeToHandler: string[];
 }
+
+const NON_IPC = 'NON_IPC';
 
 function gapKey(gap: Gap): string {
   switch (gap.kind) {
@@ -575,6 +599,124 @@ function helperSendChannels(info: ModuleInfo, byRel: Map<string, ModuleInfo>): S
   return extra;
 }
 
+function sortedSet(values: Iterable<string>): string[] {
+  return [...values].sort();
+}
+
+function channelsIn(value: string): string[] {
+  const found = new Set<string>();
+  const re = /(?:ipcRenderer\.(?:invoke|send|on)|invokeEnvelope)\(\s*(['"])([^'"\\]*)\1/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(value))) found.add(match[2]);
+  return [...found].sort();
+}
+
+/** One sorted line per key of each contextBridge.exposeInMainWorld object. */
+function exposedLines(src: string): string[] {
+  const lines: string[] = [];
+  const callRe = /contextBridge\.exposeInMainWorld\(\s*/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(src))) {
+    const nameArg = readArg(src, match.index + match[0].length);
+    const world = parseStringLiteral(nameArg);
+    if (!world) continue;
+    const afterName = match.index + match[0].length + nameArg.length;
+    const brace = src.indexOf('{', afterName);
+    if (brace < 0) continue;
+    const body = readBalanced(src, brace, '{', '}');
+    if (!body) continue;
+    collectExposedKeys(body, world, '', lines);
+  }
+  lines.sort();
+  return lines;
+}
+
+function collectExposedKeys(body: string, world: string, prefix: string, lines: string[]): void {
+  let i = 1;
+  const end = body.length - 1;
+  while (i < end) {
+    while (i < end && /[\s,]/.test(body[i])) i++;
+    if (i >= end) break;
+    let key = '';
+    if (body[i] === "'" || body[i] === '"') {
+      const keyEnd = skipString(body, i);
+      key = parseStringLiteral(body.slice(i, keyEnd)) ?? '';
+      i = keyEnd;
+    } else if (/[A-Za-z_$]/.test(body[i])) {
+      const start = i;
+      while (i < end && /[A-Za-z0-9_$]/.test(body[i])) i++;
+      key = body.slice(start, i);
+    } else {
+      i++;
+      continue;
+    }
+    while (i < end && /\s/.test(body[i])) i++;
+    if (body[i] !== ':') continue;
+    i++;
+    while (i < end && /\s/.test(body[i])) i++;
+    const valueStart = i;
+    let depth = 0;
+    let angle = 0;
+    while (i < end) {
+      const ch = body[i];
+      if (ch === "'" || ch === '"' || ch === '`') {
+        i = skipString(body, i);
+        continue;
+      }
+      if (ch === '{' || ch === '(' || ch === '[') depth++;
+      else if (ch === '}' || ch === ')' || ch === ']') {
+        if (depth === 0) break;
+        depth--;
+      } else if (ch === '<') {
+        if (body[i - 1] !== '=') angle++;
+      } else if (ch === '>') {
+        if (body[i - 1] !== '=' && angle > 0) angle--;
+      } else if (ch === ',' && depth === 0 && angle === 0) break;
+      i++;
+    }
+    const value = body.slice(valueStart, i);
+    const pathKey = prefix ? `${prefix}.${key}` : key;
+    const trimmed = value.trim();
+    if (trimmed.startsWith('{')) {
+      const nested = readBalanced(value, value.indexOf('{'), '{', '}');
+      if (nested && nested.trim() === trimmed) {
+        collectExposedKeys(nested, world, pathKey, lines);
+        continue;
+      }
+    }
+    const channels = channelsIn(value);
+    lines.push(channels.length === 0 ? `${world} ${pathKey} ${NON_IPC}` : `${world} ${pathKey} ${channels.join(',')}`);
+  }
+}
+
+function exposedKeysByChannel(exposed: readonly string[]): Map<string, string[]> {
+  const byChannel = new Map<string, string[]>();
+  for (const line of exposed) {
+    const parts = line.split(' ');
+    if (parts.length !== 3 || parts[2] === NON_IPC) continue;
+    const key = `${parts[0]}.${parts[1]}`;
+    for (const channel of parts[2].split(',')) {
+      const list = byChannel.get(channel) ?? [];
+      list.push(key);
+      byChannel.set(channel, list);
+    }
+  }
+  for (const list of byChannel.values()) list.sort();
+  return byChannel;
+}
+
+function handlerInvokeLines(handlers: readonly string[], exposed: readonly string[]): string[] {
+  const byChannel = exposedKeysByChannel(exposed);
+  return handlers.map((channel) => {
+    const keys = byChannel.get(channel) ?? [];
+    return keys.length > 0 ? `${channel} <- ${keys.join(',')}` : `${channel} <- NONE`;
+  });
+}
+
+function invokeHandlerLines(invokes: readonly string[], handlers: ReadonlySet<string>): string[] {
+  return invokes.map((channel) => `${channel} -> ${handlers.has(channel) ? 'HANDLER' : 'NO_HANDLER'}`);
+}
+
 function scanSources(files: readonly SourceFile[]): Surface {
   for (const file of files) {
     if (path.basename(file.rel) === 'db.ts' || file.rel.split(path.sep).join('/').endsWith('/db.ts')) {
@@ -605,6 +747,7 @@ function scanSources(files: readonly SourceFile[]): Surface {
   const mainListeners = new Set<string>();
   const directPushes = new Set<string>();
   const helperPushes = new Set<string>();
+  const ipcChannelNames: string[] = [];
   let ipcChannelKeys = 0;
 
   for (const info of byRel.values()) {
@@ -626,7 +769,10 @@ function scanSources(files: readonly SourceFile[]): Surface {
     const ipcChannels = info.objects.get('IPC_CHANNELS');
     if (ipcChannels) {
       for (const binding of ipcChannels) {
-        if (binding.value.kind === 'object') ipcChannelKeys += binding.value.props.size;
+        if (binding.value.kind === 'object') {
+          ipcChannelKeys += binding.value.props.size;
+          for (const value of binding.value.props.values()) ipcChannelNames.push(value);
+        }
       }
     }
   }
@@ -642,10 +788,16 @@ function scanSources(files: readonly SourceFile[]): Surface {
   for (const channel of [...listeners].sort()) {
     if (!pushCoverage.has(channel)) gaps.push({ kind: 'listener-without-push', channel });
   }
-  for (const channel of [...directPushes].sort()) {
+  // Combined set: direct `.send` arguments and helper sends (ai-activity:*).
+  for (const channel of [...pushCoverage].sort()) {
     if (!listeners.has(channel)) gaps.push({ kind: 'push-without-listener', channel });
   }
   gaps.sort((a, b) => gapKey(a).localeCompare(gapKey(b)));
+
+  const handlerNames = sortedSet(handlers);
+  const invokeNames = sortedSet(invokes);
+  const exposed = exposedLines(preload.src);
+  ipcChannelNames.sort();
 
   return {
     opened: [...byRel.keys()].sort(),
@@ -659,11 +811,50 @@ function scanSources(files: readonly SourceFile[]): Surface {
       helperSendChannels: pushCoverage.size,
       allowlist: gaps.length,
     },
+    names: {
+      ipcChannels: ipcChannelNames,
+      handlers: handlerNames,
+      mainListeners: sortedSet(mainListeners),
+      pushChannels: sortedSet(pushCoverage),
+    },
+    exposed,
+    handlerToInvoke: handlerInvokeLines(handlerNames, exposed),
+    invokeToHandler: invokeHandlerLines(invokeNames, handlers),
   };
 }
 
 function loadSurface(): Surface {
   return scanSources(readProductionSources(SRC_DIR));
+}
+
+interface SurfaceFreeze {
+  names: Surface['names'];
+  exposed: string[];
+  handlerToInvoke: string[];
+  invokeToHandler: string[];
+}
+
+const FREEZE = JSON.parse(
+  fs.readFileSync(path.join(SRC_DIR, 'ipcSurface.contract.freeze.json'), 'utf8'),
+) as SurfaceFreeze;
+
+function productionCopies(): SourceFile[] {
+  return readProductionSources(SRC_DIR).map((file) => ({ rel: file.rel, text: file.text }));
+}
+
+function sourceFile(files: readonly SourceFile[], relSuffix: string): SourceFile {
+  const rel = relSuffix.split(path.sep).join('/');
+  const found = files.find((file) => {
+    const posix = file.rel.split(path.sep).join('/');
+    return posix === rel || posix.endsWith(`/${rel}`);
+  });
+  if (!found) throw new Error(`${relSuffix} missing from ipc surface scan`);
+  return found;
+}
+
+function swapQuoted(text: string, left: string, right: string): string {
+  const token = '\u0000swap\u0000';
+  return text.split(left).join(token).split(right).join(left).split(token).join(right);
 }
 
 const surface = loadSurface();
@@ -700,6 +891,127 @@ describe('ipc surface contract', () => {
     expect(driftReport(mutated.gaps, ALLOWLIST)).toEqual([
       'new gap not in allowlist: preload-invoke-without-handler mutant:no-handler',
     ]);
+  });
+
+  it('pins exposed keys, channel names, and the handler ↔ invoke map', () => {
+    expect(surface.names).toEqual(FREEZE.names);
+    expect(surface.exposed).toEqual(FREEZE.exposed);
+    expect(surface.handlerToInvoke).toEqual(FREEZE.handlerToInvoke);
+    expect(surface.invokeToHandler).toEqual(FREEZE.invokeToHandler);
+    expect(surface.names.ipcChannels).toHaveLength(surface.census.ipcChannelKeys);
+    expect(surface.names.handlers).toHaveLength(surface.census.handlerChannels);
+    expect(surface.names.mainListeners).toHaveLength(surface.census.mainListenerChannels);
+    expect(surface.names.pushChannels).toHaveLength(surface.census.helperSendChannels);
+    expect(surface.census.directSendChannels).toBe(56);
+    expect(surface.exposed.filter((line) => line.endsWith(` ${NON_IPC}`))).toEqual(['api isPackaged NON_IPC']);
+  });
+
+  it('goes red when a new exposeInMainWorld key aliases an existing channel', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const anchor = "isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',";
+    expect(preload.text.includes(anchor)).toBe(true);
+    preload.text = preload.text.replace(
+      anchor,
+      `aliasRead: () => ipcRenderer.invoke('vault:read', { path: '' }),\n  ${anchor}`,
+    );
+    const mutated = scanSources(files);
+    const added = mutated.exposed.filter((line) => !surface.exposed.includes(line));
+    expect(mutated.exposed).not.toEqual(FREEZE.exposed);
+    expect(added).toEqual(['api aliasRead vault:read']);
+    console.log(`[mutant alias] RED ${added.join(', ')}`);
+  });
+
+  it("goes red when an exposeInMainWorld key is not IPC, such as require('fs')", () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const anchor = "isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',";
+    preload.text = preload.text.replace(anchor, `fs: require('fs'),\n  ${anchor}`);
+    const mutated = scanSources(files);
+    const added = mutated.exposed.filter((line) => !surface.exposed.includes(line));
+    expect(mutated.exposed).not.toEqual(FREEZE.exposed);
+    expect(added).toEqual([`api fs ${NON_IPC}`]);
+    console.log(`[mutant fs] RED ${added.join(', ')}`);
+  });
+
+  it('goes red when a channel is renamed even though the counts stay the same', () => {
+    const files = productionCopies();
+    const ipc = sourceFile(files, 'ipc.ts');
+    const from = "VAULT_READ: 'vault:read'";
+    expect(ipc.text.includes(from)).toBe(true);
+    ipc.text = ipc.text.replace(from, "VAULT_READ: 'vault:read-renamed'");
+    const mutated = scanSources(files);
+    expect(mutated.census.ipcChannelKeys).toBe(surface.census.ipcChannelKeys);
+    expect(mutated.census.handlerChannels).toBe(surface.census.handlerChannels);
+    expect(mutated.names.ipcChannels).not.toEqual(FREEZE.names.ipcChannels);
+    expect(mutated.names.handlers).not.toEqual(FREEZE.names.handlers);
+    expect(mutated.names.ipcChannels).toContain('vault:read-renamed');
+    expect(mutated.names.ipcChannels).not.toContain('vault:read');
+    expect(mutated.names.handlers).toContain('vault:read-renamed');
+    expect(mutated.names.handlers).not.toContain('vault:read');
+    console.log('[mutant rename] RED vault:read -> vault:read-renamed in ipc channel names and handlers; counts unchanged');
+  });
+
+  it('goes red when a handler channel and a push channel are swapped', () => {
+    const files = productionCopies();
+    for (const file of files) file.text = swapQuoted(file.text, "'vault:read'", "'vault:changed'");
+    const mutated = scanSources(files);
+    expect(mutated.census.ipcChannelKeys).toBe(surface.census.ipcChannelKeys);
+    expect(mutated.census.handlerChannels).toBe(surface.census.handlerChannels);
+    expect(mutated.census.helperSendChannels).toBe(surface.census.helperSendChannels);
+    expect(mutated.census.mainListenerChannels).toBe(surface.census.mainListenerChannels);
+    expect(mutated.names.handlers).not.toEqual(FREEZE.names.handlers);
+    expect(mutated.names.pushChannels).not.toEqual(FREEZE.names.pushChannels);
+    expect(mutated.names.handlers).toContain('vault:changed');
+    expect(mutated.names.handlers).not.toContain('vault:read');
+    expect(mutated.names.pushChannels).toContain('vault:read');
+    expect(mutated.names.pushChannels).not.toContain('vault:changed');
+    console.log('[mutant swap] RED handlers lost vault:read gained vault:changed; pushes lost vault:changed gained vault:read; counts unchanged');
+  });
+
+  it('goes red when the ai-activity:update preload listener is removed', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const needle = "ipcRenderer.on('ai-activity:update', handler);";
+    expect(preload.text.includes(needle)).toBe(true);
+    preload.text = preload.text.replace(needle, '/* listener removed */;');
+    const mutated = scanSources(files);
+    const report = driftReport(mutated.gaps, ALLOWLIST);
+    expect(report).toEqual([
+      'new gap not in allowlist: push-without-listener ai-activity:update',
+    ]);
+    console.log(`[mutant ai-activity:update] RED ${report.join('; ')}`);
+  });
+
+  it('goes red when the ai-activity:terminal preload listener is removed', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const needle = "ipcRenderer.on('ai-activity:terminal', handler);";
+    expect(preload.text.includes(needle)).toBe(true);
+    preload.text = preload.text.replace(needle, '/* listener removed */;');
+    const mutated = scanSources(files);
+    const report = driftReport(mutated.gaps, ALLOWLIST);
+    expect(report).toEqual([
+      'new gap not in allowlist: push-without-listener ai-activity:terminal',
+    ]);
+    console.log(`[mutant ai-activity:terminal] RED ${report.join('; ')}`);
+  });
+
+  it('goes red when an ipcMain handler has no matching preload invoke', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const needle = "ipcRenderer.invoke('vault:read'";
+    expect(preload.text.split(needle).length - 1).toBe(2);
+    preload.text = preload.text.split(needle).join("ipcRenderer.invoke('vault:read-removed'");
+    const mutated = scanSources(files);
+    expect(surface.handlerToInvoke).toContain('vault:read <- api.readVault,mythosIPC.readVaultFile');
+    expect(surface.invokeToHandler).toContain('vault:read -> HANDLER');
+    expect(mutated.handlerToInvoke).toContain('vault:read <- NONE');
+    expect(mutated.handlerToInvoke).not.toEqual(FREEZE.handlerToInvoke);
+    expect(mutated.invokeToHandler).not.toContain('vault:read -> HANDLER');
+    expect(mutated.invokeToHandler).toContain('vault:read-removed -> NO_HANDLER');
+    expect(mutated.invokeToHandler).not.toEqual(FREEZE.invokeToHandler);
+    console.log("[mutant vault:read] RED handler 'vault:read <- NONE' (was api.readVault,mythosIPC.readVaultFile); invoke 'vault:read -> HANDLER' gone; 'vault:read-removed -> NO_HANDLER'");
   });
 
   it('an allowlist entry whose gap was fixed must shrink the list', () => {
