@@ -16,7 +16,7 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Security
-- `sprintf-js` GHSA-hp3w-g68c-fv3c is out of the tree: electron-builder's `@electron/get` is overridden to 5.1.0 (that release does not depend on `global-agent` / `roarr` / `sprintf-js`), and mammoth's `argparse` is overridden to 2.0.1 so the nested `sprintf-js@1.0.3` copy is gone. Vite 6.4.5 clears the high `launch-editor` advisory on Vite `<=6.4.3` (GHSA-587h-7wmj-h5pm). Docx import still uses mammoth's library API.
+- `sprintf-js` GHSA-hp3w-g68c-fv3c is out of the tree: electron-builder's `@electron/get` is overridden to 5.1.0 (that release does not depend on `global-agent` / `roarr` / `sprintf-js`), and mammoth's `argparse` is overridden to 2.0.1 so the nested `sprintf-js@1.0.3` copy is gone. Vite 6.4.5 clears the high `launch-editor` advisory on Vite `<=6.4.3` (GHSA-587h-7wmj-h5pm). Docx import still uses mammoth's library API. ([#1749](https://github.com/SkyyPlayz/Mythos-Writer/pull/1749))
 
 ### Changed
 - Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
