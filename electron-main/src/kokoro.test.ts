@@ -145,8 +145,7 @@ describe('phonemizeText', () => {
   it('produces a non-empty IPA string for real prose', async () => {
     const ipa = await phonemizeText('Hello, this is a test.', 'a');
     expect(ipa.length).toBeGreaterThan(0);
-    // eSpeak IPA for "hello" contains the l-sound; sanity that it is phonemes,
-    // not the raw text.
+    // Sanity that the result is phonemes, not the raw text.
     expect(ipa).not.toContain('Hello');
   });
   it('keeps punctuation and normalizes to phonemes only', async () => {

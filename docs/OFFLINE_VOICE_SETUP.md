@@ -34,8 +34,8 @@ measured against a pre-Kokoro build side by side.
   `electron-main/resources/kokoro/` and bundled via electron-builder
   `extraResources`. They are **not committed to git** (~86 MB).
 - Inference runs through [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web)
-  (MIT) WASM + [`phonemizer`](https://www.npmjs.com/package/phonemizer)
-  (Apache-2.0) — deliberately **not** `kokoro-js`/`@huggingface/transformers`,
+  (MIT) WASM + [`phonemize`](https://www.npmjs.com/package/phonemize)
+  (MIT, `phonemize/en-g2p` only) — deliberately **not** `kokoro-js`/`@huggingface/transformers`,
   which drag in `sharp` (high-severity CVEs) and a native runtime. No
   child process is spawned; the engine is `electron-main/src/kokoro.ts`.
 - The renderer decodes the streamed 16-bit PCM exactly like Piper's `--output-raw`

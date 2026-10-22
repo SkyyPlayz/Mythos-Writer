@@ -23,8 +23,8 @@
     "electron-updater": "^6.8.9",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
-    "onnxruntime-web": "^1.30.0",
-    "phonemizer": "^1.2.1"
+    "onnxruntime-web": "1.30.0",
+    "phonemize": "2.0.1"
   },
   "devDependencies": {
     "@jazzer.js/core": "^4.0.0",
