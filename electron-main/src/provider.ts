@@ -11,6 +11,12 @@ import Anthropic from '@anthropic-ai/sdk';
 // undici stack reaches the same URL without issue (SKY-11225). Import undici's fetch explicitly
 // to keep all main-process HTTP calls on Node's networking path.
 import { fetch as nodeFetch } from 'undici';
+import {
+  excludeGoogleModelIds,
+  isOpenRouterEndpoint,
+  withOpenRouterGuards,
+  type OpenRouterProviderBlock,
+} from '@mythos-writer/shared/openRouterPolicy';
 import { SafeIpcError } from './ipcErrors.js';
 
 // ─── Provider config ─────────────────────────────────────────────────────────
@@ -294,6 +300,14 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
     } else {
       const resp = json as { data?: Array<{ id?: string }> };
       models = (resp.data ?? []).map((m) => m.id ?? '').filter(Boolean);
+    }
+
+    // OpenRouter's catalog includes google/* models. Drop them before the
+    // picker can select one. Comparison is on the lowercased id. A local
+    // runtime may legitimately have a model with that name, so only the
+    // OpenRouter host is filtered.
+    if (isOpenRouterEndpoint(resolvedBase)) {
+      models = excludeGoogleModelIds(models);
     }
 
     return { ok: true, models };
@@ -682,27 +696,25 @@ export function stripThinkBlocks(text: string): string {
 // Used for OpenAI, Ollama, LM Studio, and custom endpoints.
 // Avoids adding an openai npm dependency — uses the streaming REST API directly.
 
-async function* runOpenAICompatibleStream(
+export interface OpenAiCompatibleChatBody {
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  max_tokens: number;
+  stream: true;
+  provider?: OpenRouterProviderBlock;
+}
+
+/**
+ * JSON body for an OpenAI-compatible chat completion.
+ * OpenRouter hosts also get the provider block (Google providers ignored,
+ * zdr on, data collection denied). A google/* model id on OpenRouter throws
+ * before any bytes are sent.
+ */
+export function buildOpenAiCompatibleChatBody(
   config: ProviderConfig,
   req: StreamRequest,
-): AsyncIterable<string> {
-  const baseUrl = config.baseUrl ?? DEFAULT_BASE_URLS[config.kind] ?? '';
-  if (!baseUrl) {
-    throw new Error(`Provider "${config.kind}" requires a baseUrl.`);
-  }
-
-  // SSRF guard: validate before any outbound fetch (SKY-739).
-  const urlError = validateBaseUrl(baseUrl);
-  if (urlError) {
-    throw new Error(urlError);
-  }
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (config.apiKey) {
-    headers['Authorization'] = `Bearer ${config.apiKey}`;
-  }
-
-  // Build messages: prepend system as a system role message when present
+  baseUrl: string,
+): OpenAiCompatibleChatBody {
   const messages: Array<{ role: string; content: string }> = [];
   if (req.system) {
     messages.push({ role: 'system', content: req.system });
@@ -723,12 +735,37 @@ async function* runOpenAICompatibleStream(
     req.reserveThinkingTokens !== false,
   );
 
-  const body = JSON.stringify({
+  return withOpenRouterGuards(baseUrl, {
     model: config.model,
     messages,
     max_tokens: maxTokensToSend,
-    stream: true,
+    stream: true as const,
   });
+}
+
+async function* runOpenAICompatibleStream(
+  config: ProviderConfig,
+  req: StreamRequest,
+): AsyncIterable<string> {
+  const baseUrl = config.baseUrl ?? DEFAULT_BASE_URLS[config.kind] ?? '';
+  if (!baseUrl) {
+    throw new Error(`Provider "${config.kind}" requires a baseUrl.`);
+  }
+
+  // SSRF guard: validate before any outbound fetch (SKY-739).
+  const urlError = validateBaseUrl(baseUrl);
+  if (urlError) {
+    throw new Error(urlError);
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.apiKey) {
+    headers['Authorization'] = `Bearer ${config.apiKey}`;
+  }
+
+  const chatBody = buildOpenAiCompatibleChatBody(config, req, baseUrl);
+  const maxTokensToSend = chatBody.max_tokens;
+  const body = JSON.stringify(chatBody);
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
