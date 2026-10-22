@@ -12,6 +12,9 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
+### Fixed
+- Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
+
 ### Changed
 - AI suggestions can no longer write into your manuscript files. Auto-mark no longer edits notes: suggestions for your notes now wait in the inbox until you accept them, and suggestions for your manuscript are just marked done. ([#1742](https://github.com/SkyyPlayz/Mythos-Writer/pull/1742))
 - Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
