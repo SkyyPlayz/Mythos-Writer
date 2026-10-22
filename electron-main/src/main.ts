@@ -1,6 +1,7 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
-import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy } from './security.js';
+import { defaultFor, rememberFrom, vaultOpenDefaultPath } from './dialogDefaults.js';
 import {
   registerAiActivityIpcHandlers,
   registerAiActivity,
@@ -859,6 +860,7 @@ import {
   appendSyncEvent,
 } from './vaultSessionLock.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+import { AI_TEXT_APPLY_ENABLED } from '@mythos-writer/shared/aiSuggestOnly';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import {
   resolveWillPreventUnloadAction,
@@ -2121,7 +2123,7 @@ function toGuidedMoveError(err: unknown): unknown {
 }
 
 // ─── IPC Handlers ───
-const handlers: IpcHandlers = {
+export const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
   // at the IPC boundary. The low-level helpers also re-check traversal, so a
   // bad path is rejected twice independently.
@@ -2181,7 +2183,9 @@ const handlers: IpcHandlers = {
       properties: ['openDirectory', 'createDirectory'],
       title: 'Open Vault Folder',
       buttonLabel: 'Open as Vault',
+      defaultPath: vaultOpenDefaultPath(getVaultRoot()),
     });
+    rememberFrom('vault', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { vaultRoot: null, cancelled: true };
     }
@@ -4306,7 +4310,9 @@ const handlers: IpcHandlers = {
       properties: ['openFile'],
       title: 'Import story',
       filters: [filter, { name: 'All files', extensions: ['*'] }],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { filePath: null, cancelled: true };
     }
@@ -5240,6 +5246,11 @@ const handlers: IpcHandlers = {
 
   // ─── Archive confirmation dialog (MYT-376) ───
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => {
+    // AI-SUGGEST-ONLY: refuse before any vault open, row write, or status flip.
+    // A replay of a missing id must resolve suggest_only, not throw.
+    if (payload.action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
+      return { ok: false, reason: 'suggest_only' as const };
+    }
     ensureVaultDir();
     const VALID_ARCHIVE_ACTIONS = ['match_archive', 'suggest_story_change', 'ignore'] as const;
     if (!VALID_ARCHIVE_ACTIONS.includes(payload.action as typeof VALID_ARCHIVE_ACTIONS[number])) {
@@ -5428,7 +5439,9 @@ const handlers: IpcHandlers = {
       buttonLabel: 'Set Background',
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { filePath: null, cancelled: true };
     }
@@ -5647,7 +5660,9 @@ const handlers: IpcHandlers = {
       title,
       buttonLabel: 'Select',
       filters,
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { path: null, cancelled: true, registrationToken: null };
     }
@@ -6249,7 +6264,9 @@ const handlers: IpcHandlers = {
       buttonLabel: 'Set Icon',
       properties: ['openFile'],
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', result);
     if (result.canceled || result.filePaths.length === 0) {
       return { filePath: null, cancelled: true };
     }
@@ -7263,7 +7280,9 @@ const handlers: IpcHandlers = {
       title: 'Restore App Data from Backup',
       filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
       properties: ['openFile'],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', res);
     if (res.canceled || !res.filePaths[0]) return { restored: false, cancelled: true, details: [] };
     const archivePath = res.filePaths[0];
     await shutdownJobService();
@@ -8566,7 +8585,9 @@ const handlers: IpcHandlers = {
       title: 'Import Template',
       filters: [{ name: 'Mythos Template', extensions: ['mythostemplate'] }],
       properties: ['openFile'],
+      defaultPath: defaultFor('import'),
     });
+    rememberFrom('import', res);
     if (res.canceled || !res.filePaths[0]) return { ok: true as const, cancelled: true };
     return importTemplate(app.getPath('userData'), res.filePaths[0]);
   },
@@ -11535,11 +11556,15 @@ function startArchiveContScheduler(): void {
  * archive:cont-item-resolved so every surface drops the flag live.
  * Throws when the item does not exist.
  */
-function resolveContinuityItemById(
+export function resolveContinuityItemById(
   itemId: string,
   action: import('./ipc.js').ResolutionAction,
   note?: string,
 ): import('./ipc.js').ArchiveResolveContinuityResponse {
+  // AI-SUGGEST-ONLY: refuse before lookup so a replay cannot throw or flip status.
+  if (action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
+    return { ok: false, reason: 'suggest_only' };
+  }
   const row = getContinuityIssue(itemId);
   if (!row) throw new Error(`Continuity issue not found: ${itemId}`);
 
@@ -11766,6 +11791,11 @@ function setupAgentPersonaIpc(): void {
 // where a failed GPU process otherwise blocks the window from ever appearing.
 // Must be called before the app 'ready' event.
 app.disableHardwareAcceleration();
+
+// Electron 44 auto-picks a client certificate when this event is unhandled,
+// including for net and utility-process requests where webContents is null.
+// Register before ready and before any BrowserWindow.
+installClientCertPolicy(app);
 
 process.on('unhandledRejection', (reason) => {
   console.error('[main] Unhandled promise rejection:', reason);

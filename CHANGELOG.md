@@ -12,8 +12,14 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
+### Fixed
+- Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
+
 ### Changed
+- Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
+- **Timeline views** — the timeline shows Structure and Progress. Plotlines, Spreadsheet, Tension, Relationships, and Subway are hidden from the view switcher; saved timeline data is unchanged. ([#1695](https://github.com/SkyyPlayz/Mythos-Writer/pull/1695))
 - **Graph filters sit at the top-right of the graph card** — the category chips and depth control are a compact bar on the card, and Tab still reaches them after the header controls. ([PR #1715](https://github.com/SkyyPlayz/Mythos-Writer/pull/1715))
+- Electron 44.9.0 (from 42). macOS 13+ required. File dialogs remember the last folder again. Client-certificate requests are declined, not auto-answered. ([#1728](https://github.com/SkyyPlayz/Mythos-Writer/pull/1728))
 - **Theme "Neon Classic" is now "Neon Nebula"** — display name only; the stored preset key is unchanged. (SKY-11589)
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 

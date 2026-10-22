@@ -9,6 +9,7 @@ import {
   AUTO_LINKER_META,
   getAutoLinkerState,
 } from './AutoLinkerExtension';
+import { changedRanges, expandToTextblocks } from './editor/changedRanges';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -279,5 +280,71 @@ describe('AutoLinkerExtension plugin — decoration correctness across edits', (
     const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
     editor.destroy();
     expect(hints).toHaveLength(0);
+  });
+});
+
+// ─── editor/changedRanges (pure move of the keystroke rescan helpers) ────────
+
+describe('editor/changedRanges', () => {
+  it('returns null when the transaction did not change the document', () => {
+    const editor = new Editor({ extensions: [StarterKit], content: '<p>Hello</p>' });
+    expect(changedRanges(editor.state.tr)).toBeNull();
+    editor.destroy();
+  });
+
+  it('returns the inserted span in final coordinates and widens it to the textblock', () => {
+    const editor = new Editor({ extensions: [StarterKit], content: '<p>Hello</p>' });
+    const tr = editor.state.tr.insertText('XY', 1);
+    const changed = changedRanges(tr);
+    expect(changed).not.toBeNull();
+    if (changed === null) throw new Error('expected a changed range');
+    expect(tr.doc.textBetween(changed.from, changed.to)).toBe('XY');
+    const widened = expandToTextblocks(tr.doc, changed.from, changed.to);
+    expect(tr.doc.textBetween(widened.from, widened.to)).toBe('XYHello');
+    expect(widened.from).toBeLessThanOrEqual(changed.from);
+    expect(widened.to).toBeGreaterThanOrEqual(changed.to);
+    editor.destroy();
+  });
+
+  it('collapses a deletion to a caret and still widens to the textblock', () => {
+    const editor = new Editor({ extensions: [StarterKit], content: '<p>Hello</p>' });
+    const tr = editor.state.tr.delete(1, 3);
+    const changed = changedRanges(tr);
+    expect(changed).not.toBeNull();
+    if (changed === null) throw new Error('expected a changed range');
+    expect(changed.from).toBe(changed.to);
+    const widened = expandToTextblocks(tr.doc, changed.from, changed.to);
+    expect(tr.doc.textBetween(widened.from, widened.to)).toBe('llo');
+    editor.destroy();
+  });
+
+  it('widens an interior position to the enclosing paragraph, not the whole document', () => {
+    const editor = new Editor({ extensions: [StarterKit], content: '<p>Hello</p><p>World</p>' });
+    const doc = editor.state.doc;
+    const paragraphs: { from: number; to: number; text: string }[] = [];
+    doc.forEach((node, offset) => {
+      if (node.isTextblock) {
+        paragraphs.push({ from: offset, to: offset + node.nodeSize, text: node.textContent });
+      }
+    });
+    expect(paragraphs.map((p) => p.text)).toEqual(['Hello', 'World']);
+    const second = paragraphs[1];
+    if (second === undefined) throw new Error('expected a second paragraph');
+    const interior = second.from + 2;
+    expect(expandToTextblocks(doc, interior, interior + 1)).toEqual({
+      from: second.from,
+      to: second.to,
+    });
+    editor.destroy();
+  });
+
+  it('clamps positions outside the document before widening', () => {
+    const editor = new Editor({ extensions: [StarterKit], content: '<p>Hello</p>' });
+    const doc = editor.state.doc;
+    const widened = expandToTextblocks(doc, -20, 10_000);
+    expect(doc.textBetween(widened.from, widened.to)).toBe('Hello');
+    expect(widened.from).toBeGreaterThanOrEqual(0);
+    expect(widened.to).toBeLessThanOrEqual(doc.content.size);
+    editor.destroy();
   });
 });

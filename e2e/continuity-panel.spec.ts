@@ -514,7 +514,7 @@ test('TC-CP-06: "Edit notes to match" patches the conflicting note on disk', asy
   }
 });
 
-test('TC-CP-07: "Suggest story change" drafts an archive suggestion carrying the author-edited text', async () => {
+test('TC-CP-07: Suggest fix shows how to fix and leaves the manuscript alone (E1)', async () => {
   const fixture = createFixture([{ id: 'inc-suggest', severity: 'high' }]);
   let app: ElectronApplication | undefined;
   try {
@@ -525,25 +525,34 @@ test('TC-CP-07: "Suggest story change" drafts an archive suggestion carrying the
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
+    const sceneFile = path.join(
+      fixture.vaultDir,
+      `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes/${SCENE_ID}.md`,
+    );
+    const sceneBefore = fs.readFileSync(sceneFile, 'utf-8');
+    const howToFix = 'Change the manuscript to match the daylight-only bridge note.';
+
     await card.getByRole('button', { name: /suggest fix/i }).click();
     await card.getByRole('button', { name: /suggest a change to the story/i }).click();
-    await expect(sidebar.getByText('Suggested manuscript change')).toBeVisible();
-    await card.getByRole('button', { name: /edit before applying/i }).click();
-    const edited = 'Mara waits for the dawn bells before she crosses the Glass Bridge.';
-    await card.getByRole('textbox', { name: /edit suggested manuscript change/i }).fill(edited);
-    await card.getByRole('button', { name: /apply suggested edit/i }).click();
+    await expect(card.getByText('How to fix (AI)')).toBeVisible();
+    await expect(card.getByText(howToFix)).toBeVisible();
+    await expect(card.getByRole('button', { name: /apply edit|apply suggested|edit before applying/i })).toHaveCount(0);
+    await expect(card.getByRole('textbox')).toHaveCount(0);
+    // The flag stays open — nothing was accepted or applied.
+    await expect(sidebar.getByText(/Glass Bridge under twin moons/)).toBeVisible();
+    expect(fs.readFileSync(sceneFile, 'utf-8')).toBe(sceneBefore);
 
-    // The drafted story change landed as a real archive suggestion (asked
-    // through the app's own IPC — the same store the suggestions inbox reads).
-    await expect.poll(async () => {
-      const res = await page.evaluate(() =>
-        (window as unknown as { api: { suggestionsList: (s?: string, a?: string) => Promise<{ suggestions: Array<{ source_agent: string; rationale: string }> }> } })
-          .api.suggestionsList('proposed', 'archive'),
-      );
-      return res.suggestions.map((sg) => sg.rationale);
-    }, { timeout: 8_000 }).toContain(edited);
+    const rationales = await page.evaluate(() =>
+      (window as unknown as { api: { suggestionsList: (s?: string, a?: string) => Promise<{ suggestions: Array<{ rationale: string }> }> } })
+        .api.suggestionsList('proposed', 'archive'),
+    );
+    expect(rationales.suggestions.map((sg) => sg.rationale)).not.toContain(howToFix);
 
-    await expect(sidebar.getByText(/Glass Bridge under twin moons/)).toBeHidden({ timeout: 8_000 });
+    const shotDir = process.env.MYTHOS_E1_SHOT_DIR;
+    if (shotDir) {
+      fs.mkdirSync(shotDir, { recursive: true });
+      await card.screenshot({ path: path.join(shotDir, 'e1-how-to-fix.png') });
+    }
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
@@ -580,76 +589,34 @@ test('TC-CP-08: dismiss (header ×) hides the flag and persists ignored status',
   }
 });
 
-// ─── SKY-10926: onConsentGranted reachability ───────────────────────────────
-// ContinuityPanel's `onConsentGranted` prop was wired up on the child side
-// (InconsistencyCard's consent modal → ContinuityPanel.handleConsentGranted,
-// which persists archiveStoryEditConsentGiven via settingsSet) but was never
-// passed in from any of its parents, so the parent's own `appSettings` mirror
-// never learned that consent had been granted until a full reload. This test
-// starts from consent NOT yet given, drives the real "Suggest story change"
-// consent-grant UI, and asserts the persisted setting flips to true — proving
-// the callback prop is reachable end to end, not dead wiring.
-test('TC-CP-09: granting story-edit consent via the modal persists and survives reload (SKY-10926)', async () => {
+// How-to-fix is a guide. There is no manuscript-edit consent dialog, and
+// opening it does not flip archiveStoryEditConsentGiven.
+test('TC-CP-09: how to fix shows with no consent dialog and leaves the setting false', async () => {
   const fixture = createFixture(
     [{ id: 'inc-consent', severity: 'high' }],
     { archiveStoryEditConsentGiven: false },
   );
   let app: ElectronApplication | undefined;
   try {
-    let opened = await openApp(fixture);
+    const opened = await openApp(fixture);
     app = opened.app;
-    let page = opened.page;
+    const page = opened.page;
     const sidebar = page.getByTestId('global-right-sidebar');
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
-    // Consent not yet given — "Suggest fix" → "Suggest a change to the
-    // story" opens the consent gate, not the edit area.
     await card.getByRole('button', { name: /suggest fix/i }).click();
     await card.getByRole('button', { name: /suggest a change to the story/i }).click();
-    const consentDialog = page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i });
-    await expect(consentDialog).toBeVisible();
-    await expect(card.getByRole('textbox', { name: /edit suggested manuscript change/i })).toBeHidden();
+    await expect(page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i })).toHaveCount(0);
+    await expect(card.getByText('How to fix (AI)')).toBeVisible();
+    await expect(card.getByText('Change the manuscript to match the daylight-only bridge note.')).toBeVisible();
 
-    await consentDialog.getByLabel(/don.t show this again/i).check();
-    await consentDialog.getByRole('button', { name: 'Continue' }).click();
-    await expect(consentDialog).toBeHidden();
-
-    // Granting consent flipped straight into the suggest-edit expand area for
-    // this card too (ContinuityPanel's own onConsentGranted-independent flow).
-    await expect(card.getByText('Suggested manuscript change')).toBeVisible();
-    await card.getByRole('button', { name: /cancel suggested edit/i }).click();
-
-    // The onConsentGranted callback synced the parent's settings mirror AND
-    // persisted to disk — assert both without racing settingsSet's async
-    // write by polling app-settings.json.
-    await expect.poll(async () => {
-      const s = await page.evaluate(() =>
-        (window as unknown as { api: { settingsGet: () => Promise<{ archiveStoryEditConsentGiven?: boolean }> } })
-          .api.settingsGet(),
-      );
-      return s.archiveStoryEditConsentGiven;
-    }, { timeout: 8_000 }).toBe(true);
-    await expect.poll(() => readAppSettings(fixture.userData).archiveStoryEditConsentGiven, { timeout: 8_000 }).toBe(true);
-
-    await closeApp(app);
-    app = undefined;
-    expect(readAppSettings(fixture.userData).archiveStoryEditConsentGiven).toBe(true);
-
-    // Reopen: a fresh card's "Suggest fix" → "Suggest a change to the story"
-    // now skips the consent modal entirely — the gated feature stayed active
-    // across reload.
-    opened = await openApp(fixture);
-    app = opened.app;
-    page = opened.page;
-    const reopenedSidebar = page.getByTestId('global-right-sidebar');
-    const reopenedCard = reopenedSidebar.getByRole('listitem', { name: /high character attribute drift/i });
-    await expect(reopenedCard).toBeVisible({ timeout: 12_000 });
-
-    await reopenedCard.getByRole('button', { name: /suggest fix/i }).click();
-    await reopenedCard.getByRole('button', { name: /suggest a change to the story/i }).click();
-    await expect(page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i })).toBeHidden();
-    await expect(reopenedCard.getByText('Suggested manuscript change')).toBeVisible();
+    const settings = await page.evaluate(() =>
+      (window as unknown as { api: { settingsGet: () => Promise<{ archiveStoryEditConsentGiven?: boolean }> } })
+        .api.settingsGet(),
+    );
+    expect(settings.archiveStoryEditConsentGiven).toBe(false);
+    expect(readAppSettings(fixture.userData).archiveStoryEditConsentGiven).toBe(false);
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

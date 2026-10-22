@@ -48,30 +48,23 @@ describe('metadata', () => {
   it('exposes the three prototype actions in order', () => {
     expect(AGENT_ACTIONS.map((a) => a.action)).toEqual([
       'match_archive',
-      'suggest_story_change',
       'ignore',
     ]);
     expect(AGENT_ACTIONS.map((a) => a.label)).toEqual([
       'Edit notes to match',
-      'Suggest story change',
       'Ignore',
     ]);
+    expect(AGENT_ACTIONS.map((a) => a.label).join(' ')).not.toMatch(/suggest story change/i);
   });
 
-  it('exposes the compact v2 gutter row: the two archive verbs, short labels', () => {
-    expect(GUTTER_AGENT_ACTIONS.map((a) => a.action)).toEqual([
-      'match_archive',
-      'suggest_story_change',
-    ]);
-    expect(GUTTER_AGENT_ACTIONS.map((a) => a.label)).toEqual(['Edit notes', 'Suggest change']);
+  it('exposes the compact gutter row without a suggest-change button', () => {
+    expect(GUTTER_AGENT_ACTIONS.map((a) => a.action)).toEqual(['match_archive']);
+    expect(GUTTER_AGENT_ACTIONS.map((a) => a.label)).toEqual(['Edit notes']);
   });
 
-  it('has toast copy for the two visible actions and silence for ignore', () => {
+  it('has toast copy for edit-notes and silence for ignore', () => {
     expect(AGENT_ACTION_SUCCESS_TOAST.match_archive).toBeTruthy();
-    // Beta 4 M9 (v2 prototype 6772): the agent is the Writing Coach now.
-    expect(AGENT_ACTION_SUCCESS_TOAST.suggest_story_change).toBe(
-      'Suggested edit drafted — see Writing Coach'
-    );
+    expect(AGENT_ACTION_SUCCESS_TOAST.suggest_story_change).toBeUndefined();
     expect(AGENT_ACTION_SUCCESS_TOAST.ignore).toBeNull();
   });
 });
@@ -132,9 +125,9 @@ describe('runAgentAction', () => {
       kind: 'archive',
       suggestionId: 'sug-1',
     });
-    archiveConfirm.mockResolvedValue({ error: 'suggestion already resolved' });
+    archiveConfirm.mockResolvedValue({ ok: false, reason: 'suggest_only' });
     const res = await runAgentAction(created, 'suggest_story_change');
-    expect(res).toEqual({ ok: false, error: 'suggestion already resolved' });
+    expect(res).toEqual({ ok: false, error: 'suggest_only' });
     expect(commentsStore.list('story-1')).toHaveLength(1);
   });
 
