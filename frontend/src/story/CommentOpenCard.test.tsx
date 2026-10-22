@@ -75,16 +75,15 @@ describe('CommentOpenCard', () => {
     expect(screen.getByTestId('msv-cmt-focus-toggle')).toBeInTheDocument();
   });
 
-  it('archive comments with a suggestion expose the 3 live full-label actions', () => {
+  it('archive comments with a suggestion expose edit-notes and ignore, not suggest', () => {
     const comment = mkComment({ kind: 'archive', author: 'Archive Agent', suggestionId: 'sug-1' });
     const props = makeProps(comment);
     render(<CommentOpenCard {...props} />);
     const edit = screen.getByTestId('msv-copen-act-match_archive');
-    const suggest = screen.getByTestId('msv-copen-act-suggest_story_change');
     const ignore = screen.getByTestId('msv-copen-act-ignore');
     expect(edit).toBeEnabled();
     expect(edit).toHaveTextContent('Edit notes to match');
-    expect(suggest).toHaveTextContent('Suggest story change');
+    expect(screen.queryByTestId('msv-copen-act-suggest_story_change')).toBeNull();
     expect(ignore).toHaveTextContent('Ignore');
     fireEvent.click(ignore);
     expect(props.onAgentAction).toHaveBeenCalledWith(comment, 'ignore');

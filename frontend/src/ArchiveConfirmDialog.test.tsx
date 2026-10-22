@@ -30,10 +30,10 @@ describe('ArchiveConfirmDialog', () => {
     expect(screen.getByText(/dark hair streaming/)).toBeTruthy();
   });
 
-  it('renders all three action buttons', () => {
+  it('renders match and ignore, with no suggest-story-change button', () => {
     render(<ArchiveConfirmDialog {...defaultProps} />);
     expect(screen.getByText('Match Archive to Story')).toBeTruthy();
-    expect(screen.getByText('Suggest Story Change')).toBeTruthy();
+    expect(screen.queryByText('Suggest Story Change')).toBeNull();
     expect(screen.getByText('Ignore')).toBeTruthy();
   });
 
@@ -47,14 +47,10 @@ describe('ArchiveConfirmDialog', () => {
     expect(onResolved).toHaveBeenCalledWith('match_archive');
   });
 
-  it('calls archiveConfirm with suggest_story_change action', async () => {
-    mockArchiveConfirm.mockResolvedValue({ ok: true, auditId: 'aud-2', newSuggestionId: 'sug-2' });
-    const onResolved = vi.fn();
-    render(<ArchiveConfirmDialog {...defaultProps} onResolved={onResolved} />);
-
-    fireEvent.click(screen.getByText('Suggest Story Change'));
-    await waitFor(() => expect(mockArchiveConfirm).toHaveBeenCalledWith('sug-1', 'suggest_story_change'));
-    expect(onResolved).toHaveBeenCalledWith('suggest_story_change');
+  it('does not offer suggest_story_change', () => {
+    render(<ArchiveConfirmDialog {...defaultProps} />);
+    expect(screen.queryByRole('button', { name: /suggest story change|create suggestion to revise manuscript/i })).toBeNull();
+    expect(mockArchiveConfirm).not.toHaveBeenCalled();
   });
 
   it('calls archiveConfirm with ignore action', async () => {

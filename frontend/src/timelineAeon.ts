@@ -31,6 +31,26 @@ export const VALID_TIMELINE_MODES: readonly TimelineMode[] = [
   'progress', 'structure', 'plot', 'spreadsheet', 'tension', 'relations', 'subway',
 ];
 
+/**
+ * UI hide flag. Plotlines, Spreadsheet, Tension, Relationships, and Subway
+ * stay in the type union and in their view components; they are omitted from
+ * the timeline chrome while this set lists them. Empty the set to bring all
+ * five back.
+ */
+export const HIDDEN_TIMELINE_MODES: ReadonlySet<TimelineMode> = new Set([
+  'plot', 'spreadsheet', 'tension', 'relations', 'subway',
+]);
+
+/** True when `mode` is offered in the timeline chrome. */
+export function isTimelineModeVisible(mode: TimelineMode): boolean {
+  return !HIDDEN_TIMELINE_MODES.has(mode);
+}
+
+/** Modes the timeline chrome currently offers, in `VALID_TIMELINE_MODES` order. */
+export const VISIBLE_TIMELINE_MODES: readonly TimelineMode[] = VALID_TIMELINE_MODES.filter(
+  (mode) => isTimelineModeVisible(mode),
+);
+
 /** Legacy stored view modes map onto their successors: Beta-2 AEON lanes →
  *  Progress, AEON Track → Subway; the interim M22 'axis' surface folded into
  *  the Progress/Structure lanes (§8.4). */
@@ -45,6 +65,17 @@ export function resolveTimelineMode(stored: string | null): TimelineMode | null 
   if (!stored) return null;
   if ((VALID_TIMELINE_MODES as readonly string[]).includes(stored)) return stored as TimelineMode;
   return LEGACY_TIMELINE_MODE_MAP[stored] ?? null;
+}
+
+/**
+ * Resolve a persisted view-mode string to a mode the chrome still shows.
+ * Hidden modes, including legacy `track` (which `resolveTimelineMode` maps
+ * to Subway), fall back to Structure. `resolveTimelineMode` itself is unchanged.
+ */
+export function resolveVisibleTimelineMode(stored: string | null): TimelineMode {
+  const resolved = resolveTimelineMode(stored);
+  if (resolved == null || !isTimelineModeVisible(resolved)) return 'structure';
+  return resolved;
 }
 
 // ─── Zoom ───

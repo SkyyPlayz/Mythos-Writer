@@ -7,8 +7,8 @@
  * PageChromeToolbar.css, WritingAssistantPanel.css, DraftHistoryPanel.css).
  *
  * Opens a seeded scene so the scene-history controls (now on --bg-elevated /
- * --bg-hover) and the book outline sidebar (now on --bg-hover / --bg-active)
- * are visible, screenshots at the default Liquid Neon preset, then switches
+ * --bg-hover) and the story navigator (.nav-scene-row) are visible,
+ * screenshots at the default Liquid Neon preset, then switches
  * to the "cyber" accent preset and re-screenshots to prove these surfaces
  * repaint instead of staying frozen on their old literal fallbacks.
  *
@@ -86,8 +86,9 @@ test('capture SKY-11489 dead --bg family fix repaints on accent change', async (
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
 
-  // Open the seeded story → chapter → scene so the book outline sidebar
-  // (.book-outline-scene) and scene-history controls are on screen.
+  // Open the seeded story → chapter → scene so the story navigator
+  // (.nav-scene-row) and scene-history controls are on screen.
+  // #1694 removed .book-outline-scene with BookOutlineView.
   const storyRow = page.locator('.nav-story-row').first();
   if (await storyRow.isVisible({ timeout: 5_000 }).catch(() => false)) {
     const expandStory = storyRow.locator('.nav-expand-btn, button').first();

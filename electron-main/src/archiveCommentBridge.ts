@@ -4,7 +4,9 @@
 //
 //  1. Action mapping — the M11 comment cards dispatch the MYT-376
 //     `archive:confirm` verbs ('match_archive' | 'suggest_story_change' |
-//     'ignore'); continuity items (SKY-1684) resolve with the
+//     'ignore'). `suggest_story_change` stays in the allow-list; while
+//     AI text apply is off, main refuses it with reason 'suggest_only'.
+//     Continuity items (SKY-1684) resolve with the
 //     `archive:resolve-continuity` verbs ('match_archive_to_story' | …).
 //     `confirmActionToResolution` translates between the two so a comment's
 //     three buttons can resolve a continuity flag directly.

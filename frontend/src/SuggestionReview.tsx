@@ -3,6 +3,8 @@ import { SUGGESTION_CATEGORY_LABELS } from './types';
 import SuggestionDetailPane, {
   type UnifiedSuggestion,
   type SuggestionSourceAgent,
+  isLegacyAiWordingSuggestion,
+  isManuscriptSuggestion,
 } from './SuggestionDetailPane';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
@@ -140,6 +142,7 @@ function mapDbRowToUnified(r: Record<string, unknown>): UnifiedSuggestion {
     category: (r.category ?? null) as string | null,
     payloadJson: (r.payload_json ?? null) as string | null,
     preChangeSnapshot: (r.pre_change_snapshot ?? r.preChangeSnapshot ?? null) as string | null,
+    targetKind: (r.target_kind ?? r.targetKind ?? null) as UnifiedSuggestion['targetKind'],
   };
 }
 
@@ -186,7 +189,21 @@ function SuggestionRow({
   // Delete are deliberately NOT bound to reject (the spec's "dismiss") —
   // that's destructive-ish (CF-10: never reappears) and shouldn't be one
   // accidental keystroke away with no confirm.
+  const legacyAiWording = isLegacyAiWordingSuggestion(suggestion);
+  const manuscriptRow = isManuscriptSuggestion(suggestion);
+  const acceptLabel = manuscriptRow ? 'Mark done' : 'Accept';
+  const acceptAria = manuscriptRow
+    ? `Mark done suggestion from ${AGENT_LABELS[suggestion.sourceAgent]}`
+    : `Accept suggestion from ${AGENT_LABELS[suggestion.sourceAgent]}`;
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (legacyAiWording) {
+      if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onOpenDetail(suggestion.id);
+      }
+      return;
+    }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       onAccept(suggestion.id);
@@ -302,6 +319,10 @@ function SuggestionRow({
         </div>
       )}
 
+      {legacyAiWording ? (
+        <p className="sr-legacy-ai" data-testid="sr-legacy-ai">Older suggestion (AI wording)</p>
+      ) : null}
+
       <p className="sr-rationale">{rationaleText}</p>
 
       {suggestion.budgetExceeded && (
@@ -310,13 +331,14 @@ function SuggestionRow({
         </div>
       )}
 
+      {legacyAiWording ? null : (
       <div className="sr-actions">
         <button
           className="sr-btn sr-btn-accept"
           onClick={() => onAccept(suggestion.id)}
-          aria-label={`Accept suggestion from ${AGENT_LABELS[suggestion.sourceAgent]}`}
+          aria-label={acceptAria}
         >
-          Accept
+          {acceptLabel}
         </button>
         <button
           className="sr-btn sr-btn-reject"
@@ -333,6 +355,7 @@ function SuggestionRow({
           Ignore
         </button>
       </div>
+      )}
 
       {errorMessage && (
         <div className="sr-row-error" role="alert">
@@ -670,9 +693,11 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const api = (window as any).api;
+      let returnedStatus: 'applied' | 'accepted' | undefined;
       try {
         if (status === 'accepted' && typeof api?.suggestionsAccept === 'function') {
-          await api.suggestionsAccept(id);
+          const result = (await api.suggestionsAccept(id)) as { status?: string } | undefined;
+          returnedStatus = result?.status === 'applied' ? 'applied' : 'accepted';
         } else if (status === 'ignored' && typeof api?.suggestionsIgnore === 'function') {
           await api.suggestionsIgnore(id);
         }
@@ -701,10 +726,11 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
         next.delete(id);
         return next;
       });
+      const acceptCopy = returnedStatus === 'applied'
+        ? `Applied to ${targetPath ?? 'note'}`
+        : 'Marked done. Make the change in your scene.';
       setStatusAnnouncement(
-        status === 'accepted' && targetPath
-          ? `Suggestion accepted — applied to ${targetPath}`
-          : `Suggestion ${status === 'accepted' ? 'accepted' : 'ignored'}`,
+        status === 'accepted' ? acceptCopy : 'Suggestion ignored',
       );
       pendingFocusRef.current = { id, order: orderSnapshot };
 
@@ -713,10 +739,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
       // (the Audit tab's Rollback button reaches the same capability later).
       if (status === 'accepted') {
         setToastAction({ label: 'Undo', onClick: () => { clearToast(); setToastAction(null); void handleRollback(id); } });
-        showToast(
-          targetPath ? `Suggestion accepted — applied to ${targetPath}` : 'Suggestion accepted',
-          'info',
-        );
+        showToast(acceptCopy, 'info');
       }
     },
     [showToast, clearToast, handleRollback],
@@ -810,7 +833,10 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
 
   const handleBatchAction = useCallback(
     async (action: 'accepted' | 'rejected' | 'ignored') => {
-      const ids = Array.from(selectedIds);
+      const ids = items
+        .filter((s) => selectedIds.has(s.id))
+        .filter((s) => !(action === 'accepted' && isLegacyAiWordingSuggestion(s)))
+        .map((s) => s.id);
       if (ids.length === 0) return;
       setItems((prev) => prev.map((s) => (ids.includes(s.id) ? { ...s, status: action } : s)));
       setSelectedIds(new Set());
@@ -826,7 +852,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
         /* IPC not wired — state already updated optimistically */
       }
     },
-    [selectedIds],
+    [selectedIds, items],
   );
 
   const handleAgentFilterKeyDown = (e: React.KeyboardEvent, id: AgentFilter) => {
@@ -865,6 +891,12 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   ).filter(matchesVault);
   // Snapshot for updateStatus's focus-to-next-row (read before removal).
   inboxOrderRef.current = inboxVisible.map((s) => s.id);
+
+  const batchAcceptTargets = items.filter(
+    (s) => selectedIds.has(s.id) && !isLegacyAiWordingSuggestion(s),
+  );
+  const batchAcceptIsMarkDone =
+    batchAcceptTargets.length > 0 && batchAcceptTargets.every((s) => isManuscriptSuggestion(s));
 
   const allVisibleSelected =
     inboxVisible.length > 0 && inboxVisible.every((s) => selectedIds.has(s.id));
@@ -1144,7 +1176,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
 
           {proposed.length > 0 && (
             <p className="sr-keyboard-hint" aria-hidden="true">
-              Enter to open &middot; Ctrl+Enter accept &middot; R reject &middot; I ignore &middot; Ctrl+Click select
+              Enter to open &middot; Ctrl+Enter mark done &middot; R reject &middot; I ignore &middot; Ctrl+Click select
             </p>
           )}
 
@@ -1157,9 +1189,13 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
                 <button
                   className="sr-btn sr-btn-accept"
                   onClick={() => handleBatchAction('accepted')}
-                  aria-label="Accept all selected suggestions"
+                  aria-label={
+                    batchAcceptIsMarkDone
+                      ? 'Mark all selected done'
+                      : 'Accept all selected suggestions'
+                  }
                 >
-                  Accept all
+                  {batchAcceptIsMarkDone ? 'Mark all selected done' : 'Accept all'}
                 </button>
                 <button
                   className="sr-btn sr-btn-reject"

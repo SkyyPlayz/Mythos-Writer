@@ -26,10 +26,9 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { revealedTimelineMainJs } from './timelineHiddenModesPatch';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 const STORY_ID = 'story-tension-open-chapter-e2e';
 const STORY_TITLE = 'The Tension Ledger';
@@ -197,7 +196,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
+    args: [revealedTimelineMainJs(), `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();

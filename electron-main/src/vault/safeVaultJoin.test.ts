@@ -63,11 +63,33 @@ describe('safeVaultJoin', () => {
       }
     });
 
-    it('rejects a write that lands through a symlinked parent directory', () => {
-      fs.symlinkSync(os.tmpdir(), path.join(tmpDir, 'escape-dir'));
-      expect(() =>
-        safeVaultJoin(tmpDir, 'escape-dir/new.md', { writeMode: true }),
-      ).toThrow(/parent symlink escapes vault/);
+    it('rejects a write through a symlinked parent when the leaf does not exist', () => {
+      // Fresh directory so the leaf cannot already exist outside the vault.
+      // writeMode walks up to that parent and throws the parent-symlink marker.
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-svj-outside-'));
+      try {
+        fs.symlinkSync(outside, path.join(tmpDir, 'escape-dir'));
+        expect(() =>
+          safeVaultJoin(tmpDir, 'escape-dir/new.md', { writeMode: true }),
+        ).toThrow(/parent symlink escapes vault/);
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('rejects a write through a symlinked parent when the outside leaf exists', () => {
+      // The leaf node exists, so the ancestor walk stops on the resolved path
+      // and throws the leaf symlink-escape marker instead of the parent one.
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-svj-outside-'));
+      fs.writeFileSync(path.join(outside, 'new.md'), 'sensitive');
+      try {
+        fs.symlinkSync(outside, path.join(tmpDir, 'escape-dir'));
+        expect(() =>
+          safeVaultJoin(tmpDir, 'escape-dir/new.md', { writeMode: true }),
+        ).toThrow(/Path traversal denied: escape-dir\/new\.md \(symlink escape detected\)/);
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
     });
 
     it('allows a symlink pointing inside the vault', () => {
