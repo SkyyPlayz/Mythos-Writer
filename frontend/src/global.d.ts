@@ -998,19 +998,19 @@ interface WorkspaceLayout {
   splitWindow: { enabled: boolean; splitRatio: number };
 }
 
-/** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. */
-type RightPanelId = 'writing-assistant' | 'archive-continuity' | 'scene-preview' | 'scene-notes' | 'scene-properties' | 'scenes' | 'references' | 'brainstorm';
+/** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. Canonical union: frame/panelRegistry.ts. */
+type RightPanelId = import('./frame/panelRegistry').RightPanelId;
 
 interface RightSidebarPanel {
   id: SidebarPanelId;
   collapsed: boolean;
 }
 
-/** SKY-1694: Panel IDs available in the left sidebar panel zone. */
-type LeftPanelId = 'stories' | 'entities' | 'vault' | 'vault-graph' | 'review' | 'progress' | 'timeline';
+/** SKY-1694: Panel IDs available in the left sidebar panel zone. Canonical union: frame/panelRegistry.ts. */
+type LeftPanelId = import('./frame/panelRegistry').LeftPanelId;
 
-/** SKY-1695 (Wave 2b): Unified panel ID — any panel in either sidebar. */
-type SidebarPanelId = LeftPanelId | RightPanelId;
+/** SKY-1695 (Wave 2b): Unified panel ID — any panel in either sidebar. Alias of frame/panelRegistry.ts WidgetId. */
+type SidebarPanelId = import('./frame/panelRegistry').WidgetId;
 
 /** SKY-1695 (Wave 2b): Generic panel config entry usable in either sidebar. */
 interface SidebarPanelConfig {
