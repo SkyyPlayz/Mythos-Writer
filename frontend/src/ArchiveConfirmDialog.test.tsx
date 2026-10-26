@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import ArchiveConfirmDialog from './ArchiveConfirmDialog';
+import ArchiveConfirmDialog, { W8_NOTE_REFUSAL } from './ArchiveConfirmDialog';
 
 // Mock window.api
 const mockArchiveConfirm = vi.fn();
@@ -108,5 +108,22 @@ describe('ArchiveConfirmDialog', () => {
     }
 
     resolveCall({ ok: true, auditId: 'aud-x' });
+  });
+
+  it.each([
+    'manuscript_target',
+    'not_allowlisted',
+    'resolve_failed',
+    'unresolved_relation',
+    'unknown_kind',
+    'no_manifest',
+  ])('shows the note refusal for guard reason %s and does not resolve', async (reason) => {
+    mockArchiveConfirm.mockResolvedValue({ ok: false, reason });
+    const onResolved = vi.fn();
+    render(<ArchiveConfirmDialog {...defaultProps} onResolved={onResolved} />);
+
+    fireEvent.click(screen.getByText('Match Archive to Story'));
+    await waitFor(() => expect(screen.getByText(W8_NOTE_REFUSAL)).toBeTruthy());
+    expect(onResolved).not.toHaveBeenCalled();
   });
 });
