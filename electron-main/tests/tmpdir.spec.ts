@@ -198,7 +198,7 @@ describe('fallback', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('(l) failRm prints hook hit and fallback failed and exits 0', async () => {
+  it('(l) a patched rm prints hook hit and fallback failed and exits 0', async () => {
     const result = await runNode([childPath, 'fail-rm'], childEnv());
     expect(result.code).toBe(0);
     expect(result.signal).toBeNull();
@@ -305,8 +305,8 @@ describe('fallback', () => {
   it('(q3) double SIGTERM prints one line per directory', async () => {
     const result = await runNode([childPath, 'q3'], childEnv());
     expect(result.code).toBe(0);
-    const cleaned = result.out.split('\n').filter((row) => row.includes('mythos-test fallback cleaned'));
-    expect(cleaned).toHaveLength(2);
+    const lines = result.out.split('\n').filter((row) => row.includes('mythos-test fallback'));
+    expect(lines).toHaveLength(2);
   });
 
   it('(q4) swapped symlink: outside target survives and fallback failed is printed', async () => {

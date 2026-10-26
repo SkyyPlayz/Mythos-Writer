@@ -153,15 +153,6 @@ async function refusals() {
 }
 
 async function main() {
-  if (mode === 'q3') {
-    let extra = true;
-    process.on('SIGTERM', () => {
-      if (!extra) return;
-      extra = false;
-      process.emit('SIGTERM');
-    });
-  }
-
   const { makeTestTmp, cleanupTestTmp } = await loadTmp();
 
   switch (mode) {
@@ -249,9 +240,21 @@ async function main() {
       return;
     }
     case 'q3': {
+      // A no-op listener stays registered so the helper does not re-raise.
+      process.on('SIGTERM', () => {});
+      const origRm = fs.rmSync;
+      let extra = true;
+      fs.rmSync = function reenter(target, opts) {
+        if (extra) {
+          extra = false;
+          process.emit('SIGTERM');
+        }
+        return origRm.call(fs, target, opts);
+      };
       makeTestTmp('q3a');
       makeTestTmp('q3b');
       process.emit('SIGTERM');
+      fs.rmSync = origRm;
       console.log('done');
       return;
     }

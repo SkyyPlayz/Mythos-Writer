@@ -23,6 +23,12 @@ export default async function setup() {
         await nshTeardown();
       }
     }
-    if (leakErr) throw leakErr;
+    if (leakErr) {
+      // Vitest logs a globalSetup teardown throw as "error during close" and
+      // still exits 0. The main process has no VITEST_WORKER_ID; a worker
+      // calling setup() directly (the SIGKILL case) must keep its own exit code.
+      if (process.env.VITEST_WORKER_ID === undefined) process.exitCode = 1;
+      throw leakErr;
+    }
   };
 }
