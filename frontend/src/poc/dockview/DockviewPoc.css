@@ -1,0 +1,62 @@
+.dockview-poc {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: #1b1e27;
+  color: #e8e6e3;
+}
+
+.dockview-poc__bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.dockview-poc__bar button {
+  font: inherit;
+  font-size: 13px;
+  color: #e8e6e3;
+  background: #2a3142;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.dockview-poc__grid {
+  flex: 1;
+  min-height: 0;
+}
+
+.dockview-poc__panel,
+.dockview-poc__board {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dockview-poc__panel .block-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The manuscript page scrolls itself. Inside a dock panel the editor has a
+   fixed height, and the real wrap only scrolls once it is allowed to shrink. */
+.dockview-poc__panel .tiptap-editor-wrap {
+  min-height: 0;
+}
+
+.dockview-poc__board .boards-tab-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.dockview-poc__status {
+  padding: 24px;
+  color: #e8e6e3;
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import DesktopShell from './DesktopShell';
 import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
@@ -6,6 +6,14 @@ import MythosMigrationCenter from './migration/MythosMigrationCenter';
 import MythosBootMigrationNotice from './migration/MythosBootMigrationNotice';
 import { requestWelcomeOverlayOnNextShell } from './WelcomeOverlay';
 import './App.css';
+
+// Throwaway dockview proof of concept. Loaded only when the renderer URL
+// carries ?poc=dockview. The normal shell below is unchanged.
+const DockviewPoc = lazy(() => import('./poc/dockview/DockviewPoc'));
+
+function dockviewPocRequested(): boolean {
+  return new URLSearchParams(window.location.search).get('poc') === 'dockview';
+}
 
 type AppRoute =
   | { kind: 'loading' }
@@ -136,6 +144,15 @@ function AppRoot() {
     return (
       <div className="root-layout">
         <FloatingPanelApp panelId={_floatingPanelId} />
+      </div>
+    );
+  }
+  if (dockviewPocRequested()) {
+    return (
+      <div className="root-layout">
+        <Suspense fallback={<div className="root-layout" data-testid="dockview-poc-loading" />}>
+          <DockviewPoc />
+        </Suspense>
       </div>
     );
   }
