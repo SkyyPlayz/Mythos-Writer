@@ -10,15 +10,9 @@
 // The story-vault writer is authorised to touch [[...]] spans ONLY — this is
 // a bounded exception to the no-agent-edits-manuscript rule, not a licence.
 //
-// Hard safety properties:
-//   - Collision is refused before anything is written.
-//   - The whole cascade is one transaction: a failure partway restores every
-//     written file AND renames the note back — never a half-updated vault.
-//   - The completed transaction is held for a one-shot undo that restores the
-//     rename and every touched file in a single step. A file edited since the
-//     cascade keeps that edit — undo reverts only the wikilink span(s) it
-//     touched (SKY-10887) — and a file whose touched link(s) are gone too is
-//     left alone and reported as skipped.
+// What text changes is decided here. Snapshot-before-write, rollback, and
+// one-shot undo (including SKY-10887 span undo) are owned by vaultTransaction.ts.
+// Collision is still refused here, before anything is written.
 
 import fs from 'fs';
 import path from 'path';
@@ -28,10 +22,9 @@ import {
   readVaultFile,
   realSafePath,
   safeVaultJoin,
-  writeVaultFileAtomic,
 } from './vault.js';
 import { SafeIpcError } from './ipcErrors.js';
-import { isSymlinkWriteRefusal, mapVaultWriteError, symlinkSkipLine } from './vault/writeErrors.js';
+import { mapVaultWriteError } from './vault/writeErrors.js';
 import { SESSIONS_DIRNAME } from './mythosFormat/agentSessions.js';
 import { rewriteWikiLinksForRename } from '@mythos-writer/shared/wikiLinkRename';
 import { BOARD_SIDECAR_FILE_NAME, rewriteBoardSidecarTextForRename } from './notesBoard.js';
@@ -41,45 +34,15 @@ import type {
   RenameCascadeUndoResponse,
   VaultMoveResponse,
 } from './ipc.js';
+import {
+  applyVaultTransaction,
+  undoVaultTransaction,
+  type VaultPlannedChange,
+  type VaultWriter,
+} from './vaultTransaction.js';
 
-/** Test seam — defaults to the vault-sandboxed atomic writer. */
-export type VaultWriter = (vaultRoot: string, relPath: string, content: string) => void;
-
-const defaultWriter: VaultWriter = (root, relPath, content) => {
-  writeVaultFileAtomic(root, relPath, content);
-};
-
-interface PlanFile {
-  side: 'notes' | 'story';
-  /** SKY-11188: a `.mythos-board.json` sidecar (column `ref` fields) rewrites
-   *  differently than a markdown file's `[[wikilinks]]` — see buildPlan/undo. */
-  kind: 'note' | 'board';
-  relPath: string;
-  oldContent: string;
-  newContent: string;
-  linkCount: number;
-  mode: 'update-display' | 'preserve-display';
-}
-
-interface CascadeTransaction {
-  notesRoot: string;
-  storyRoot: string;
-  fromPath: string;
-  toPath: string;
-  oldStem: string;
-  newStem: string;
-  files: PlanFile[];
-}
-
-// Single-level undo: each cascade replaces the previous transaction. Undo is
-// validated against current disk state, so a stale transaction can never
-// clobber newer work — it degrades to "skipped" files or a refusal.
-let lastTransaction: CascadeTransaction | null = null;
-
-/** Test hook — clears the held undo transaction. */
-export function _resetRenameCascadeState(): void {
-  lastTransaction = null;
-}
+export type { VaultWriter };
+export { _resetVaultTransactionState as _resetRenameCascadeState } from './vaultTransaction.js';
 
 export interface RenameNoteWithCascadeOptions {
   notesRoot: string;
@@ -122,8 +85,8 @@ function buildPlan(
   storyRoot: string,
   oldStem: string,
   newStem: string,
-): PlanFile[] {
-  const plan: PlanFile[] = [];
+): VaultPlannedChange[] {
+  const plan: VaultPlannedChange[] = [];
   const sides: Array<{ side: 'notes' | 'story'; root: string; mode: 'update-display' | 'preserve-display'; includeBoards: boolean }> = [
     // Session transcripts are excluded to match the graph/backlinks scanners:
     // they are system files with no user-facing wikilink semantics (SKY-6228).
@@ -137,9 +100,9 @@ function buildPlan(
 
   for (const { side, root, mode, includeBoards } of sides) {
     for (const file of listCascadeFiles(root, side === 'notes', includeBoards)) {
-      let oldContent: string;
+      let current: string;
       try {
-        oldContent = readVaultFile(root, file.relPath).content;
+        current = readVaultFile(root, file.relPath).content;
       } catch (err) {
         // An outside link, a loop, or any other traversal denial refuses the
         // whole rename. A merely unreadable file is left alone.
@@ -148,17 +111,17 @@ function buildPlan(
       }
       const { content: newContent, count } =
         file.kind === 'board'
-          ? rewriteBoardSidecarTextForRename(oldContent, oldStem, newStem)
-          : rewriteWikiLinksForRename(oldContent, oldStem, newStem, mode);
+          ? rewriteBoardSidecarTextForRename(current, oldStem, newStem)
+          : rewriteWikiLinksForRename(current, oldStem, newStem, mode);
       if (count > 0) {
-        plan.push({ side, kind: file.kind, relPath: file.relPath, oldContent, newContent, linkCount: count, mode });
+        plan.push({ side, kind: file.kind, relPath: file.relPath, newContent, linkCount: count, mode });
       }
     }
   }
   return plan;
 }
 
-function retargetRenamedNote(plan: PlanFile[], fromPath: string, toPath: string): PlanFile[] {
+function retargetRenamedNote(plan: VaultPlannedChange[], fromPath: string, toPath: string): VaultPlannedChange[] {
   return plan.map((file) =>
     file.side === 'notes' && file.relPath === fromPath ? { ...file, relPath: toPath } : file,
   );
@@ -168,7 +131,7 @@ function retargetRenamedNote(plan: PlanFile[], fromPath: string, toPath: string)
 function preflightCascadeWrites(
   notesRoot: string,
   storyRoot: string,
-  plan: PlanFile[],
+  plan: VaultPlannedChange[],
 ): void {
   for (const file of plan) {
     const root = file.side === 'notes' ? notesRoot : storyRoot;
@@ -193,7 +156,6 @@ export function renameNoteWithCascade(
 ): VaultMoveResponse {
   const { notesRoot, fromPath, toPath, onProgress } = opts;
   const storyRoot = opts.storyRoot ?? '';
-  const write = opts.writeFile ?? defaultWriter;
 
   const fromFull = realSafePath(notesRoot, fromPath, true);
   const toFull = realSafePath(notesRoot, toPath, true);
@@ -234,52 +196,24 @@ export function renameNoteWithCascade(
   // The destination itself is a write. A dangling link there is refused
   // before the note moves (A12), and every planned rewrite is checked too.
   preflightCascadeWrites(notesRoot, storyRoot, [
-    { side: 'notes', kind: 'note', relPath: toPath, oldContent: '', newContent: '', linkCount: 0, mode: 'update-display' },
+    { side: 'notes', kind: 'note', relPath: toPath, newContent: '', linkCount: 0, mode: 'update-display' },
     ...plan,
   ]);
 
   const result = moveVaultFile(notesRoot, fromPath, toPath);
   if (!result.moved || !cascade) return result;
 
-  const applied: PlanFile[] = [];
-  try {
-    for (const file of plan) {
-      write(file.side === 'notes' ? notesRoot : storyRoot, file.relPath, file.newContent);
-      applied.push(file);
-      onProgress?.({
-        current: applied.length,
-        total: plan.length,
-        lastAction: file.relPath,
-      });
-    }
-  } catch (err) {
-    // Roll back: restore every file already written, then undo the rename.
-    // The vault must never be left half-updated.
-    const rollbackFailures: string[] = [];
-    for (const file of applied) {
-      try {
-        write(file.side === 'notes' ? notesRoot : storyRoot, file.relPath, file.oldContent);
-      } catch {
-        rollbackFailures.push(file.relPath);
-      }
-    }
-    try {
-      moveVaultFile(notesRoot, toPath, fromPath);
-    } catch {
-      rollbackFailures.push(fromPath);
-    }
-    const reason = err instanceof Error ? err.message : String(err);
-    if (rollbackFailures.length > 0) {
-      throw new SafeIpcError(
-        `Updating links failed and ${rollbackFailures.length} file(s) could not be restored — check the vault before retrying. (${reason})`,
-      );
-    }
-    throw new SafeIpcError(
-      `Updating links failed — the rename was rolled back and no changes were kept. (${reason})`,
-    );
-  }
-
-  lastTransaction = { notesRoot, storyRoot, fromPath, toPath, oldStem, newStem, files: plan };
+  applyVaultTransaction({
+    notesRoot,
+    storyRoot,
+    fromPath,
+    toPath,
+    oldStem,
+    newStem,
+    changes: plan,
+    onProgress,
+    writeFile: opts.writeFile,
+  });
 
   const linkUpdate: RenameCascadeLinkUpdate = {
     linksUpdated: plan.reduce((sum, f) => sum + f.linkCount, 0),
@@ -302,115 +236,13 @@ export interface UndoRenameCascadeOptions {
 }
 
 /**
- * One-shot undo of the most recent rename cascade: renames the note back and
- * restores every rewritten file. A file untouched since the cascade is
- * restored byte-for-byte; a file edited elsewhere since has only the
- * wikilink span(s) the cascade touched reverted, leaving the rest of the
- * user's edit in place — undo never overwrites newer prose. A file whose
- * touched link(s) are gone too (edit removed them) is left untouched and
- * counted as skipped.
+ * One-shot undo of the most recent rename cascade. The restore rules
+ * (byte-for-byte, SKY-10887 span undo, conflicts) live in vaultTransaction.
  */
-export function undoLastRenameCascade(
-  opts: UndoRenameCascadeOptions,
-): RenameCascadeUndoResponse {
-  const write = opts.writeFile ?? defaultWriter;
-  const tx = lastTransaction;
-  const refused = (reason: string): RenameCascadeUndoResponse => ({
-    undone: false,
-    reason,
-    filesRestored: 0,
-    filesSkipped: 0,
-    restoredNotesPaths: [],
-    restoredStoryPaths: [],
-  });
-
-  if (!tx) return refused('Nothing to undo.');
-  if (tx.notesRoot !== opts.notesRoot || tx.storyRoot !== (opts.storyRoot ?? '')) {
-    lastTransaction = null;
-    return refused('The project has changed since the rename.');
-  }
-
-  const toFull = realSafePath(tx.notesRoot, tx.toPath, true);
-  const fromFull = realSafePath(tx.notesRoot, tx.fromPath, true);
-  if (!fs.existsSync(toFull)) {
-    lastTransaction = null;
-    return refused('The renamed note has been moved or deleted.');
-  }
-  if (fs.existsSync(fromFull)) {
-    lastTransaction = null;
-    return refused('A note now exists under the original name.');
-  }
-
-  // Rename back first — if the note itself can't move, nothing else should.
-  moveVaultFile(tx.notesRoot, tx.toPath, tx.fromPath);
-  lastTransaction = null;
-
-  let filesRestored = 0;
-  let filesSkipped = 0;
-  const skippedSymlinks: string[] = [];
-  const restoredNotesPaths: string[] = [];
-  const restoredStoryPaths: string[] = [];
-  for (const file of tx.files) {
-    const root = file.side === 'notes' ? tx.notesRoot : tx.storyRoot;
-    // The renamed note's own entry (self-links) now lives back at fromPath.
-    const relPath = file.side === 'notes' && file.relPath === tx.toPath ? tx.fromPath : file.relPath;
-    let current: string | null = null;
-    try {
-      current = readVaultFile(root, relPath).content;
-    } catch (err) {
-      if (err instanceof Error && /Path traversal denied|\(symlink/.test(err.message)) {
-        skippedSymlinks.push(symlinkSkipLine(relPath));
-      }
-      filesSkipped++;
-      continue;
-    }
-
-    let restoredContent: string;
-    if (current === file.newContent) {
-      // Untouched since the cascade — restore byte-for-byte.
-      restoredContent = file.oldContent;
-    } else {
-      // Edited elsewhere since the cascade — revert only the wikilink
-      // span(s) the cascade touched (rewriteWikiLinksForRename is its own
-      // inverse for this rename/mode pair — see SKY-10887), leaving the
-      // rest of the user's edit untouched instead of skipping the file
-      // outright and leaving a dangling link once the note moves back.
-      // SKY-11188: a board sidecar reverses through the same oldStem/newStem
-      // swap — rewriteRefForRename is symmetric by construction (it only
-      // ever compares/replaces the stem, so applying it forward then
-      // backward is a no-op on an untouched ref).
-      const { content, count } =
-        file.kind === 'board'
-          ? rewriteBoardSidecarTextForRename(current, tx.newStem, tx.oldStem)
-          : rewriteWikiLinksForRename(current, tx.newStem, tx.oldStem, file.mode);
-      if (count === 0) {
-        // The touched link(s) aren't present anymore either — nothing to revert.
-        filesSkipped++;
-        continue;
-      }
-      restoredContent = content;
-    }
-
-    try {
-      write(root, relPath, restoredContent);
-      filesRestored++;
-      (file.side === 'notes' ? restoredNotesPaths : restoredStoryPaths).push(relPath);
-    } catch (err) {
-      if (isSymlinkWriteRefusal(err)) skippedSymlinks.push(symlinkSkipLine(relPath));
-      filesSkipped++;
-    }
-  }
-
-  return {
-    undone: true,
-    filesRestored,
-    filesSkipped,
-    skippedSymlinks,
-    fromPath: tx.fromPath,
-    toPath: tx.toPath,
-    oldStem: tx.oldStem,
-    newStem: tx.newStem,
-    restoredNotesPaths,
-    restoredStoryPaths,
-  };
+export function undoLastRenameCascade(opts: UndoRenameCascadeOptions): RenameCascadeUndoResponse {
+  return undoVaultTransaction({
+    notesRoot: opts.notesRoot,
+    storyRoot: opts.storyRoot,
+    writeFile: opts.writeFile,
+  }).response;
 }
