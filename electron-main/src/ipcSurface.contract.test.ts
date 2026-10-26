@@ -164,12 +164,24 @@ function readProductionSources(root: string): SourceFile[] {
   });
 }
 
-function lineOf(src: string, index: number): number {
-  let line = 1;
-  for (let i = 0; i < index && i < src.length; i++) {
-    if (src[i] === '\n') line++;
+function newlinePositions(src: string): number[] {
+  const newlines: number[] = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '\n') newlines.push(i);
   }
-  return line;
+  return newlines;
+}
+
+/** 1-based line of `index`. `newlines` holds every `\n` index in the same source. */
+function lineAt(newlines: readonly number[], index: number): number {
+  let lo = 0;
+  let hi = newlines.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (newlines[mid] < index) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo + 1;
 }
 
 function skipString(src: string, i: number): number {
@@ -266,6 +278,7 @@ interface Binding {
 interface ModuleInfo {
   rel: string;
   src: string;
+  newlines: number[];
   strings: Map<string, Binding[]>;
   objects: Map<string, Binding[]>;
   imports: Map<string, { from: string; exported: string }>;
@@ -378,6 +391,7 @@ function collectModules(files: readonly SourceFile[]): Map<string, ModuleInfo> {
     const info: ModuleInfo = {
       rel: file.rel.split(path.sep).join('/'),
       src,
+      newlines: newlinePositions(src),
       strings: new Map(),
       objects: new Map(),
       imports: new Map(),
@@ -387,7 +401,7 @@ function collectModules(files: readonly SourceFile[]): Map<string, ModuleInfo> {
     while ((match = decl.exec(src))) {
       const name = match[2];
       const at = match.index + match[0].length;
-      const line = lineOf(src, match.index);
+      const line = lineAt(info.newlines, match.index);
       if (src[at] === "'" || src[at] === '"') {
         const end = skipString(src, at);
         const literal = parseStringLiteral(src.slice(at, end));
@@ -468,7 +482,7 @@ function resolveArg(info: ModuleInfo, arg: string, at: number, byRel: Map<string
   if (literal != null) return [literal];
   const member = trimmed.match(/^([A-Za-z_$][A-Za-z0-9_$]*)\.([A-Za-z_$][A-Za-z0-9_$]*)$/);
   if (member) {
-    const obj = bindingValue(info, member[1], lineOf(info.src, at), byRel, 0);
+    const obj = bindingValue(info, member[1], lineAt(info.newlines, at), byRel, 0);
     if (obj.kind === 'object') {
       const value = obj.props.get(member[2]);
       if (value != null) return [value];
@@ -479,7 +493,7 @@ function resolveArg(info: ModuleInfo, arg: string, at: number, byRel: Map<string
   if (!ident) return null;
   const loop = forOfStrings(info.src, ident[1], at);
   if (loop) return loop;
-  const bound = bindingValue(info, ident[1], lineOf(info.src, at), byRel, 0);
+  const bound = bindingValue(info, ident[1], lineAt(info.newlines, at), byRel, 0);
   if (bound.kind === 'string') return [bound.value];
   if (bound.kind === 'strings') return bound.values;
   return null;
