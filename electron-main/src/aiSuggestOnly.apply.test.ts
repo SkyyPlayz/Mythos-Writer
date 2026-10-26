@@ -4,6 +4,8 @@ import path from 'node:path';
 
 vi.mock('./vault.js', () => ({
   writeVaultFileAtomic: vi.fn(),
+  writeVaultFileAtomicAbs: vi.fn(),
+  writeFileAtomic: vi.fn(),
   writeSceneFile: vi.fn(),
   writeSceneFileAtomic: vi.fn(),
   readVaultFile: vi.fn(),
@@ -11,12 +13,18 @@ vi.mock('./vault.js', () => ({
   writeManifest: vi.fn(),
   parseFrontmatter: vi.fn(),
   mergeProvenanceFrontmatter: vi.fn(),
+  composeProvenanceContent: vi.fn(),
+  chapterMetaPath: (chapterRelPath: string) => `${chapterRelPath}/chapter.md`,
+  NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS: ['Characters', 'Locations', 'Factions', 'History', 'Systems', 'Items'],
   safePath: (root: string, rel: string) => path.join(root, rel),
 }));
 
 vi.mock('./db.js', () => ({
   insertSuggestionSnapshot: vi.fn(),
   getSuggestionSnapshot: vi.fn(),
+  getSuggestion: vi.fn(),
+  insertAuditLog: vi.fn(),
+  updateSuggestionStatus: vi.fn(),
 }));
 
 vi.mock('./mythosFormat/mythosJson.js', () => ({
@@ -25,6 +33,7 @@ vi.mock('./mythosFormat/mythosJson.js', () => ({
 
 vi.mock('./entities.js', () => ({
   applyTypedRelation: vi.fn(),
+  updateEntity: vi.fn(),
 }));
 
 import {
@@ -68,7 +77,7 @@ describe('manuscript accept stays status-only (T4)', () => {
 
   it('does not write suggestedText when the suggestion targets the manuscript', () => {
     const result = applyVaultWrite(manuscriptSuggestion(), '/tmp/vault', '2026-10-19T00:00:00.000Z');
-    expect(result).toEqual({ finalStatus: 'accepted', snapshotPath: null });
+    expect(result).toEqual({ ok: true, finalStatus: 'accepted', snapshotPath: null });
     const calls = [
       ...vi.mocked(writeVaultFileAtomic).mock.calls,
       ...vi.mocked(writeSceneFile).mock.calls,

@@ -245,6 +245,22 @@ export function writeVaultFileAtomic(
   return written;
 }
 
+/**
+ * Write `content` to an absolute path the AI write guard already canonicalised.
+ * Does not re-join a caller-supplied relative path. Bytes go through the
+ * no-follow export writer so a symlink at that path is refused.
+ */
+export function writeVaultFileAtomicAbs(
+  absPath: string,
+  content: string,
+): { path: string; bytes: number } {
+  const buf = Buffer.from(content, 'utf-8');
+  if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
+  writeExportFileAtomic(absPath, buf);
+  markSelfWrite(absPath);
+  return { path: absPath, bytes: buf.byteLength };
+}
+
 export function listVaultFiles(
   vaultRoot: string,
   root?: string,
@@ -1902,13 +1918,14 @@ interface ProvenanceFields {
   suggestion_id?: string;
 }
 
-export function mergeProvenanceFrontmatter(
+export function composeProvenanceContent(
   vaultRoot: string,
   filePath: string,
   provenance: ProvenanceFields,
-  newProse: string
-): void {
-  const fullPath = safePath(vaultRoot, filePath);
+  newProse: string,
+  absPath?: string,
+): string {
+  const fullPath = absPath ?? safePath(vaultRoot, filePath);
 
   let existingFm: Frontmatter = {};
   try {
@@ -1931,7 +1948,16 @@ export function mergeProvenanceFrontmatter(
     updatedAt: provenance.timestamp,
   };
 
-  const content = serializeFrontmatter(merged, newProse);
+  return serializeFrontmatter(merged, newProse);
+}
+
+export function mergeProvenanceFrontmatter(
+  vaultRoot: string,
+  filePath: string,
+  provenance: ProvenanceFields,
+  newProse: string,
+): void {
+  const content = composeProvenanceContent(vaultRoot, filePath, provenance, newProse);
   writeVaultFileAtomic(vaultRoot, filePath, content);
 }
 
