@@ -209,6 +209,22 @@ else
   bad ci-needs "$needs"
 fi
 
+# Each required job must appear in ci.needs. Removing one (oracle-sweeps, for
+# example) fails here even when the rest of the list still parses.
+required_jobs='mode lint typecheck unit oracle-sweeps build-electron paths-filter e2e-shard-1 e2e-shard-2 e2e-shard-3 e2e-shard-4 notes-windows'
+missing_jobs=""
+for job in $required_jobs; do
+  case "$needs" in
+    *"\"${job}\""*) ;;
+    *) missing_jobs="${missing_jobs} ${job}" ;;
+  esac
+done
+if [ -z "$missing_jobs" ]; then
+  ok required-jobs-in-needs
+else
+  bad required-jobs-in-needs "missing:${missing_jobs}"
+fi
+
 ci_if="$(wfq "$WF" ci-if)"
 if [ "$ci_if" = "always()" ]; then ok ci-always; else bad ci-always "$ci_if"; fi
 
@@ -266,6 +282,23 @@ esac
 if [ "$persist" = "false" ]; then ok persist-credentials; else bad persist-credentials "$persist"; fi
 if [ "$sparse" = ".github/scripts" ]; then ok sparse-checkout; else bad sparse-checkout "$sparse"; fi
 if [ -z "$ref" ]; then ok no-ref-main; else bad no-ref-main "$ref"; fi
+
+ci_block="$(awk '
+  /^  ci:$/ { capture=1; next }
+  capture && /^  [A-Za-z0-9-]+:$/ { exit }
+  capture { print }
+' "$WF")"
+ci_uses_line="$(printf '%s\n' "$ci_block" | grep -E 'uses: actions/checkout@' | head -n 1)"
+if printf '%s\n' "$ci_uses_line" | grep -Eq 'actions/checkout@[0-9a-f]{40} # v[0-9]+\.[0-9]+\.[0-9]+'; then
+  ok ci-checkout-pin
+else
+  bad ci-checkout-pin "$ci_uses_line"
+fi
+if printf '%s\n' "$ci_block" | grep -A 3 -E 'uses: actions/checkout@' | grep -q 'persist-credentials: false'; then
+  ok ci-checkout-persist
+else
+  bad ci-checkout-persist "persist-credentials is not false"
+fi
 
 top="$(wfq "$WF" permissions)"
 if [ "$top" = '{"contents":"read"}' ]; then ok ci-permissions; else bad ci-permissions "$top"; fi
