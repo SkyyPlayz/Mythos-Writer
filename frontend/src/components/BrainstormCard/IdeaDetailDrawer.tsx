@@ -320,16 +320,6 @@ export function IdeaDetailDrawer({ idea, onClose, onSave, onChipClick, onOpenInW
             </div>
           </div>
 
-          {/* Scene draft */}
-          <div className="idd-section">
-            <div className="idd-section-header">
-              <span className="idd-label">Scene Draft</span>
-            </div>
-            <button type="button" className="idd-scene-draft-btn">
-              + Add to scene draft
-            </button>
-          </div>
-
           {/* Provenance (collapsed by default) */}
           <details className="idd-provenance">
             <summary className="idd-provenance-summary">Provenance</summary>

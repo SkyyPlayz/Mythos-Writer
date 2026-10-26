@@ -95,7 +95,7 @@ export async function installMockChatStream(
  * Opens the Writing Coach chat view in the agent hub panel.
  *
  * Assumes the caller already navigated to the editor and opened a scene
- * (e.g. via `openSeededScene` in launch.ts) so the panel has scene context —
+ * (e.g. via `openSeededScene` in e2e/helpers/launchApp.ts) so the panel has scene context —
  * this only expands the panel and drills into the chat row, mirroring
  * `openAssistantTab` in e2e/writing-assistant.spec.ts.
  */

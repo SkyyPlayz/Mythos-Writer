@@ -6,6 +6,7 @@
   "exports": {
     "./ideaNotes": "./ideaNotes.ts",
     "./vaultNameSanitizer": "./vaultNameSanitizer.ts",
-    "./wikiLinkRename": "./wikiLinkRename.ts"
+    "./wikiLinkRename": "./wikiLinkRename.ts",
+    "./aiSuggestOnly": "./aiSuggestOnly.ts"
   }
 }

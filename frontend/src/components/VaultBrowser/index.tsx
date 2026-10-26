@@ -161,7 +161,8 @@ function StoryVault({
   const toggleStory = (id: string) => {
     setExpandedStories((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       try { localStorage.setItem('vb-expanded:story-stories', JSON.stringify([...next])); } catch { /**/ }
       return next;
     });
@@ -170,7 +171,8 @@ function StoryVault({
   const toggleChapter = (id: string) => {
     setExpandedChapters((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       try { localStorage.setItem('vb-expanded:story-chapters', JSON.stringify([...next])); } catch { /**/ }
       return next;
     });

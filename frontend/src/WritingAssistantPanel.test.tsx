@@ -701,7 +701,7 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
   });
 });
 
-describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
+describe('WritingAssistantPanel — per-category auto-mark done (SKY-2979)', () => {
   it('category toggles hidden when autoApply is false', () => {
     render(<WritingAssistantPanel scene={null} autoApply={false} />);
     expect(screen.queryByTestId('wa-auto-apply-categories')).not.toBeInTheDocument();
@@ -724,14 +724,14 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
     ];
     for (const label of labels) {
       expect(
-        screen.getByRole('button', { name: new RegExp(`auto-apply ${label}`, 'i') }),
+        screen.getByRole('button', { name: new RegExp(`auto-mark done ${label}`, 'i') }),
       ).toBeInTheDocument();
     }
   });
 
   it('all category pills default to on (aria-pressed=true) when autoApplyCategories is undefined', () => {
     render(<WritingAssistantPanel scene={null} autoApply />);
-    const pills = screen.getAllByRole('button', { name: /auto-apply/i });
+    const pills = screen.getAllByRole('button', { name: /auto-mark done/i });
     expect(pills.length).toBe(6);
     for (const pill of pills) {
       expect(pill).toHaveAttribute('aria-pressed', 'true');
@@ -746,9 +746,9 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
         autoApplyCategories={{ spelling: false }}
       />,
     );
-    const spellingPill = screen.getByRole('button', { name: /auto-apply spelling/i });
+    const spellingPill = screen.getByRole('button', { name: /auto-mark done spelling/i });
     expect(spellingPill).toHaveAttribute('aria-pressed', 'false');
-    const grammarPill = screen.getByRole('button', { name: /auto-apply grammar/i });
+    const grammarPill = screen.getByRole('button', { name: /auto-mark done grammar/i });
     expect(grammarPill).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -762,7 +762,7 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
         onAutoApplyCategoriesChange={onChange}
       />,
     );
-    const spellingPill = screen.getByRole('button', { name: /auto-apply spelling/i });
+    const spellingPill = screen.getByRole('button', { name: /auto-mark done spelling/i });
     fireEvent.click(spellingPill);
     expect(onChange).toHaveBeenCalledTimes(1);
     const [result] = onChange.mock.calls[0] as [Record<string, boolean>];
@@ -781,7 +781,7 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
         onAutoApplyCategoriesChange={onChange}
       />,
     );
-    const grammarPill = screen.getByRole('button', { name: /auto-apply grammar/i });
+    const grammarPill = screen.getByRole('button', { name: /auto-mark done grammar/i });
     expect(grammarPill).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(grammarPill);
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -791,7 +791,7 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
 
   it('toggling does not throw when no handler is provided', () => {
     render(<WritingAssistantPanel scene={null} autoApply autoApplyCategories={{}} />);
-    const pill = screen.getByRole('button', { name: /auto-apply spelling/i });
+    const pill = screen.getByRole('button', { name: /auto-mark done spelling/i });
     expect(() => fireEvent.click(pill)).not.toThrow();
   });
 });

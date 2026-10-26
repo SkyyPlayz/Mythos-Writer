@@ -3714,6 +3714,8 @@ export interface UnifiedSuggestion {
   budgetExceeded: boolean;
   category: string | null;
   payloadJson: string | null;
+  /** suggestions.target_kind when kind is 'suggestion'. Null otherwise. */
+  targetKind?: 'vault' | 'manuscript' | string | null;
 }
 
 export interface SuggestionsListPayload {
@@ -4900,9 +4902,12 @@ export interface ArchiveConfirmPayload {
 
 export interface ArchiveConfirmResponse {
   ok: boolean;
-  auditId: string;
-  /** Set when action='suggest_story_change': the id of the newly created counter-suggestion. */
+  /** Present when the action was recorded. Absent when refused (`reason: 'suggest_only'`). */
+  auditId?: string;
+  /** Set when action='suggest_story_change' and a counter-suggestion was created.
+   *  While AI text apply is off, that verb is refused with reason 'suggest_only' and this is unset. */
   newSuggestionId?: string;
+  reason?: 'suggest_only';
 }
 
 export interface ArchiveIgnoreEntry {
@@ -4920,6 +4925,8 @@ export interface ArchiveIgnoreListResponse {
 // ─── Archive Agent v1 — continuity scan types (SKY-1684) ───────────────────
 
 export type ArchiveScanScope = 'active_scene' | 'active_chapter' | 'full_manuscript';
+/** `suggest_story_change` stays a valid verb so old rows and a stale renderer
+ *  get `{ ok: false, reason: 'suggest_only' }` instead of `Invalid action`. */
 export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
 
 /** M9d (SKY-9825): which two sources a flag says disagree — rendered as the
@@ -4983,7 +4990,7 @@ export interface ArchiveResolveContinuityPayload {
  *  open and the renderer surfaces `reason`. */
 export interface ArchiveResolveContinuityResponse {
   ok: boolean;
-  reason?: 'note_not_found' | 'excerpt_not_found';
+  reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only';
 }
 
 export interface ArchiveListContinuityPayload {

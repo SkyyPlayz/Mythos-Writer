@@ -28,7 +28,6 @@ export interface AgentActionDef {
 
 export const AGENT_ACTIONS: readonly AgentActionDef[] = [
   { action: 'match_archive', label: 'Edit notes to match' },
-  { action: 'suggest_story_change', label: 'Suggest story change' },
   { action: 'ignore', label: 'Ignore' },
 ];
 
@@ -39,13 +38,13 @@ export const AGENT_ACTIONS: readonly AgentActionDef[] = [
  */
 export const GUTTER_AGENT_ACTIONS: readonly AgentActionDef[] = [
   { action: 'match_archive', label: 'Edit notes' },
-  { action: 'suggest_story_change', label: 'Suggest change' },
 ];
 
-/** Post-action toast copy (v2 prototype actEdit/actStory 6771–6773; ignore is silent). */
-export const AGENT_ACTION_SUCCESS_TOAST: Record<AgentAction, string | null> = {
+/** Post-action toast copy (v2 prototype actEdit 6771; ignore is silent).
+ *  `suggest_story_change` stays on the verb type so a stale caller still
+ *  typechecks, but it has no success toast — main refuses it suggest_only. */
+export const AGENT_ACTION_SUCCESS_TOAST: Partial<Record<AgentAction, string | null>> = {
   match_archive: 'Note updated to match the story',
-  suggest_story_change: 'Suggested edit drafted — see Writing Coach',
   ignore: null,
 };
 
@@ -79,10 +78,13 @@ export async function runAgentAction(
   }
   try {
     const result = (await api.archiveConfirm(comment.suggestionId, action)) as
-      | { error?: string }
+      | { error?: string; ok?: boolean; reason?: string }
       | undefined;
     if (result && typeof result === 'object' && result.error) {
       return { ok: false, error: String(result.error) };
+    }
+    if (result && typeof result === 'object' && result.ok === false && result.reason === 'suggest_only') {
+      return { ok: false, error: 'suggest_only' };
     }
   } catch (err) {
     return { ok: false, error: (err as Error)?.message ?? 'Archive action failed.' };
