@@ -76,7 +76,18 @@ describe('setupIpcMain — single-registration invariant', () => {
 
     const registered = mockHandle.mock.calls.map((c) => c[0] as string);
 
-    expect(registered).toHaveLength(Object.keys(handlers).length);
+    const artifactCalls = registered.filter((channel) => channel.startsWith('artifacts:'));
+    expect(artifactCalls).toEqual([
+      'artifacts:create',
+      'artifacts:save',
+      'artifacts:bind',
+      'artifacts:writeBack',
+      'artifacts:refresh',
+      'artifacts:sharePrompt',
+      'artifacts:delete',
+      'artifacts:sweep',
+    ]);
+    expect(registered).toHaveLength(Object.keys(handlers).length + artifactCalls.length);
     for (const channel of Object.keys(handlers)) {
       const count = registered.filter((c) => c === channel).length;
       expect(count, `"${channel}" should be registered exactly once, got ${count}`).toBe(1);

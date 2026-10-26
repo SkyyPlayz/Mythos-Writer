@@ -279,11 +279,58 @@ export function writeVaultFileAtomicAbs(
   absPath: string,
   content: string,
 ): { path: string; bytes: number } {
+  // S3.0 L1: temp is O_CREAT|O_EXCL|O_NOFOLLOW. Just before rename, re-lstat
+  // the target and its parent and refuse a symlink, a hard link, or a parent
+  // whose realpath moved (left the vault root).
   const buf = Buffer.from(content, 'utf-8');
   if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
   const dir = path.dirname(absPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  writeFileAtomic(absPath, buf);
+  const refuse = (why: string): never => {
+    throw new Error(`vault atomic write refused: ${why}`);
+  };
+  let parentStat: fs.Stats;
+  try {
+    parentStat = fs.lstatSync(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    fs.mkdirSync(dir, { recursive: true });
+    parentStat = fs.lstatSync(dir);
+  }
+  if (parentStat.isSymbolicLink()) refuse('symlink');
+  const parentReal = fs.realpathSync(dir);
+  const tmp = `${absPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
+  const noFollow = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
+  const flags = fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | noFollow;
+  const fd = fs.openSync(tmp, flags);
+  try {
+    fs.writeSync(fd, buf);
+    fs.fdatasyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const discardTmp = (): void => {
+    try { fs.unlinkSync(tmp); } catch { /* temp already gone */ }
+  };
+  try {
+    const beforeRename = (globalThis as { __mythosWriteVaultBeforeRename?: () => void }).__mythosWriteVaultBeforeRename;
+    if (typeof beforeRename === 'function') beforeRename();
+    let targetStat: fs.Stats | null = null;
+    try {
+      targetStat = fs.lstatSync(absPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') refuse('lstat');
+    }
+    if (targetStat?.isSymbolicLink()) refuse('symlink');
+    if (targetStat && targetStat.isFile() && targetStat.nlink > 1) refuse('hardlink');
+    const parentNow = fs.lstatSync(dir);
+    if (parentNow.isSymbolicLink()) refuse('symlink');
+    const parentRealNow = fs.realpathSync(dir);
+    if (parentRealNow !== parentReal) refuse('parent left vault root');
+    renameSyncWithRetry(tmp, absPath);
+  } catch (err) {
+    discardTmp();
+    throw err;
+  }
   markSelfWrite(absPath);
   return { path: absPath, bytes: buf.byteLength };
 }

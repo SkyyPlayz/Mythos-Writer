@@ -1429,6 +1429,17 @@ contextBridge.exposeInMainWorld('api', {
     rebuild: () => ipcRenderer.invoke('agent-index:rebuild'),
   },
 
+  artifacts: {
+    create: (payload: unknown) => ipcRenderer.invoke('artifacts:create', payload),
+    save: (payload: unknown) => ipcRenderer.invoke('artifacts:save', payload),
+    bind: (payload: unknown) => ipcRenderer.invoke('artifacts:bind', payload),
+    writeBack: (payload: unknown) => ipcRenderer.invoke('artifacts:writeBack', payload),
+    refresh: (payload: unknown) => ipcRenderer.invoke('artifacts:refresh', payload),
+    sharePrompt: (payload: unknown) => ipcRenderer.invoke('artifacts:sharePrompt', payload),
+    delete: (payload: unknown) => ipcRenderer.invoke('artifacts:delete', payload),
+    sweep: (payload: unknown) => ipcRenderer.invoke('artifacts:sweep', payload),
+  },
+
   // SKY-3189 (G3): true when running in a packaged Electron build.
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',

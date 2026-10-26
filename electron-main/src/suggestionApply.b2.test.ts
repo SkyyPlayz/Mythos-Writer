@@ -52,7 +52,7 @@ function copyV1(): string {
 }
 
 function suggestion(overrides: Partial<DbSuggestion> = {}): DbSuggestion {
-  const id = overrides.id ?? `b2-${crypto.randomUUID()}`;
+  const id = overrides.id ?? crypto.randomUUID();
   return {
     id,
     source_agent: 'writing-assistant',
@@ -344,12 +344,13 @@ describe('T-B1L NULL rows', () => {
 
 describe('T-B1n positives', () => {
   it('applies an entity note and a brand-new entity file, then rollback restores the snapshot', () => {
-    const existing = suggestion({ id: 'pos-hero' });
+    const heroId = '4a1b0c2d-e3f4-4123-8abc-1234567890b1';
+    const existing = suggestion({ id: heroId });
     upsertSuggestion(existing);
     const applied = applyVaultWrite(existing, vaultDir, new Date().toISOString());
     if (!applied.ok) throw new Error(applied.reason);
     expect(applied.finalStatus).toBe('applied');
-    expect(fs.readFileSync(path.join(vaultDir, 'entities/characters/Hero.md'), 'utf8')).toContain('New content for pos-hero');
+    expect(fs.readFileSync(path.join(vaultDir, 'entities/characters/Hero.md'), 'utf8')).toContain(`New content for ${heroId}`);
     updateSuggestionStatus(existing.id, 'applied', new Date().toISOString());
     insertAuditLog({
       id: crypto.randomUUID(),
@@ -361,9 +362,9 @@ describe('T-B1n positives', () => {
     });
     const restored = rollbackVaultWrite(existing.id, vaultDir, applied.snapshotPath);
     expect(restored).toBe('entities/characters/Hero.md');
-    expect(fs.readFileSync(path.join(vaultDir, 'entities/characters/Hero.md'), 'utf8')).not.toContain('New content for pos-hero');
+    expect(fs.readFileSync(path.join(vaultDir, 'entities/characters/Hero.md'), 'utf8')).not.toContain(`New content for ${heroId}`);
 
-    const created = suggestion({ id: 'pos-new', target_path: 'entities/characters/brand-new.md' });
+    const created = suggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890b2', target_path: 'entities/characters/brand-new.md' });
     const createdResult = applyVaultWrite(created, vaultDir, new Date().toISOString());
     if (!createdResult.ok) throw new Error(createdResult.reason);
     expect(fs.existsSync(path.join(vaultDir, 'entities/characters/brand-new.md'))).toBe(true);
@@ -378,7 +379,7 @@ describe('T-B1n positives', () => {
       console.log(`symlink skipped: ${(err as Error).message}`);
       return;
     }
-    const row = suggestion({ id: 'exact-abs' });
+    const row = suggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890b6' });
     const guard = aiGuard.assertAiWritable(link, row.target_path!);
     if (!guard.ok) throw new Error(guard.reason);
     const spy = vi.spyOn(aiGuard, 'writeAiCanonical');
@@ -434,7 +435,7 @@ describe('batch and locks', () => {
       id: 'batch-bad',
       target_path: 'stories/story-1/chapters/chapter-1/scenes/Opening.md',
     });
-    const good = suggestion({ id: 'batch-good', target_path: 'entities/characters/brand-new.md' });
+    const good = suggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890b3', target_path: 'entities/characters/brand-new.md' });
     upsertSuggestion(bad);
     upsertSuggestion(good);
     const failed: Array<{ id: string; reason: string }> = [];
@@ -452,15 +453,15 @@ describe('batch and locks', () => {
       }
     }
     expect(failed).toEqual([{ id: 'batch-bad', reason: 'manuscript_target' }]);
-    expect(succeeded).toEqual(['batch-good']);
+    expect(succeeded).toEqual(['4a1b0c2d-e3f4-4123-8abc-1234567890b3']);
     expect(getSuggestion('batch-bad')!.status).toBe('proposed');
-    expect(getSuggestion('batch-good')!.status).toBe('applied');
+    expect(getSuggestion('4a1b0c2d-e3f4-4123-8abc-1234567890b3')!.status).toBe('applied');
   });
 
   it('parallel accepts of one path leave one complete payload', async () => {
     const rel = 'entities/characters/Hero.md';
-    const a = suggestion({ id: 'lock-a', payload_json: JSON.stringify({ content: 'PAYLOAD_ALPHA_COMPLETE\n' }) });
-    const b = suggestion({ id: 'lock-b', payload_json: JSON.stringify({ content: 'PAYLOAD_BETA_COMPLETE\n' }) });
+    const a = suggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890b4', payload_json: JSON.stringify({ content: 'PAYLOAD_ALPHA_COMPLETE\n' }) });
+    const b = suggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890b5', payload_json: JSON.stringify({ content: 'PAYLOAD_BETA_COMPLETE\n' }) });
     const [first, second] = await Promise.all([
       applyVaultWriteLocked(a, vaultDir, new Date().toISOString()),
       applyVaultWriteLocked(b, vaultDir, new Date().toISOString()),

@@ -58,8 +58,8 @@ const ALLOWLIST: readonly Gap[] = [
 
 const CENSUS = {
   pushCounter: PUSH_COUNTER,
-  ipcChannelKeys: 406,
-  handlerChannels: 385,
+  ipcChannelKeys: 414,
+  handlerChannels: 393,
   mainListenerChannels: 10,
   directSendChannels: 56,
   helperSendChannels: 58,

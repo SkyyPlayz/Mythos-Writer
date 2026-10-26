@@ -20,6 +20,7 @@ import {
   parseFrontmatter,
   composeProvenanceContent,
   safePath,
+  writeVaultFileAtomicAbs,
 } from './vault.js';
 import { resolveManifestPath } from './mythosFormat/mythosJson.js';
 import { applyTypedRelation, updateEntity } from './entities.js';
@@ -173,8 +174,9 @@ function applyContent(
   const guard = aiGuard.assertAiWritable(vaultRoot, suggestion.target_path);
   if (!guard.ok) return guard;
 
-  const snapshotDir = path.join(vaultRoot, '.mythos', 'suggestion-snapshots');
-  if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
+  // S3.0 L2: snapshot id is UUID v4 only. Anything else is rejected before the write.
+  const snapshotIdOk = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(suggestion.id);
+  if (!snapshotIdOk) return { ok: false, reason: 'not_allowlisted' };
   const relSnapshotPath = path.join('.mythos', 'suggestion-snapshots', `${suggestion.id}.json`);
   const fullSnapshotPath = path.join(vaultRoot, relSnapshotPath);
 
@@ -184,10 +186,9 @@ function applyContent(
   } catch {
     // new file — empty original
   }
-  fs.writeFileSync(
+  writeVaultFileAtomicAbs(
     fullSnapshotPath,
     JSON.stringify({ originalContent, path: suggestion.target_path }),
-    'utf8',
   );
 
   const newContent = payload.content ?? payload.prose ?? originalContent;

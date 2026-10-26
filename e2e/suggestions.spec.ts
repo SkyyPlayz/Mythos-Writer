@@ -26,6 +26,7 @@
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   test,
@@ -242,7 +243,7 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   // 4. Vault file has new content · audit row action=apply · snapshot file created.
 
   test('TC-S-01: accept vault suggestion → vault file updated, audit row, snapshot', async () => {
-    const id = `tc-s-01-${Date.now()}`;
+    const id = crypto.randomUUID();
     const targetPath = 'entities/characters/tc-s-01.md';
     const originalContent = 'ORIGINAL TC-S-01\n';
     const newContent = 'UPDATED BY SUGGESTION TC-S-01\n';
@@ -404,7 +405,7 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   // 4. Audit log contains both apply and rollback rows.
 
   test('TC-S-03: apply vault suggestion then rollback → file restored', async () => {
-    const id = `tc-s-03-${Date.now()}`;
+    const id = crypto.randomUUID();
     const targetPath = 'entities/characters/tc-s-03.md';
     const originalContent = 'ORIGINAL TC-S-03\n';
     const newContent = 'UPDATED BY TC-S-03\n';
@@ -620,11 +621,14 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
       const api = (window as any).api;
       const agents = ['writing-assistant', 'brainstorm', 'archive'] as const;
       const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.48];
+      const bulkIds: string[] = [];
       for (let i = 0; i < 105; i++) {
         const padded = String(i).padStart(3, '0');
         const agent = agents[i % agents.length];
+        const id = crypto.randomUUID();
+        bulkIds.push(id);
         await api.suggestionsUpsert({
-          id: `tc-s-06-bulk-${padded}`,
+          id,
           source_agent: agent,
           confidence: confidenceByBucket[i % confidenceByBucket.length],
           rationale: `Bulk QA suggestion ${padded} from ${agent}`,
@@ -639,6 +643,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
           budget_exceeded: 0,
         });
       }
+      (window as any).__bulkIds = bulkIds;
 
       for (const [status, suffix] of [
         ['accepted', 'accepted'],
@@ -786,7 +791,8 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (window as any).api.suggestionsUnifiedList({ status: 'applied', limit: 1000 });
     }) as { items: Array<{ id: string }> };
-    const appliedBulkCount = appliedResult.items.filter((i) => i.id.startsWith('tc-s-06-bulk-')).length;
+    const bulkIds = await page.evaluate(() => (window as any).__bulkIds as string[]);
+    const appliedBulkCount = appliedResult.items.filter((i) => bulkIds.includes(i.id)).length;
     expect(appliedBulkCount).toBeGreaterThanOrEqual(5);
   });
 
@@ -798,7 +804,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   // via a direct IPC call rather than the detail-pane UI button.
 
   test('AC-EPIC-10: rollback via detail pane restores vault file and reopens for review', async () => {
-    const id = `ac-epic-10-${Date.now()}`;
+    const id = crypto.randomUUID();
     const targetPath = 'entities/characters/ac-epic-10.md';
     const originalContent = 'ORIGINAL AC-EPIC-10\n';
     const newContent = 'UPDATED AC-EPIC-10\n';
@@ -928,7 +934,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   // Un-skipped by the SKY-8762 fix (read result.entries off the response).
 
   test('AC-EPIC-9: detail pane shows populated audit trail entries (SKY-8762)', async () => {
-    const id = `ac-epic-9-${Date.now()}`;
+    const id = crypto.randomUUID();
     const targetPath = 'entities/characters/ac-epic-9.md';
     const targetFullPath = path.join(vaultDir, targetPath);
     fs.mkdirSync(path.dirname(targetFullPath), { recursive: true });

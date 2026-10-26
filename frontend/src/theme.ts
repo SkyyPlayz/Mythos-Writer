@@ -1,4 +1,6 @@
 
+import { notifyArtifactThemeChange } from './artifactThemeBridge';
+
 /** The only theme modes the app supports. */
 export type ThemeMode = 'dark' | 'high-contrast';
 
@@ -33,6 +35,7 @@ export function applyTheme(mode: ThemeMode | string | null | undefined): ThemeMo
   } else {
     root.removeAttribute('data-contrast');
   }
+  notifyArtifactThemeChange(true);
 
   return resolved;
 }
@@ -315,6 +318,7 @@ export function applyLiquidNeonTokens(
   if (p.bgVignette !== undefined) {
     root.style.setProperty('--bg-vignette-alpha', lerp(0, 0.9, p.bgVignette / 100).toFixed(3));
   }
+  notifyArtifactThemeChange(true);
 }
 
 /** Convert a hex colour to rgba(r, g, b, alpha) string. */
@@ -422,6 +426,7 @@ export function applyPageBackgroundTokens(
     root.style.setProperty('--page-bg-backdrop-blur', '0px');
     root.style.setProperty('--page-bg-backdrop-filter', 'none');
   }
+  notifyArtifactThemeChange(true);
 }
 
 /**
@@ -661,6 +666,7 @@ export function applyStoryPageTokens(prefs: Partial<StoryPagePrefs> | null | und
   root.style.setProperty('--story-page-font-family', fontFamily);
   root.style.setProperty('--story-page-font-size', fontSize);
   root.style.setProperty('--story-page-line-height', String(p.lineHeightX ?? p.lineHeight));
+  notifyArtifactThemeChange(true);
 }
 
 export function resetStoryPageTokens(): void {
