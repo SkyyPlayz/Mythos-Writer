@@ -185,7 +185,7 @@
     "undici": "^7.30.1",
     "vite": "^6.4.2",
     "nanoid": "^3.3.18",
-    "@tiptap/core": "3.31.4",
-    "@tiptap/pm": "3.31.4"
+    "@tiptap/core": "3.32.0",
+    "@tiptap/pm": "3.32.0"
   }
 }
