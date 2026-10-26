@@ -109,8 +109,7 @@ test('saving a symlinked note toasts the shortcut refusal and does not write out
     expect(fs.lstatSync(notePath).isSymbolicLink()).toBe(true);
     expect(fs.readlinkSync(notePath)).toBe(outside);
 
-    fs.mkdirSync('/opt/cursor/artifacts', { recursive: true });
-    await page.screenshot({ path: '/opt/cursor/artifacts/vault-symlink-toast.png' });
+    await page.screenshot({ path: test.info().outputPath('vault-symlink-toast.png') });
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

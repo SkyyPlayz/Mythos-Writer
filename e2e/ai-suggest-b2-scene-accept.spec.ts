@@ -152,8 +152,7 @@ test('inbox Accept of a scene-targeted vault row stays proposed', async () => {
     const after = crypto.createHash('sha256').update(fs.readFileSync(sceneFull)).digest('hex');
     expect(after).toBe(before);
     expect(fs.readFileSync(sceneFull, 'utf8')).toBe(SCENE_BYTES);
-    fs.mkdirSync('/opt/cursor/artifacts', { recursive: true });
-    await page.screenshot({ path: '/opt/cursor/artifacts/ai-suggest-b2-manuscript-refusal.png' });
+    await page.screenshot({ path: test.info().outputPath('ai-suggest-b2-manuscript-refusal.png') });
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });

@@ -423,6 +423,33 @@ describe('PR A symlink writes', () => {
     expect(() => safeVaultJoin(root, 'd/x.md', { writeMode: true })).toThrow(/symlink loop/);
   });
 
+  it('refuses a write through a dangling parent symlink that points outside', () => {
+    if (skipSymlink()) return;
+    const outside = path.join(tmp, 'dangling-outside');
+    fs.symlinkSync(outside, path.join(root, 'd'));
+    expect(() => safeVaultJoin(root, 'd/x.md', { writeMode: true })).toThrow(/Path traversal denied/);
+    expect(fs.existsSync(outside)).toBe(false);
+  });
+
+  it('refuses a write through a file-symlink-loop parent', () => {
+    if (skipSymlink()) return;
+    const link = path.join(root, 'd');
+    try {
+      fs.symlinkSync('d', link, 'file');
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP' || code === 'EINVAL') return;
+      throw err;
+    }
+    expect(() => safeVaultJoin(root, 'd/x.md', { writeMode: true })).toThrow(/symlink loop|Path traversal denied/);
+  });
+
+  it('read-mode refuses a looping folder in front of a missing leaf', () => {
+    if (skipSymlink()) return;
+    fs.symlinkSync('d', path.join(root, 'd'));
+    expect(() => safeVaultJoin(root, 'd/x.md')).toThrow(/symlink loop/);
+  });
+
   it('A7 allows a symlinked vault root and an in-vault parent link', () => {
     if (skipSymlink()) return;
     const real = path.join(tmp, 'real');
@@ -602,6 +629,33 @@ describe('PR A symlink writes', () => {
       const dest = path.join(root, `${kind}.md`);
       expect(() => writeNoFollowAtomic(dest, 'nope', { durable: false, deps: withProbe(kind), rel: `${kind}.md` })).toThrow(volumeUnsupportedText(`${kind}.md`));
       expect(fs.existsSync(dest)).toBe(false);
+    }
+  });
+
+  it('A15c refuses a same-size temp swap that only the identity re-check can see', () => {
+    const payload = 'hello';
+    const sameSize = path.join(root, 'same-size.md');
+    const decoy = path.join(root, 'decoy-same.md');
+    fs.writeFileSync(decoy, payload);
+    setNoFollowHooksForTests({
+      afterOpen(opened) {
+        fs.writeFileSync(opened, payload);
+        fs.unlinkSync(opened);
+        fs.linkSync(decoy, opened);
+      },
+      beforeRename() {},
+    });
+    try {
+      expect(() => writeNoFollowAtomic(sameSize, payload, { durable: false, rel: 'same-size.md' })).toThrow(VaultWriteRefusedError);
+      try {
+        writeNoFollowAtomic(sameSize, payload, { durable: false, rel: 'same-size.md' });
+      } catch (err) {
+        expect((err as VaultWriteRefusedError).code).toBe('HANDLE_MISMATCH');
+      }
+      expect(fs.existsSync(sameSize)).toBe(false);
+      expect(fs.readFileSync(decoy, 'utf8')).toBe(payload);
+    } finally {
+      resetNoFollowHooksForTests();
     }
   });
 
