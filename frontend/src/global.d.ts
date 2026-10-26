@@ -1614,8 +1614,18 @@ interface Window {
       error?: string;
     }>;
 
-    // Archive confirmation dialog (MYT-376)
-    archiveConfirm: (suggestionId: string, action: 'match_archive' | 'suggest_story_change' | 'ignore') => Promise<unknown>;
+    // Archive confirmation dialog (MYT-376).
+    // suggest_story_change is refused with { ok:false, reason:'suggest_only' }.
+    archiveConfirm: (
+      suggestionId: string,
+      action: 'match_archive' | 'suggest_story_change' | 'ignore',
+    ) => Promise<{
+      ok?: boolean;
+      auditId?: string;
+      newSuggestionId?: string;
+      reason?: 'suggest_only';
+      error?: string;
+    }>;
     archiveIgnoreList: () => Promise<unknown>;
 
     // Writing modes (MYT-347) — Normal / Focus / Edit backend state + IPC
@@ -1857,24 +1867,6 @@ interface Window {
       { ok: true; relPath: string } | { ok: false; error: string }
     >;
 
-    // Per-chapter/per-scene file layout (MYT-609)
-    vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;
-    vaultCreateScene: (chapterPath: string, sceneName: string) => Promise<unknown>;
-    vaultListChapters: (projectPath: string) => Promise<unknown>;
-    vaultListScenes: (chapterPath: string) => Promise<unknown>;
-
-    // Document-level IPC with typed errors, soft-delete, and per-file watching (MYT-610)
-    readDocument: (filePath: string) => Promise<unknown>;
-    writeDocument: (filePath: string, content: string) => Promise<unknown>;
-    deleteDocument: (filePath: string) => Promise<unknown>;
-    watchDocument: (filePath: string) => Promise<unknown>;
-    unwatchDocument: (filePath: string) => Promise<unknown>;
-    onDocumentChanged: (cb: (event: { filePath: string }) => void) => () => void;
-
-    // Versioned drafts (MYT-611)
-    listHistory: (filePath: string) => Promise<unknown>;
-    restoreSnapshot: (filePath: string, snapshotPath: string) => Promise<unknown>;
-
     // Stream-start push events
     onWritingAssistantStreamStart: (cb: (requestId: string) => void) => () => void;
     onBrainstormStreamStart: (cb: (requestId: string) => void) => () => void;
@@ -2084,7 +2076,7 @@ interface Window {
     // M12.B3 (SKY-10738): checkType selects Check 1 (story_internal) vs
     // Check 2 (story_vault, default) — the panel's "Continuity pass ▾".
     archiveScanContinuity: (sceneId: string, text: string, scope?: string, checkType?: string) => Promise<void>;
-    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' }>;
+    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only' }>;
     archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
         id: string;
@@ -2223,12 +2215,6 @@ interface Window {
     sceneCrafterSuggestionReject: (suggestionId: string, actor?: string) => Promise<{
       suggestionId: string;
       auditId: string;
-    }>;
-
-    // SKY-2454: Persist a user-confirmed timestamp override for a scene's timeline entry
-    updateSceneTimestamp: (sceneId: string, userDay: number, userTime: string) => Promise<{
-      success: boolean;
-      error?: string;
     }>;
 
     // SKY-2966: story navigator popout cross-window sync

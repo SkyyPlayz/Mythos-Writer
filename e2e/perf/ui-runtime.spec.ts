@@ -38,7 +38,7 @@ import {
   makeScratch,
   rmScratch,
   type Scratch,
-} from './ui-runtime/launch';
+} from '../helpers/launchApp';
 import { measureKeystrokeToPaint } from './ui-runtime/keystrokePaint';
 import { measureIdleCpu } from './ui-runtime/idleCpu';
 import { sampleFrameDeltas, summarizeFrames } from './ui-runtime/animationFps';

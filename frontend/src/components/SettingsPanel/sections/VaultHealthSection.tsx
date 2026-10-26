@@ -20,10 +20,7 @@ type CleanUninstallResult = {
 };
 
 // VaultHealthSection has fully self-contained state; no props needed from parent.
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-interface VaultHealthSectionProps {}
-
-export default function VaultHealthSection(_props: VaultHealthSectionProps) {
+export default function VaultHealthSection() {
   const [vaultHealthReport, setVaultHealthReport] = useState<VaultHealthReport | null>(null);
   const [vaultHealthBusy, setVaultHealthBusy] = useState(false);
   const [vaultHealthError, setVaultHealthError] = useState<string | null>(null);

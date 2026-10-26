@@ -391,7 +391,9 @@ export default function ContinuityPanel({
         revert();
         const msg = result.reason === 'excerpt_not_found'
           ? 'Couldn’t update the note — the flagged text has changed since the scan. Scan again to refresh this flag.'
-          : 'Couldn’t update the note — it no longer exists in your vault.';
+          : result.reason === 'suggest_only'
+            ? 'This continuity fix stays in your scene. The how-to-fix note is only a guide.'
+            : 'Couldn’t update the note — it no longer exists in your vault.';
         setActionError(msg);
         setStatusMsg(msg);
       } else {

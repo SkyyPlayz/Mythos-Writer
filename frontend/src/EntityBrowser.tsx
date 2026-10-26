@@ -284,7 +284,8 @@ export default function EntityBrowser({ onSelectEntity, selectedEntityId, onEnti
   const toggleType = (type: EntityType) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
       return next;
     });
 

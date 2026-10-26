@@ -21,7 +21,11 @@
     "react/react-in-jsx-scope": "off",
     "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/no-explicit-any": "warn",
-    "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }]
+    "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }],
+    "no-class-assign": "error",
+    "no-with": "error",
+    "@typescript-eslint/no-empty-object-type": ["error", { "allowInterfaces": "with-single-extends" }],
+    "no-restricted-syntax": ["error", { "selector": "TSIntersectionType > TSTypeLiteral[members.length=0]", "message": "Do not intersect with `{}`. An empty object type in an intersection was banned by ban-types and is still forbidden." }]
   },
   "overrides": [
     {

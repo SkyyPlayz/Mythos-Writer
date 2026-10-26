@@ -2,6 +2,10 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // T14 lives in shared/, which has no CI test script. Include it here so
+    // `npm run test -w electron-main` runs the flag source guard. Importing
+    // that file from src/ would pull it under tsconfig rootDir.
+    include: ['src/**/*.test.ts', 'tests/**/*.spec.ts', '../shared/aiSuggestOnly.test.ts'],
     globalSetup: ['./vitest.uninstallVaultsNshBuildIntegrity.global.ts'],
     // Matches frontend/vite.config.ts's testTimeout — vitest's 5000ms default
     // is too tight for fast-check property tests and large fixture builds
