@@ -3,6 +3,7 @@
 // vault. No layout persistence, no theme work, no agent control.
 import { useCallback, useContext, useEffect, useRef, useState, createContext } from 'react';
 import type { Editor } from '@tiptap/core';
+import type { IDockviewHeaderActionsProps, IDockviewPanelHeaderProps } from 'dockview';
 import {
   DockviewReact,
   type DockviewApi,
@@ -78,6 +79,7 @@ function EditorPanel(_props: IDockviewPanelProps) {
   const onDraftStateChange = useCallback(() => {}, []);
   const onLiveEditorChange = useCallback((editor: Editor | null) => {
     window.__pocEditor = editor;
+    editor?.view.dom.setAttribute('aria-label', 'Writing editor');
   }, []);
 
   if (!ready) return null;
@@ -201,9 +203,95 @@ function dockEditor(api: DockviewApi): void {
   editor.api.moveTo({ group: board.api.group, position: 'left' });
 }
 
+function PocTab({ api }: IDockviewPanelHeaderProps) {
+  const [title, setTitle] = useState(api.title);
+  useEffect(() => {
+    const sub = api.onDidTitleChange((event) => { setTitle(event.title); });
+    return () => { sub.dispose(); };
+  }, [api]);
+  return <span className="dv-default-tab-content">{title ?? api.id}</span>;
+}
+
+function PocHeaderActions({ panels }: IDockviewHeaderActionsProps) {
+  return (
+    <>
+      {panels.map((panel) => (
+        <button
+          key={panel.id}
+          type="button"
+          className="dockview-poc__close"
+          aria-label={`Close ${panel.title ?? panel.id}`}
+          onClick={() => { panel.api.close(); }}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      ))}
+    </>
+  );
+}
+
+function isSashTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('.dv-sash');
+}
+
+function rememberEditorSelection(): { from: number; to: number } | null {
+  const editor = window.__pocEditor;
+  const dom = editor?.view.dom;
+  if (!editor || !dom) return null;
+  const active = document.activeElement;
+  if (active !== dom && !dom.contains(active)) return null;
+  return { from: editor.state.selection.from, to: editor.state.selection.to };
+}
+
+function restoreEditorSelection(selection: { from: number; to: number }): void {
+  const editor = window.__pocEditor;
+  if (!editor) return;
+  const size = editor.state.doc.content.size;
+  const from = Math.min(selection.from, size);
+  const to = Math.min(Math.max(selection.to, from), size);
+  editor.view.focus();
+  if (editor.state.selection.from !== from || editor.state.selection.to !== to) {
+    editor.commands.setTextSelection({ from, to });
+  }
+}
+
 function DockviewLayout({ ready }: { ready: PocReady }) {
   const apiRef = useRef<DockviewApi | null>(null);
   const opened = useRef(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const sashSelection = useRef<{ from: number; to: number } | null>(null);
+
+  useEffect(() => {
+    const root = gridRef.current;
+    if (!root) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!isSashTarget(event.target)) return;
+      event.preventDefault();
+      const selection = rememberEditorSelection();
+      if (selection) sashSelection.current = selection;
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      if (!isSashTarget(event.target)) return;
+      event.preventDefault();
+      const selection = rememberEditorSelection();
+      if (selection) sashSelection.current = selection;
+    };
+    const onPointerUp = () => {
+      const selection = sashSelection.current;
+      sashSelection.current = null;
+      if (selection) restoreEditorSelection(selection);
+    };
+    root.addEventListener('pointerdown', onPointerDown, true);
+    root.addEventListener('mousedown', onMouseDown, true);
+    window.addEventListener('pointerup', onPointerUp, true);
+    window.addEventListener('pointercancel', onPointerUp, true);
+    return () => {
+      root.removeEventListener('pointerdown', onPointerDown, true);
+      root.removeEventListener('mousedown', onMouseDown, true);
+      window.removeEventListener('pointerup', onPointerUp, true);
+      window.removeEventListener('pointercancel', onPointerUp, true);
+    };
+  }, []);
 
   const onReady = (event: DockviewReadyEvent) => {
     apiRef.current = event.api;
@@ -239,10 +327,12 @@ function DockviewLayout({ ready }: { ready: PocReady }) {
             Dock editor
           </button>
         </div>
-        <div className="dockview-poc__grid">
+        <div className="dockview-poc__grid" ref={gridRef}>
           <DockviewReact
             className="dockview-theme-dark"
             components={PANEL_COMPONENTS}
+            defaultTabComponent={PocTab}
+            rightHeaderActionsComponent={PocHeaderActions}
             onReady={onReady}
             dndStrategy="pointer"
             defaultRenderer="always"
