@@ -4,7 +4,7 @@ Mythos Writer is a desktop app for fiction. Your manuscript and your notes are p
 
 Windows is the primary platform. Mac and Linux: TBD.
 
-AI is optional. You bring your own [OpenRouter](https://openrouter.ai/) key, or you run a model on this computer with **Ollama**, **LM Studio**, or **llama.cpp**. Mythos suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
+AI is optional. You bring your own [OpenRouter](https://openrouter.ai/) key, paste an OpenAI-compatible key, or you run a model on this computer with **Ollama**, **LM Studio**, or **llama.cpp**. Mythos suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
 
 ## Screenshots
 
@@ -40,7 +40,7 @@ These are the full app window at 1440×900. The project is the demo story **The 
 
 ### Model & keys
 
-![Settings → Model & keys — OpenRouter, Ollama, LM Studio, and llama.cpp](docs/screenshots/readme/settings-model-keys.png)
+![Settings → Model & keys — OpenRouter, Paste key, Ollama, LM Studio, and llama.cpp](docs/screenshots/readme/settings-model-keys.png)
 
 ## Install
 
@@ -90,6 +90,7 @@ Open **Settings → Model & keys**.
 | Choice | What you provide |
 | --- | --- |
 | OpenRouter | Your OpenRouter key. The endpoint box starts empty. Type `https://openrouter.ai/api/v1` |
+| Paste key | An OpenAI-compatible key. The tile is **Paste key (OpenAI-compatible)** |
 | Ollama | A local server. The default address is `http://127.0.0.1:11434/v1` |
 | LM Studio | A local server. The default address is `http://127.0.0.1:1234/v1` |
 | llama.cpp | A local server (`llama-server`). The default address is `http://127.0.0.1:8080/v1` |

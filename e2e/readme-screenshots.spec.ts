@@ -5,9 +5,23 @@
  *   welcome, story-writer, notes, scene-crafter, partner, timeline,
  *   vault-graph, settings-model-keys
  *
- * Each shot is the full Electron content area at 1440×900, with no clip.
- * The demo project is The Last City of Veynn (createMythosVault seedDemo).
- * No AI key is written into the profile.
+ * Each shot is the full Electron content area at exactly 1440×900, with no clip.
+ * Electron's getContentSize can land a couple of pixels off the request; the
+ * spec measures that delta and sets the content size again so the PNG is
+ * 1440×900. The demo project is The Last City of Veynn (createMythosVault
+ * seedDemo). No AI key is written into the profile.
+ *
+ * The seed writes electron-main/vitest.readme-seed.config.ts because vitest
+ * resolves its config from that package. That file is removed at import
+ * (pre-clean), in a finally around the seed, in afterAll, and on process
+ * exit. MYTHOS_README_SEED_FAIL=1 throws after the config is written so a
+ * failed run can be checked; CI does not set it.
+ *
+ * The demo profile marks the Notes-tab upgrade toast as already shown, and
+ * the partner and settings shots assert that toast is gone. Model & keys
+ * selects LM Studio. A stub on 127.0.0.1:1234 returns an empty model list,
+ * so the panel stays on the real idle state and does not show a
+ * "not running" warning. Ollama is not selected.
  *
  * Run:
  *   xvfb-run -a npx playwright test e2e/readme-screenshots.spec.ts --reporter=list
@@ -15,6 +29,7 @@
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
@@ -29,7 +44,38 @@ import {
 const REPO_ROOT = path.resolve(__dirname, '..');
 const MAIN_JS = path.join(REPO_ROOT, 'out/main/main.js');
 const SCREENSHOT_DIR = path.join(REPO_ROOT, 'docs/screenshots/readme');
+const SEED_CONFIG = path.join(REPO_ROOT, 'electron-main/vitest.readme-seed.config.ts');
 const CONTENT = { width: 1440, height: 900 };
+const NOTES_TOAST = 'Your notes are in the new Notes tab.';
+const LMSTUDIO_URL = 'http://127.0.0.1:1234/v1';
+
+let modelStub: http.Server | null = null;
+
+function startModelStub(): Promise<void> {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ data: [] }));
+  });
+  modelStub = server;
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(1234, '127.0.0.1', () => resolve());
+  });
+}
+
+function stopModelStub(): Promise<void> {
+  const server = modelStub;
+  modelStub = null;
+  if (!server) return Promise.resolve();
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+function removeSeedConfig(): void {
+  fs.rmSync(SEED_CONFIG, { force: true });
+}
+
+removeSeedConfig();
+process.on('exit', removeSeedConfig);
 
 const SHOTS = [
   'welcome',
@@ -70,7 +116,6 @@ function seedVeynn(parent: string): SeedResult {
   const vaultParent = path.join(parent, 'vaults');
   const outFile = path.join(parent, 'seed-result.json');
   const testFile = path.join(parent, 'seed-veynn.test.ts');
-  const configFile = path.join(REPO_ROOT, 'electron-main/vitest.readme-seed.config.ts');
   fs.mkdirSync(parent, { recursive: true });
   const createVault = path.join(REPO_ROOT, 'electron-main/src/mythosFormat/createVault.ts');
   fs.writeFileSync(testFile, `
@@ -86,7 +131,8 @@ it('seeds the demo vault', () => {
   fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(result));
 });
 `);
-  fs.writeFileSync(configFile, `import { defineConfig } from 'vitest/config';
+  removeSeedConfig();
+  fs.writeFileSync(SEED_CONFIG, `import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: [${JSON.stringify(testFile)}],
@@ -96,13 +142,16 @@ export default defineConfig({
 });
 `);
   try {
-    execFileSync('npx', ['vitest', 'run', '--config', configFile], {
+    if (process.env.MYTHOS_README_SEED_FAIL === '1') {
+      throw new Error('injected readme seed failure');
+    }
+    execFileSync('npx', ['vitest', 'run', '--config', SEED_CONFIG], {
       cwd: path.join(REPO_ROOT, 'electron-main'),
       env: strippedEnv(),
       stdio: 'inherit',
     });
   } finally {
-    fs.rmSync(configFile, { force: true });
+    removeSeedConfig();
   }
   return JSON.parse(fs.readFileSync(outFile, 'utf8')) as SeedResult;
 }
@@ -117,8 +166,13 @@ function writeProfile(userData: string, seed: SeedResult | null): void {
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '',
     onboardingComplete: true,
+    notesTabUpgradeToastShown: true,
     theme: 'dark',
-    provider: { kind: 'custom', apiKey: '', baseUrl: '', model: '' },
+    // LM Studio needs no API key, so the key field stays unmounted. The
+    // capture listens on its default port and answers /v1/models with an
+    // empty list, which is the real idle state: no "not running" warning.
+    provider: { kind: 'lmstudio', apiKey: '', baseUrl: LMSTUDIO_URL, model: '' },
+    writingPartner: { modelKeysProvider: 'lmstudio' },
     lastOpenedScene: {
       sceneId: seed.firstSceneId,
       scenePath: seed.firstScenePath,
@@ -149,16 +203,40 @@ async function launch(userData: string): Promise<ElectronApplication> {
   });
 }
 
-async function fitWindow(app: ElectronApplication, page: Page): Promise<void> {
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const win = BrowserWindow.getAllWindows()[0];
-    win.setContentSize(size.width, size.height);
-  }, CONTENT);
-  const size = await app.evaluate(({ BrowserWindow }) => {
+async function contentSize(app: ElectronApplication): Promise<{ width: number; height: number }> {
+  return app.evaluate(({ BrowserWindow }) => {
     const [width, height] = BrowserWindow.getAllWindows()[0].getContentSize();
     return { width, height };
   });
-  await page.setViewportSize(size);
+}
+
+async function fitWindow(app: ElectronApplication, page: Page): Promise<void> {
+  const apply = (width: number, height: number) => app.evaluate(({ BrowserWindow }, size) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win.webContents.setZoomFactor(1);
+    win.setContentSize(size.width, size.height);
+  }, { width, height });
+
+  await apply(CONTENT.width, CONTENT.height);
+  let size = await contentSize(app);
+  if (size.width !== CONTENT.width || size.height !== CONTENT.height) {
+    await apply(
+      CONTENT.width - (size.width - CONTENT.width),
+      CONTENT.height - (size.height - CONTENT.height),
+    );
+    size = await contentSize(app);
+  }
+  expect(size.width, 'content width').toBe(CONTENT.width);
+  expect(size.height, 'content height').toBe(CONTENT.height);
+  await page.setViewportSize({ width: CONTENT.width, height: CONTENT.height });
+}
+
+async function settleNotesToast(page: Page): Promise<void> {
+  const toast = page.getByTestId('app-toast').filter({ hasText: NOTES_TOAST });
+  if (await toast.isVisible().catch(() => false)) {
+    await expect(toast).toBeHidden({ timeout: 8_000 });
+  }
+  await expect(page.getByText(NOTES_TOAST)).toHaveCount(0);
 }
 
 async function saveShot(page: Page, name: (typeof SHOTS)[number]): Promise<void> {
@@ -166,8 +244,8 @@ async function saveShot(page: Page, name: (typeof SHOTS)[number]): Promise<void>
   const file = path.join(SCREENSHOT_DIR, `${name}.png`);
   await page.screenshot({ path: file, type: 'png', animations: 'disabled' });
   const png = PNG.sync.read(fs.readFileSync(file));
-  expect(png.width, name).toBeGreaterThanOrEqual(CONTENT.width);
-  expect(png.height, name).toBeGreaterThanOrEqual(CONTENT.height);
+  expect(png.width, name).toBe(CONTENT.width);
+  expect(png.height, name).toBe(CONTENT.height);
   console.log(`SHOT ${name}.png ${png.width}x${png.height} bytes=${fs.statSync(file).size}`);
 }
 
@@ -176,19 +254,21 @@ test.describe.configure({ mode: 'serial' });
 let seed: SeedResult;
 let seedRoot: string;
 
-test.beforeAll(() => {
+test.beforeAll(async () => {
   for (const key of ['SKYYPLAYZ_GITHUB_PAT', 'GH_TOKEN', 'GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY']) {
     delete process.env[key];
   }
+  await startModelStub();
   seedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-seed-'));
   seed = seedVeynn(seedRoot);
   expect(seed.ok).toBe(true);
   expect(seed.firstScenePath).toContain('The Last City of Veynn');
 });
 
-test.afterAll(() => {
+test.afterAll(async () => {
+  removeSeedConfig();
+  await stopModelStub();
   if (seedRoot) fs.rmSync(seedRoot, { recursive: true, force: true });
-  fs.rmSync(path.join(REPO_ROOT, 'electron-main/vitest.readme-seed.config.ts'), { force: true });
 });
 
 test('screenshot: welcome', async () => {
@@ -240,6 +320,7 @@ test('screenshot: demo window', async () => {
     if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
     await expect(page.getByText('Recovered your previous brainstorm draft')).toHaveCount(0);
     await expect(page.getByText('IDEA COLLECTIONS').first()).toBeVisible({ timeout: 15_000 });
+    await settleNotesToast(page);
     await saveShot(page, 'partner');
 
     await page.locator('[data-testid="nav-rail-timeline"]').click();
@@ -253,13 +334,22 @@ test('screenshot: demo window', async () => {
     await page.locator('.app-menu-gear-btn').click();
     await page.locator('[data-testid="settings-cat-agents"]').click();
     await expect(page.getByText('OpenRouter').first()).toBeVisible({ timeout: 15_000 });
-    await page.locator('[data-testid="mk-prov-ollama"]').click();
+    await page.waitForFunction(() => {
+      return !document.querySelector('[data-testid="model-list-loading"]')
+        && !document.querySelector('[data-testid="model-list-error"]')
+        && !document.querySelector('[data-testid="ollama-not-running-hint"]');
+    }, undefined, { timeout: 15_000 });
+    await expect(page.getByText('Ollama is not running')).toHaveCount(0);
+    await expect(page.getByTestId('ollama-not-running-hint')).toHaveCount(0);
+    await expect(page.getByText(/could not reach|network error reaching/i)).toHaveCount(0);
+    await settleNotesToast(page);
     const frame = await page.evaluate(() => {
       const body = document.querySelector('.settings-body');
       const api = document.querySelector('[data-testid="mk-bucket-api"]');
       if (!body || !api) return { ok: false as const, reason: 'missing settings scroller' };
-      const c0 = body.getBoundingClientRect();
-      body.scrollTop += api.getBoundingClientRect().top - c0.top;
+      const bodyRect = () => body.getBoundingClientRect();
+      // Subscription bucket stays above the fold.
+      body.scrollTop += api.getBoundingClientRect().top - bodyRect().top;
       const c = body.getBoundingClientRect();
       const shown = (sel: string) => {
         const el = document.querySelector(sel);
@@ -282,6 +372,7 @@ test('screenshot: demo window', async () => {
       return {
         ok: true as const,
         openRouter: shown('[data-testid="mk-prov-openrouter"]'),
+        pasteKey: shown('[data-testid="mk-prov-paste-key"]'),
         ollama: shown('[data-testid="mk-prov-ollama"]'),
         lmstudio: shown('[data-testid="mk-prov-lmstudio"]'),
         llamacpp: shown('[data-testid="mk-prov-llamacpp"]'),
@@ -290,20 +381,23 @@ test('screenshot: demo window', async () => {
         claudeRow: shown('[data-testid="mk-claude-row"]'),
         subscription: textShown('USE MY SUBSCRIPTION'),
         comingSoon: textShown('Coming soon'),
+        ollamaDown: textShown('Ollama is not running'),
       };
     });
-    expect(frame.ok, JSON.stringify(frame)).toBe(true);
-    if (frame.ok) {
-      expect(frame.openRouter).toBe(true);
-      expect(frame.ollama).toBe(true);
-      expect(frame.lmstudio).toBe(true);
-      expect(frame.llamacpp).toBe(true);
-      expect(frame.cli).toBe(false);
-      expect(frame.key).toBe(false);
-      expect(frame.claudeRow).toBe(false);
-      expect(frame.subscription).toBe(false);
-      expect(frame.comingSoon).toBe(false);
-    }
+    expect(frame, JSON.stringify(frame)).toMatchObject({
+      ok: true,
+      openRouter: true,
+      pasteKey: true,
+      ollama: true,
+      lmstudio: true,
+      llamacpp: true,
+      cli: false,
+      key: false,
+      claudeRow: false,
+      subscription: false,
+      comingSoon: false,
+      ollamaDown: false,
+    });
     await saveShot(page, 'settings-model-keys');
   } finally {
     await app.close().catch(() => undefined);
