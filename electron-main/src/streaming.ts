@@ -2,6 +2,7 @@
 import { ipcMain, WebContents } from 'electron';
 import crypto from 'crypto';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
+import { GoogleModelExcludedError } from '@mythos-writer/shared/openRouterPolicy';
 import { streamFromProvider, isModelValid, ANTHROPIC_MODEL_ALLOWLIST, EmptyProviderResponseError, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
 
 export const STREAM_CHANNELS = {
@@ -69,6 +70,7 @@ export type StreamErrorCategory = (typeof STREAM_ERROR_CATEGORIES)[keyof typeof 
 export function categorizeStreamError(err: unknown): StreamErrorCategory {
   // SKY-11240: a zero-token stream is its own category so its specific,
   // already-vetted message (provider + address) can be forwarded verbatim.
+  if (err instanceof GoogleModelExcludedError) return STREAM_ERROR_CATEGORIES.INVALID_REQUEST;
   if (err instanceof EmptyProviderResponseError) return STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE;
   // SKY-11276: budget-exhausted-while-thinking. Checked before the message
   // pattern matching below — its message contains "limit", which would
@@ -115,7 +117,9 @@ export function streamErrorUserMessage(category: StreamErrorCategory, err?: unkn
     case STREAM_ERROR_CATEGORIES.NETWORK:
       return 'Network error — check your connection and try again.';
     case STREAM_ERROR_CATEGORIES.INVALID_REQUEST:
-      return 'Invalid request — check the model and input parameters.';
+      return err instanceof GoogleModelExcludedError
+        ? err.message
+        : 'Invalid request — check the model and input parameters.';
     case STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE:
       return err instanceof EmptyProviderResponseError
         ? err.message
@@ -128,6 +132,10 @@ export function streamErrorUserMessage(category: StreamErrorCategory, err?: unkn
         : 'The model ran out of its token budget while thinking — raise the response token limit and try again.';
     case STREAM_ERROR_CATEGORIES.UNKNOWN:
       return 'An unexpected error occurred — check the logs for details.';
+    default: {
+      const _exhaustive: never = category;
+      return _exhaustive;
+    }
   }
 }
 

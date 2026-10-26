@@ -20,6 +20,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed
+- **OpenRouter requests never use Google** — chat, speech, and transcription calls to OpenRouter ignore Google Vertex and Google AI Studio, keep zero-data-retention and data-collection deny, and will not select a google/* model. ([#1741](https://github.com/SkyyPlayz/Mythos-Writer/pull/1741))
 - Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
 - **Timeline views** — the timeline shows Structure and Progress. Plotlines, Spreadsheet, Tension, Relationships, and Subway are hidden from the view switcher; saved timeline data is unchanged. ([#1695](https://github.com/SkyyPlayz/Mythos-Writer/pull/1695))
 - **Graph filters sit at the top-right of the graph card** — the category chips and depth control are a compact bar on the card, and Tab still reaches them after the header controls. ([PR #1715](https://github.com/SkyyPlayz/Mythos-Writer/pull/1715))
