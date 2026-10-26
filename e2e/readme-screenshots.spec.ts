@@ -19,7 +19,9 @@
  *
  * The demo profile marks the Notes-tab upgrade toast as already shown, and
  * the partner and settings shots assert that toast is gone. Model & keys
- * selects LM Studio. A stub on 127.0.0.1:1234 returns an empty model list,
+ * selects LM Studio and is scrolled to API KEY / CREDITS and ON THIS
+ * COMPUTER, so the subscription bucket, Claude, and Coming soon tiles are
+ * above the fold. A stub on 127.0.0.1:1234 returns an empty model list,
  * so the panel stays on the real idle state and does not show a
  * "not running" warning. Ollama is not selected.
  *
@@ -345,19 +347,12 @@ test('screenshot: demo window', async () => {
     await settleNotesToast(page);
     const frame = await page.evaluate(() => {
       const body = document.querySelector('.settings-body');
-      const cli = document.querySelector('[data-testid="mk-bucket-cli"]');
-      const local = document.querySelector('[data-testid="mk-bucket-local"]');
-      if (!body || !cli || !local) return { ok: false as const, reason: 'missing settings scroller' };
-      const bodyRect = () => body.getBoundingClientRect();
-      // All three groups stay in the scroller. Scroll only far enough to
-      // bring the local tiles in, and never far enough to push the
-      // subscription group out.
-      body.scrollTop = 0;
-      const overflow = local.getBoundingClientRect().bottom - (bodyRect().bottom - 4);
-      if (overflow > 0) {
-        const cliRoom = cli.getBoundingClientRect().top - (bodyRect().top + 4);
-        body.scrollTop += Math.min(overflow, Math.max(0, cliRoom));
-      }
+      const api = document.querySelector('[data-testid="mk-bucket-api"]');
+      if (!body || !api) return { ok: false as const, reason: 'missing settings scroller' };
+      const top = body.getBoundingClientRect().top;
+      // API KEY / CREDITS at the top of the scroller. The subscription
+      // bucket, Claude, and Coming soon tiles sit above the fold.
+      body.scrollTop += api.getBoundingClientRect().top - top;
       const c = body.getBoundingClientRect();
       const shown = (sel: string) => {
         const el = document.querySelector(sel);
@@ -401,23 +396,23 @@ test('screenshot: demo window', async () => {
     });
     expect(frame, JSON.stringify(frame)).toMatchObject({
       ok: true,
-      claude: true,
-      codex: true,
-      gemini: true,
-      copilot: true,
-      cursor: true,
+      claude: false,
+      codex: false,
+      gemini: false,
+      copilot: false,
+      cursor: false,
       openRouter: true,
       pasteKey: true,
       ollama: true,
       lmstudio: true,
       llamacpp: true,
-      cli: true,
+      cli: false,
       apiGroup: true,
       localGroup: true,
       key: false,
       claudeRow: false,
-      subscription: true,
-      comingSoon: true,
+      subscription: false,
+      comingSoon: false,
       ollamaDown: false,
     });
     await saveShot(page, 'settings-model-keys');
