@@ -217,7 +217,7 @@ test('screenshot: demo window', async () => {
     const page = await app.firstWindow();
     page.on('dialog', (d) => { void d.accept().catch(() => undefined); });
     await fitWindow(app, page);
-    await expect(page.getByText('The Last City of Veynn').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: 'The Last City of Veynn', level: 2 })).toBeVisible({ timeout: 30_000 });
     await saveShot(page, 'story-writer');
 
     await page.locator('[data-testid="nav-rail-notes"]').click();
