@@ -2,9 +2,9 @@
 
 Mythos Writer is a desktop app for fiction. Your manuscript and your notes are plain Markdown in folders on your computer. The workspace is the Liquid Neon theme: glass panels over a wallpaper you can change.
 
-The published builds are for **Windows**. Mac and Linux are not supported releases.
+Windows is the primary platform. Mac and Linux: TBD.
 
-AI is optional. You bring your own [OpenRouter](https://openrouter.ai/) key, or you run a model on this computer with **Ollama**, **LM Studio**, or **llama.cpp**. Settings → Model & keys can also take an OpenAI-compatible key you paste. The writing partner suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
+AI is optional. You bring your own [OpenRouter](https://openrouter.ai/) key, or you run a model on this computer with **Ollama**, **LM Studio**, or **llama.cpp**. Mythos suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
 
 ## Screenshots
 
@@ -12,7 +12,7 @@ These are the full app window at 1440×900. The project is the demo story **The 
 
 ### Welcome
 
-![Welcome — choose a template, a blank vault, an import, a local restore, or an Obsidian vault](docs/screenshots/readme/welcome.png)
+![Welcome — Start from a template, Start blank, Import vault, Restore from backup, or Open Obsidian vault in Mythos](docs/screenshots/readme/welcome.png)
 
 ### Story Writer
 
@@ -26,9 +26,9 @@ These are the full app window at 1440×900. The project is the demo story **The 
 
 ![Scene Crafter — scene setup and draft cards on a board](docs/screenshots/readme/scene-crafter.png)
 
-### Writing partner
+### Mythos
 
-![Writing partner — chat, with Update Timeline, Beta Read, and Writer Scan](docs/screenshots/readme/partner.png)
+![Mythos — IDEA COLLECTIONS and the chat](docs/screenshots/readme/partner.png)
 
 ### Timeline
 
@@ -40,7 +40,7 @@ These are the full app window at 1440×900. The project is the demo story **The 
 
 ### Model & keys
 
-![Settings → Model & keys — OpenRouter, a pasted key, and local Ollama, LM Studio, and llama.cpp](docs/screenshots/readme/settings-model-keys.png)
+![Settings → Model & keys — OpenRouter, Ollama, LM Studio, and llama.cpp](docs/screenshots/readme/settings-model-keys.png)
 
 ## Install
 
@@ -55,13 +55,11 @@ Run the installer, or unzip the portable build, then open **Mythos Writer**.
 
 ## First session
 
-1. The welcome screen offers five ways to start: a template, a blank vault, an import, a restore from a local snapshot, or an Obsidian vault opened in place.
-2. **From template** creates an empty Story Vault and empty Notes folders named Characters, Locations, Stories, Plot, Worldbuilding, and Research. **Start blank** creates the two vaults with nothing in the tree.
-3. **Import** copies an Obsidian vault or a plain Markdown folder into a new Mythos vault. A Word manuscript on the story side is split into chapters and scenes. The folder you picked is left as it was.
+1. The welcome screen offers five paths: **Start from a template**, **Start blank**, **Import vault**, **Restore from backup**, and **Open Obsidian vault in Mythos**.
+2. **Start from a template** creates an empty Story vault and empty Notes folders named Characters, Locations, Stories, Plot, Worldbuilding, and Research. **Start blank** creates the two vaults with nothing in the tree.
+3. **Import vault** copies an Obsidian vault or a plain Markdown folder into a new Mythos vault. A Word manuscript on the story side is split into chapters and scenes. The folder you picked is left as it was.
 4. **Open Obsidian vault in Mythos** keeps that vault where it is and uses it as the Notes vault. Mythos adds a Story vault beside it.
-5. When the Story vault has no scene, choose **File → New story**, then **Create story**. That adds Chapter 1 and an untitled scene and opens them in Story Writer. Type. The scene is a Markdown file in the Story vault, and it saves as you write.
-
-**Restore from backup** brings back a local snapshot. There is no cloud sync service in this build.
+5. When the Story vault has no scene, choose **File → New story**, then **Create story**. That adds Chapter 1 and an **Untitled Scene** and opens them in Story Writer. Type. The scene is a Markdown file in the Story vault, and it saves as you write.
 
 ## The workspace
 
@@ -73,7 +71,7 @@ The left rail, top to bottom:
 | Notes Editor | Markdown notes, with wiki links |
 | Boards | A canvas of cards |
 | Scene Crafter | Scene setup, and draft cards on a board |
-| Mythos | The writing partner. The label is the name you give it; Mythos is the default |
+| Mythos | The chat on the rail. Mythos is the default name |
 | Timeline | Structure and Progress for the story |
 | Vault Graph | A map of `[[wiki links]]` |
 
@@ -91,19 +89,16 @@ Open **Settings → Model & keys**.
 
 | Choice | What you provide |
 | --- | --- |
-| OpenRouter | Your OpenRouter key. The endpoint box starts empty. Type `https://openrouter.ai/api/v1`. The grey hint in that box is `http://localhost:11434` |
-| Paste key | An OpenAI-compatible key |
+| OpenRouter | Your OpenRouter key. The endpoint box starts empty. Type `https://openrouter.ai/api/v1` |
 | Ollama | A local server. The default address is `http://127.0.0.1:11434/v1` |
 | LM Studio | A local server. The default address is `http://127.0.0.1:1234/v1` |
 | llama.cpp | A local server (`llama-server`). The default address is `http://127.0.0.1:8080/v1` |
 
 The key is stored on this computer. A remote endpoint receives the text you send it. Ollama, LM Studio, and llama.cpp run on this computer.
 
-The writing partner is one chat. **Update Timeline**, **Beta Read**, and **Writer Scan** are actions in that chat. Suggestions wait for you. Scene Crafter’s draft is a card on a board, produced from the setup you filled in. Adding that card opens the board. It does not write the card into the manuscript.
+Mythos is one chat. On the right-hand panel, the Mythos tab’s quick commands are **Beta read**, **Continuity**, **Notes→timeline**, and **Timeline→notes**. On Timeline, the Mythos tab has **Update Timeline**, **Beta Read**, and **Writer Scan**. Suggestions wait for you. Scene Crafter’s draft is a card on a board, produced from the setup you filled in. Adding that card opens the board. It does not write the card into the manuscript.
 
 You can turn AI off from the same settings page. Notes, the manuscript, Boards, and the Timeline still work.
-
-**Settings → Appearance** includes the update channel: **Stable** or **Beta**.
 
 ## Your files
 
@@ -156,7 +151,7 @@ shared/            shared types
 out/               electron-vite output (gitignored)
 ```
 
-Contributor rules, including the required checks, are in [CONTRIBUTING.md](CONTRIBUTING.md).
+The [user guide](docs/user-guide.md) and the [keyboard shortcuts](docs/keyboard-shortcuts.md) are the longer references. Contributor rules, including the required checks, are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Update channel
 

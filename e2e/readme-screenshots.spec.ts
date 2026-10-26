@@ -1,21 +1,23 @@
 /**
- * readme-screenshots.spec.ts — SKY-1223
+ * readme-screenshots.spec.ts
  *
- * Captures four README hero screenshots:
- *   1. onboarding-wizard   — first-launch Welcome screen (step 1, path picker)
- *   2. getting-started     — post-onboarding shell with Getting Started panel visible
- *   3. settings-vault-badge   — Settings dialog showing the vault location
- *   4. brainstorm-panel    — Brainstorm view with empty prompt state
+ * Captures the eight README window shots into docs/screenshots/readme/:
+ *   welcome, story-writer, notes, scene-crafter, partner, timeline,
+ *   vault-graph, settings-model-keys
  *
- * Output: docs/screenshots/*.png
+ * Each shot is the full Electron content area at 1440×900, with no clip.
+ * The demo project is The Last City of Veynn (createMythosVault seedDemo).
+ * No AI key is written into the profile.
  *
  * Run:
  *   xvfb-run -a npx playwright test e2e/readme-screenshots.spec.ts --reporter=list
  */
 
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { PNG } from 'pngjs';
 import {
   test,
   expect,
@@ -24,248 +26,287 @@ import {
   type Page,
 } from '@playwright/test';
 
-const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-const SCREENSHOT_DIR = path.resolve(__dirname, '../docs/screenshots');
-const CSS_ASSET = path.resolve(__dirname, '../out/renderer/assets/index-DHjmkebl.css');
-const DESKTOP_VP = { width: 1440, height: 900 };
+const REPO_ROOT = path.resolve(__dirname, '..');
+const MAIN_JS = path.join(REPO_ROOT, 'out/main/main.js');
+const SCREENSHOT_DIR = path.join(REPO_ROOT, 'docs/screenshots/readme');
+const CONTENT = { width: 1440, height: 900 };
 
-function ensureDir(d: string) {
-  fs.mkdirSync(d, { recursive: true });
+const SHOTS = [
+  'welcome',
+  'story-writer',
+  'notes',
+  'scene-crafter',
+  'partner',
+  'timeline',
+  'vault-graph',
+  'settings-model-keys',
+] as const;
+
+interface SeedResult {
+  ok: true;
+  storyVaultPath: string;
+  notesVaultPath: string;
+  firstSceneId: string;
+  firstScenePath: string;
 }
 
-async function applyTheme(page: Page) {
-  // In headless Xvfb mode the `body { background }` CSS rule doesn't fire
-  // even though the stylesheet loads and class-based rules DO apply.
-  // Force the dark-theme base colours on html/body so screenshots look right.
-  await page.evaluate(() => {
-    const bgApp = getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim() || '#0e1116';
-    const textBody = getComputedStyle(document.documentElement).getPropertyValue('--text-body').trim() || '#bfd6e8';
-    document.documentElement.style.backgroundColor = bgApp;
-    document.body.style.backgroundColor = bgApp;
-    document.body.style.color = textBody;
-  }).catch(() => undefined);
-  await page.waitForTimeout(300);
+function strippedEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of [
+    'SKYYPLAYZ_GITHUB_PAT',
+    'GH_TOKEN',
+    'GITHUB_TOKEN',
+    'ANTHROPIC_API_KEY',
+    'OPENAI_API_KEY',
+    'OPENROUTER_API_KEY',
+  ]) {
+    delete env[key];
+  }
+  env.MYTHOS_DISABLE_BOOT_MIGRATION = '1';
+  return env;
 }
 
-async function shot(page: Page, name: string) {
-  ensureDir(SCREENSHOT_DIR);
-  await page.screenshot({ path: path.join(SCREENSHOT_DIR, `${name}.png`) });
-  console.log(`  wrote ${name}.png`);
+function seedVeynn(parent: string): SeedResult {
+  const vaultParent = path.join(parent, 'vaults');
+  const outFile = path.join(parent, 'seed-result.json');
+  const testFile = path.join(parent, 'seed-veynn.test.ts');
+  const configFile = path.join(REPO_ROOT, 'electron-main/vitest.readme-seed.config.ts');
+  fs.mkdirSync(parent, { recursive: true });
+  const createVault = path.join(REPO_ROOT, 'electron-main/src/mythosFormat/createVault.ts');
+  fs.writeFileSync(testFile, `
+import fs from 'node:fs';
+import { it } from 'vitest';
+import { createMythosVault } from ${JSON.stringify(createVault)};
+
+it('seeds the demo vault', () => {
+  const parent = ${JSON.stringify(vaultParent)};
+  fs.mkdirSync(parent, { recursive: true });
+  const result = createMythosVault(parent, { name: 'Demo', exactName: true, seedDemo: true });
+  if (!result.ok) throw new Error('createMythosVault failed');
+  fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(result));
+});
+`);
+  fs.writeFileSync(configFile, `import { defineConfig } from 'vitest/config';
+export default defineConfig({
+  test: {
+    include: [${JSON.stringify(testFile)}],
+    globalSetup: [],
+    testTimeout: 30000,
+  },
+});
+`);
+  try {
+    execFileSync('npx', ['vitest', 'run', '--config', configFile], {
+      cwd: path.join(REPO_ROOT, 'electron-main'),
+      env: strippedEnv(),
+      stdio: 'inherit',
+    });
+  } finally {
+    fs.rmSync(configFile, { force: true });
+  }
+  return JSON.parse(fs.readFileSync(outFile, 'utf8')) as SeedResult;
 }
 
-async function firstWindow(app: ElectronApplication): Promise<Page> {
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => { void d.accept().catch(() => undefined); });
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize(DESKTOP_VP);
-  return page;
-}
-
-// ─── Seed helpers ─────────────────────────────────────────────────────────────
-
-function seedPostOnboarding(userData: string, vaultDir: string) {
-  const storyId = 'readme-story-001';
-  const chapterId = 'readme-ch-001';
-  const sceneId = 'readme-sc-001';
+function writeProfile(userData: string, seed: SeedResult | null): void {
+  fs.mkdirSync(userData, { recursive: true });
+  if (!seed) {
+    fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({ apiKey: '' }, null, 2));
+    return;
+  }
   const now = new Date().toISOString();
-
-  const appSettings = {
+  fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '',
     onboardingComplete: true,
-    agents: {
-      writingAssistant: { enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
-      brainstorm: { enabled: true, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
-      archive: { enabled: false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
-    },
-    gettingStarted: { completedItems: [], dismissed: false },
     theme: 'dark',
-    snapshots: { maxPerScene: 100, maxAgeDays: 30 },
-  };
-
-  const vaultSettings = { vaultRoot: vaultDir };
-
-  const manifest = {
-    version: '1',
-    vaultRoot: vaultDir,
-    stories: [{
-      id: storyId,
-      title: 'The Midnight Archives',
-      path: `stories/${storyId}`,
-      chapters: [{
-        id: chapterId,
-        title: 'Chapter One: First Light',
-        path: `stories/${storyId}/chapters/${chapterId}`,
-        order: 0,
-        scenes: [{
-          id: sceneId,
-          title: 'Scene One: The Letter',
-          path: `stories/${storyId}/chapters/${chapterId}/scenes/${sceneId}.md`,
-          order: 0,
-          chapterId,
-          storyId,
-          draftState: 'in-progress',
-          blocks: [],
-          createdAt: now,
-          updatedAt: now,
-        }],
-        createdAt: now,
-        updatedAt: now,
-      }],
-      createdAt: now,
-      updatedAt: now,
+    provider: { kind: 'custom', apiKey: '', baseUrl: '', model: '' },
+    lastOpenedScene: {
+      sceneId: seed.firstSceneId,
+      scenePath: seed.firstScenePath,
+      scrollTop: 0,
+      cursorLine: 0,
+      openAtDepth: 'book',
+    },
+  }, null, 2));
+  fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify({
+    vaultRoot: seed.storyVaultPath,
+    notesVaultRoot: seed.notesVaultPath,
+    layoutMode: 'default',
+    recentProjects: [{
+      name: 'Demo',
+      vaultRoot: seed.storyVaultPath,
+      notesVaultRoot: seed.notesVaultPath,
+      openedAt: now,
     }],
-    entities: [],
-    suggestions: [],
-    scenes: [],
-    chapters: [],
-  };
-
-  ensureDir(userData);
-  ensureDir(vaultDir);
-  const sceneDir = path.join(vaultDir, 'stories', storyId, 'chapters', chapterId, 'scenes');
-  fs.mkdirSync(sceneDir, { recursive: true });
-  fs.writeFileSync(path.join(sceneDir, `${sceneId}.md`), '---\nid: readme-sc-001\ntitle: "Scene One: The Letter"\ndraftState: in-progress\n---\n\n');
-  fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify(appSettings, null, 2));
-  fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify(vaultSettings, null, 2));
-  fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  }, null, 2));
 }
 
-// ─── Test 1: Onboarding wizard ────────────────────────────────────────────────
-
-test('screenshot: onboarding wizard (step 1 — path picker)', async () => {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-onb-'));
-  // No seed — app will show onboarding
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'],
-    timeout: 45_000,
+async function launch(userData: string): Promise<ElectronApplication> {
+  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY) ? ['--headless'] : [];
+  return electron.launch({
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    env: strippedEnv(),
+    timeout: 60_000,
   });
-  try {
-    const page = await firstWindow(app);
-    await page.setViewportSize(DESKTOP_VP);
+}
 
-    // F3#9: WelcomeOverlay is the only first-run surface (OnboardingWizard deleted).
-    const step1 = page.locator(
-      '[data-testid="welcome-overlay"], [data-testid="screen-welcome"], .onboarding-wizard, .wizard-root, .onboarding-step',
-    );
-    await expect(step1.first()).toBeVisible({ timeout: 15_000 });
-    await page.waitForTimeout(800);
-    await applyTheme(page);
-    await shot(page, 'onboarding-wizard');
+async function fitWindow(app: ElectronApplication, page: Page): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, size) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win.setContentSize(size.width, size.height);
+  }, CONTENT);
+  const size = await app.evaluate(({ BrowserWindow }) => {
+    const [width, height] = BrowserWindow.getAllWindows()[0].getContentSize();
+    return { width, height };
+  });
+  await page.setViewportSize(size);
+}
+
+async function saveShot(page: Page, name: (typeof SHOTS)[number]): Promise<void> {
+  fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  const file = path.join(SCREENSHOT_DIR, `${name}.png`);
+  await page.screenshot({ path: file, type: 'png', animations: 'disabled' });
+  const png = PNG.sync.read(fs.readFileSync(file));
+  expect(png.width, name).toBeGreaterThanOrEqual(CONTENT.width);
+  expect(png.height, name).toBeGreaterThanOrEqual(CONTENT.height);
+  console.log(`SHOT ${name}.png ${png.width}x${png.height} bytes=${fs.statSync(file).size}`);
+}
+
+test.describe.configure({ mode: 'serial' });
+
+let seed: SeedResult;
+let seedRoot: string;
+
+test.beforeAll(() => {
+  for (const key of ['SKYYPLAYZ_GITHUB_PAT', 'GH_TOKEN', 'GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY']) {
+    delete process.env[key];
+  }
+  seedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-seed-'));
+  seed = seedVeynn(seedRoot);
+  expect(seed.ok).toBe(true);
+  expect(seed.firstScenePath).toContain('The Last City of Veynn');
+});
+
+test.afterAll(() => {
+  if (seedRoot) fs.rmSync(seedRoot, { recursive: true, force: true });
+  fs.rmSync(path.join(REPO_ROOT, 'electron-main/vitest.readme-seed.config.ts'), { force: true });
+});
+
+test('screenshot: welcome', async () => {
+  test.setTimeout(120_000);
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-welcome-'));
+  writeProfile(userData, null);
+  const app = await launch(userData);
+  try {
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => { void d.accept().catch(() => undefined); });
+    await fitWindow(app, page);
+    await expect(page.getByText('Start from a template')).toBeVisible({ timeout: 20_000 });
+    await saveShot(page, 'welcome');
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(userData, { recursive: true, force: true });
   }
 });
 
-// ─── Test 2: Post-onboarding Getting Started panel ───────────────────────────
-
-test('screenshot: post-onboarding shell with getting-started panel', async () => {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-gs-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-vault-'));
-  seedPostOnboarding(userData, vaultDir);
-
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'],
-    timeout: 45_000,
-  });
+test('screenshot: demo window', async () => {
+  test.setTimeout(180_000);
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-demo-'));
+  writeProfile(userData, seed);
+  const app = await launch(userData);
   try {
-    const page = await firstWindow(app);
-    await page.setViewportSize(DESKTOP_VP);
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => { void d.accept().catch(() => undefined); });
+    await fitWindow(app, page);
+    await expect(page.getByText('The Last City of Veynn').first()).toBeVisible({ timeout: 30_000 });
+    await saveShot(page, 'story-writer');
 
-    // Wait for the main shell
-    const shell = page.locator('.app-menu-bar, .shell-root, .desktop-shell');
-    await expect(shell.first()).toBeVisible({ timeout: 20_000 });
-    await page.waitForTimeout(1000);
-
-    // The Getting Started panel should be visible in the right sidebar
-    const gsPanel = page.locator('.gs-panel, [data-testid="getting-started-panel"]');
-    if (await gsPanel.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await page.waitForTimeout(500);
+    await page.locator('[data-testid="nav-rail-notes"]').click();
+    const mira = page.locator('[data-testid="vb-row-Characters/Mira Veynn.md"]');
+    if (!(await mira.isVisible().catch(() => false))) {
+      await page.locator('[data-testid="vb-row-Characters"]').click();
     }
+    await expect(mira).toBeVisible({ timeout: 15_000 });
+    await mira.click();
+    await expect(page.locator('[data-testid="note-title"]')).toHaveText('Mira Veynn', { timeout: 15_000 });
+    await saveShot(page, 'notes');
 
-    await applyTheme(page);
-    await shot(page, 'getting-started-panel');
+    await page.locator('[data-testid="nav-rail-crafter"]').click();
+    await expect(page.locator('[data-testid="nav-rail-crafter"]')).toHaveAttribute('aria-current', 'page');
+    await saveShot(page, 'scene-crafter');
+
+    await page.evaluate(() => localStorage.removeItem('brainstorm:draft'));
+    await page.locator('[data-testid="nav-rail-brainstorm"]').click();
+    const dismiss = page.getByRole('button', { name: 'Dismiss' });
+    if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
+    await expect(page.getByText('Recovered your previous brainstorm draft')).toHaveCount(0);
+    await expect(page.getByText('IDEA COLLECTIONS').first()).toBeVisible({ timeout: 15_000 });
+    await saveShot(page, 'partner');
+
+    await page.locator('[data-testid="nav-rail-timeline"]').click();
+    await expect(page.locator('[data-testid="nav-rail-timeline"]')).toHaveAttribute('aria-current', 'page');
+    await saveShot(page, 'timeline');
+
+    await page.locator('[data-testid="nav-rail-vault-graph"]').click();
+    await expect(page.locator('[data-testid="nav-rail-vault-graph"]')).toHaveAttribute('aria-current', 'page');
+    await saveShot(page, 'vault-graph');
+
+    await page.locator('.app-menu-gear-btn').click();
+    await page.locator('[data-testid="settings-cat-agents"]').click();
+    await expect(page.getByText('OpenRouter').first()).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="mk-prov-ollama"]').click();
+    const frame = await page.evaluate(() => {
+      const body = document.querySelector('.settings-body');
+      const api = document.querySelector('[data-testid="mk-bucket-api"]');
+      if (!body || !api) return { ok: false as const, reason: 'missing settings scroller' };
+      const c0 = body.getBoundingClientRect();
+      body.scrollTop += api.getBoundingClientRect().top - c0.top;
+      const c = body.getBoundingClientRect();
+      const shown = (sel: string) => {
+        const el = document.querySelector(sel);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.bottom > c.top + 4 && r.top < c.bottom - 4 && r.width > 0 && r.height > 0;
+      };
+      const textShown = (needle: string) => {
+        const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          if (node.textContent?.includes(needle) && node.parentElement) {
+            const r = node.parentElement.getBoundingClientRect();
+            if (r.bottom > c.top + 4 && r.top < c.bottom - 4 && r.width > 0 && r.height > 0) return true;
+          }
+          node = walker.nextNode();
+        }
+        return false;
+      };
+      return {
+        ok: true as const,
+        openRouter: shown('[data-testid="mk-prov-openrouter"]'),
+        ollama: shown('[data-testid="mk-prov-ollama"]'),
+        lmstudio: shown('[data-testid="mk-prov-lmstudio"]'),
+        llamacpp: shown('[data-testid="mk-prov-llamacpp"]'),
+        cli: shown('[data-testid="mk-bucket-cli"]'),
+        key: shown('[data-testid="mk-api-key"]'),
+        claudeRow: shown('[data-testid="mk-claude-row"]'),
+        subscription: textShown('USE MY SUBSCRIPTION'),
+        comingSoon: textShown('Coming soon'),
+      };
+    });
+    expect(frame.ok, JSON.stringify(frame)).toBe(true);
+    if (frame.ok) {
+      expect(frame.openRouter).toBe(true);
+      expect(frame.ollama).toBe(true);
+      expect(frame.lmstudio).toBe(true);
+      expect(frame.llamacpp).toBe(true);
+      expect(frame.cli).toBe(false);
+      expect(frame.key).toBe(false);
+      expect(frame.claudeRow).toBe(false);
+      expect(frame.subscription).toBe(false);
+      expect(frame.comingSoon).toBe(false);
+    }
+    await saveShot(page, 'settings-model-keys');
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-  }
-});
-
-// ─── Test 3: Settings vault badge (local state) ───────────────────────────────
-
-test('screenshot: settings vault badge (local / no sync)', async () => {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-vb-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-vb-vault-'));
-  seedPostOnboarding(userData, vaultDir);
-
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'],
-    timeout: 45_000,
-  });
-  try {
-    const page = await firstWindow(app);
-    await page.setViewportSize(DESKTOP_VP);
-
-    // Wait for app shell
-    await expect(page.locator('.app-menu-bar, .shell-root, .desktop-shell').first()).toBeVisible({ timeout: 20_000 });
-    await page.waitForTimeout(500);
-
-    // Open settings
-    const gearBtn = page.locator('.app-menu-gear-btn, [aria-label*="Settings"], [data-testid="settings-btn"]');
-    await gearBtn.first().click();
-    await page.waitForTimeout(800);
-
-    // Scroll to the vault section if needed. SKY-11804 removed the cloud sync
-    // badge this used to target; the vault path display is the surviving anchor.
-    const vaultPath = page.locator(
-      '[data-testid="sync-vault-path"], [data-testid="settings-active-mythos-path"], .settings-vault-path-display',
-    );
-    if (await vaultPath.first().isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await vaultPath.first().scrollIntoViewIfNeeded();
-      await page.waitForTimeout(300);
-    }
-
-    await applyTheme(page);
-    await shot(page, 'settings-vault-badge');
-  } finally {
-    await app.close().catch(() => undefined);
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-  }
-});
-
-// ─── Test 4: Brainstorm panel ─────────────────────────────────────────────────
-
-test('screenshot: brainstorm panel', async () => {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-bs-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-readme-bs-vault-'));
-  seedPostOnboarding(userData, vaultDir);
-
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'],
-    timeout: 45_000,
-  });
-  try {
-    const page = await firstWindow(app);
-    await page.setViewportSize(DESKTOP_VP);
-
-    // Wait for app shell
-    await expect(page.locator('.app-menu-bar, .shell-root, .desktop-shell').first()).toBeVisible({ timeout: 20_000 });
-    await page.waitForTimeout(500);
-
-    // Navigate to Brainstorm view
-    const brainstormBtn = page.locator('.app-menu-view-btn, [data-view="brainstorm"]', { hasText: /Brainstorm/i });
-    if (await brainstormBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await brainstormBtn.click();
-      await page.waitForTimeout(800);
-    }
-
-    await applyTheme(page);
-    await shot(page, 'brainstorm-panel');
-  } finally {
-    await app.close().catch(() => undefined);
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
   }
 });
