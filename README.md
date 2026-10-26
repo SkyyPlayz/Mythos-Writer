@@ -6,6 +6,8 @@ Windows is the primary platform. Mac and Linux: TBD.
 
 AI is optional. You bring your own [OpenRouter](https://openrouter.ai/) key, **Paste key (OpenAI-compatible)**, or you run a model on this computer with **Ollama**, **LM Studio**, or **llama.cpp**. Mythos suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
 
+A subscription sign-in is in beta.
+
 ## Screenshots
 
 These are the full app window at 1440×900. The project is the demo story **The Last City of Veynn**. No AI key is connected.
