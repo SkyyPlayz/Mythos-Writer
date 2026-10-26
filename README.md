@@ -59,7 +59,7 @@ Run the installer, or unzip the portable build, then open **Mythos Writer**.
 2. **From template** creates an empty Story Vault and empty Notes folders named Characters, Locations, Stories, Plot, Worldbuilding, and Research. **Start blank** creates the two vaults with nothing in the tree.
 3. **Import** copies an Obsidian vault or a plain Markdown folder into a new Mythos vault. A Word manuscript on the story side is split into chapters and scenes. The folder you picked is left as it was.
 4. **Open Obsidian vault in Mythos** keeps that vault where it is and uses it as the Notes vault. Mythos adds a Story vault beside it.
-5. Open a scene in **Story Writer** and type. The scene is a Markdown file in the Story vault, and it saves as you write.
+5. When the Story vault has no scene, choose **File → New story**, then **Create story**. That adds Chapter 1 and an untitled scene and opens them in Story Writer. Type. The scene is a Markdown file in the Story vault, and it saves as you write.
 
 **Restore from backup** brings back a local snapshot. There is no cloud sync service in this build.
 
@@ -91,7 +91,7 @@ Open **Settings → Model & keys**.
 
 | Choice | What you provide |
 | --- | --- |
-| OpenRouter | Your OpenRouter key, and the endpoint (the field suggests `https://openrouter.ai/api/v1`) |
+| OpenRouter | Your OpenRouter key. The endpoint box starts empty. Type `https://openrouter.ai/api/v1`. The grey hint in that box is `http://localhost:11434` |
 | Paste key | An OpenAI-compatible key |
 | Ollama | A local server. The default address is `http://127.0.0.1:11434/v1` |
 | LM Studio | A local server. The default address is `http://127.0.0.1:1234/v1` |
