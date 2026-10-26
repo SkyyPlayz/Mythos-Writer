@@ -1205,6 +1205,23 @@ describe('PR A symlink writes', () => {
     expect(fs.readFileSync(path.join(storyRoot, 'Zulu', 'book.md'), 'utf8')).toContain('edited');
   });
 
+  it('lstats a missing write leaf once and does not existsSync it', () => {
+    const rel = 'missing-leaf.md';
+    const leafPath = path.resolve(root, rel);
+    const lstat = vi.spyOn(fs, 'lstatSync');
+    const exists = vi.spyOn(fs, 'existsSync');
+    try {
+      const result = safeVaultJoin(root, rel, { writeMode: true });
+      expect(path.basename(result)).toBe('missing-leaf.md');
+      expect(result.startsWith(fs.realpathSync.native(root))).toBe(true);
+      expect(lstat.mock.calls.filter((call) => call[0] === leafPath)).toHaveLength(1);
+      expect(exists.mock.calls.filter((call) => call[0] === leafPath)).toHaveLength(0);
+    } finally {
+      lstat.mockRestore();
+      exists.mockRestore();
+    }
+  });
+
   it('measures the added save cost', () => {
     const time = (run: () => void): number => {
       const start = performance.now();

@@ -217,9 +217,14 @@ export function safeVaultJoin(
     // Leaf may not exist yet — walk up to the nearest existing ancestor,
     // realpath that ancestor, then reattach the remaining suffix so a
     // symlinked vault root with deeply-nested empty parents is still allowed.
-    let ancestor = resolved;
+    // lstatLeaf already classified `resolved`. Null is ENOENT/ENOTDIR, so the
+    // leaf is not a symlink; existsSync and a second lstat of that same path
+    // only repeat the miss. Windows file-symlink loops still report ENOENT on
+    // the child — the parent walk lstats those ancestors.
+    let ancestor = leaf ? resolved : path.dirname(resolved);
     let posixLoop = false;
-    while (!fs.existsSync(ancestor)) {
+    let exists = fs.existsSync(ancestor);
+    while (!exists) {
       if (!posixLoop) {
         const stopped = symlinkAncestorStopsWalk(ancestor, relPath);
         if (stopped === 'stop') break;
@@ -228,8 +233,9 @@ export function safeVaultJoin(
       const parent = path.dirname(ancestor);
       if (parent === ancestor) break;
       ancestor = parent;
+      exists = fs.existsSync(ancestor);
     }
-    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relPath}`);
+    if (!exists && !fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relPath}`);
 
     const realAncestor = fs.realpathSync.native(ancestor);
     if (!isWithinVault(realVaultRoot, realAncestor)) {
