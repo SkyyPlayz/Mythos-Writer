@@ -586,6 +586,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   let mainPage: Page;
   /** The floating Review window — all UI interaction and IPC below runs here. */
   let page: Page;
+  let seededBulkIds: string[] = [];
 
   /**
    * Remount SuggestionReview so it fetches a fresh list from the DB —
@@ -617,16 +618,15 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     await expect(mainPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
     page = await openReviewWindow(app, mainPage);
 
-    await page.evaluate(async () => {
+    seededBulkIds = Array.from({ length: 105 }, () => crypto.randomUUID());
+    await page.evaluate(async (ids: string[]) => {
       const api = (window as any).api;
       const agents = ['writing-assistant', 'brainstorm', 'archive'] as const;
       const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.48];
-      const bulkIds: string[] = [];
-      for (let i = 0; i < 105; i++) {
+      for (let i = 0; i < ids.length; i++) {
         const padded = String(i).padStart(3, '0');
         const agent = agents[i % agents.length];
-        const id = crypto.randomUUID();
-        bulkIds.push(id);
+        const id = ids[i];
         await api.suggestionsUpsert({
           id,
           source_agent: agent,
@@ -643,7 +643,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
           budget_exceeded: 0,
         });
       }
-      (window as any).__bulkIds = bulkIds;
+      (window as any).__bulkIds = ids;
 
       for (const [status, suffix] of [
         ['accepted', 'accepted'],
@@ -666,7 +666,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
           budget_exceeded: 0,
         });
       }
-    });
+    }, seededBulkIds);
   });
 
   test.afterAll(async () => {
@@ -791,8 +791,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (window as any).api.suggestionsUnifiedList({ status: 'applied', limit: 1000 });
     }) as { items: Array<{ id: string }> };
-    const bulkIds = await page.evaluate(() => (window as any).__bulkIds as string[]);
-    const appliedBulkCount = appliedResult.items.filter((i) => bulkIds.includes(i.id)).length;
+    const appliedBulkCount = appliedResult.items.filter((i) => seededBulkIds.includes(i.id)).length;
     expect(appliedBulkCount).toBeGreaterThanOrEqual(5);
   });
 
