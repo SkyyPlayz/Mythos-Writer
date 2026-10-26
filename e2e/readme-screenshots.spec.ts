@@ -197,7 +197,7 @@ function writeProfile(userData: string, seed: SeedResult | null): void {
 async function launch(userData: string): Promise<ElectronApplication> {
   const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY) ? ['--headless'] : [];
   return electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--disable-dev-shm-usage', ...extraArgs],
     env: strippedEnv(),
     timeout: 60_000,
   });
@@ -345,11 +345,19 @@ test('screenshot: demo window', async () => {
     await settleNotesToast(page);
     const frame = await page.evaluate(() => {
       const body = document.querySelector('.settings-body');
-      const api = document.querySelector('[data-testid="mk-bucket-api"]');
-      if (!body || !api) return { ok: false as const, reason: 'missing settings scroller' };
+      const cli = document.querySelector('[data-testid="mk-bucket-cli"]');
+      const local = document.querySelector('[data-testid="mk-bucket-local"]');
+      if (!body || !cli || !local) return { ok: false as const, reason: 'missing settings scroller' };
       const bodyRect = () => body.getBoundingClientRect();
-      // Subscription bucket stays above the fold.
-      body.scrollTop += api.getBoundingClientRect().top - bodyRect().top;
+      // All three groups stay in the scroller. Scroll only far enough to
+      // bring the local tiles in, and never far enough to push the
+      // subscription group out.
+      body.scrollTop = 0;
+      const overflow = local.getBoundingClientRect().bottom - (bodyRect().bottom - 4);
+      if (overflow > 0) {
+        const cliRoom = cli.getBoundingClientRect().top - (bodyRect().top + 4);
+        body.scrollTop += Math.min(overflow, Math.max(0, cliRoom));
+      }
       const c = body.getBoundingClientRect();
       const shown = (sel: string) => {
         const el = document.querySelector(sel);
@@ -371,12 +379,19 @@ test('screenshot: demo window', async () => {
       };
       return {
         ok: true as const,
+        claude: shown('[data-testid="mk-prov-claude"]'),
+        codex: shown('[data-testid="mk-prov-openai-codex"]'),
+        gemini: shown('[data-testid="mk-prov-gemini"]'),
+        copilot: shown('[data-testid="mk-prov-copilot"]'),
+        cursor: shown('[data-testid="mk-prov-cursor"]'),
         openRouter: shown('[data-testid="mk-prov-openrouter"]'),
         pasteKey: shown('[data-testid="mk-prov-paste-key"]'),
         ollama: shown('[data-testid="mk-prov-ollama"]'),
         lmstudio: shown('[data-testid="mk-prov-lmstudio"]'),
         llamacpp: shown('[data-testid="mk-prov-llamacpp"]'),
         cli: shown('[data-testid="mk-bucket-cli"]'),
+        apiGroup: textShown('API KEY / CREDITS'),
+        localGroup: textShown('ON THIS COMPUTER'),
         key: shown('[data-testid="mk-api-key"]'),
         claudeRow: shown('[data-testid="mk-claude-row"]'),
         subscription: textShown('USE MY SUBSCRIPTION'),
@@ -386,16 +401,23 @@ test('screenshot: demo window', async () => {
     });
     expect(frame, JSON.stringify(frame)).toMatchObject({
       ok: true,
+      claude: true,
+      codex: true,
+      gemini: true,
+      copilot: true,
+      cursor: true,
       openRouter: true,
       pasteKey: true,
       ollama: true,
       lmstudio: true,
       llamacpp: true,
-      cli: false,
+      cli: true,
+      apiGroup: true,
+      localGroup: true,
       key: false,
       claudeRow: false,
-      subscription: false,
-      comingSoon: false,
+      subscription: true,
+      comingSoon: true,
       ollamaDown: false,
     });
     await saveShot(page, 'settings-model-keys');

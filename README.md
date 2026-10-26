@@ -4,7 +4,7 @@ Mythos Writer is a desktop app for fiction. Your manuscript and your notes are p
 
 Windows is the primary platform. Mac and Linux: TBD.
 
-AI is optional. You bring your own [OpenRouter](https://openrouter.ai/) key, paste an OpenAI-compatible key, or you run a model on this computer with **Ollama**, **LM Studio**, or **llama.cpp**. Mythos suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
+AI is optional. **Settings → Model & keys** has three groups. **USE MY SUBSCRIPTION (CLI)** is Claude (beta); OpenAI Codex, Google Gemini, GitHub Copilot, and Cursor are marked Coming soon and are not available yet. **API KEY / CREDITS** is your own [OpenRouter](https://openrouter.ai/) key, or **Paste key (OpenAI-compatible)**. **ON THIS COMPUTER** is **Ollama**, **LM Studio**, or **llama.cpp**. Mythos suggests. You write the manuscript. Scene Crafter can turn a scene setup into a draft card on a board; that card stays on the board.
 
 ## Screenshots
 
@@ -40,7 +40,7 @@ These are the full app window at 1440×900. The project is the demo story **The 
 
 ### Model & keys
 
-![Settings → Model & keys — OpenRouter, Paste key, Ollama, LM Studio, and llama.cpp](docs/screenshots/readme/settings-model-keys.png)
+![Settings → Model & keys — USE MY SUBSCRIPTION (CLI): Claude (beta), and OpenAI Codex, Google Gemini, GitHub Copilot, and Cursor marked Coming soon (not available yet); API KEY / CREDITS: OpenRouter and Paste key (OpenAI-compatible); ON THIS COMPUTER: Ollama, LM Studio, and llama.cpp](docs/screenshots/readme/settings-model-keys.png)
 
 ## Install
 
@@ -85,15 +85,20 @@ Type `[[` in a note or a scene to link another note. New notes can start from a 
 
 ## AI
 
-Open **Settings → Model & keys**.
+Open **Settings → Model & keys**. The page is the same three groups as the screenshot.
 
-| Choice | What you provide |
-| --- | --- |
-| OpenRouter | Your OpenRouter key. The endpoint box starts empty. Type `https://openrouter.ai/api/v1` |
-| Paste key | An OpenAI-compatible key. The tile is **Paste key (OpenAI-compatible)** |
-| Ollama | A local server. The default address is `http://127.0.0.1:11434/v1` |
-| LM Studio | A local server. The default address is `http://127.0.0.1:1234/v1` |
-| llama.cpp | A local server (`llama-server`). The default address is `http://127.0.0.1:8080/v1` |
+| Group | Choice | What it is |
+| --- | --- | --- |
+| USE MY SUBSCRIPTION (CLI) | Claude | The beta path. The tile is **Claude**. It is not marked Coming soon. |
+| USE MY SUBSCRIPTION (CLI) | OpenAI Codex | Coming soon. Not available yet. |
+| USE MY SUBSCRIPTION (CLI) | Google Gemini | Coming soon. Not available yet. |
+| USE MY SUBSCRIPTION (CLI) | GitHub Copilot | Coming soon. Not available yet. |
+| USE MY SUBSCRIPTION (CLI) | Cursor | Coming soon. Not available yet. |
+| API KEY / CREDITS | OpenRouter | Your OpenRouter key. The endpoint box starts empty. Type `https://openrouter.ai/api/v1` |
+| API KEY / CREDITS | Paste key (OpenAI-compatible) | An OpenAI-compatible key |
+| ON THIS COMPUTER | Ollama | A local server. The default address is `http://127.0.0.1:11434/v1` |
+| ON THIS COMPUTER | LM Studio | A local server. The default address is `http://127.0.0.1:1234/v1` |
+| ON THIS COMPUTER | llama.cpp | A local server (`llama-server`). The default address is `http://127.0.0.1:8080/v1` |
 
 The key is stored on this computer. A remote endpoint receives the text you send it. Ollama, LM Studio, and llama.cpp run on this computer.
 
