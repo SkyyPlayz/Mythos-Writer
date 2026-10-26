@@ -289,7 +289,8 @@ function StoryVault({
   const toggleStory = useCallback((id: string) => {
     setExpandedStories((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -297,7 +298,8 @@ function StoryVault({
   const toggleChapter = useCallback((id: string) => {
     setExpandedChapters((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -594,7 +596,8 @@ function NotesVault({ onOpenPath, onContextChange }: NotesVaultProps) {
   const toggleDir = useCallback((path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   }, []);

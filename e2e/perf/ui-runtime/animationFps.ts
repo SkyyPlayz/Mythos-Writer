@@ -5,7 +5,7 @@
  * the packaged Electron build (never a mock/stub of the rAF loop or the
  * animation itself — only the Anthropic network call is mocked anywhere in
  * this suite, per repo convention). The caller is responsible for launching
- * via `launchApp(userData, { reducedMotion: false })` (see launch.ts) —
+ * via `launchApp(userData, { reducedMotion: false })` (see e2e/helpers/launchApp.ts) —
  * measuring with `--force-prefers-reduced-motion` set would just measure "0
  * dropped frames because nothing is animating" (liquidNeon.css's
  * `@media (prefers-reduced-motion: reduce)` rule collapses the wallpaper

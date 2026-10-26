@@ -1,3 +1,5 @@
+> **Current procedure:** `docs/releases/RELEASING.md` is the release procedure. The body below is the old tag-push runbook.
+
 # Mythos Writer — Release Runbook
 
 **Owner-gated release process.** Every release to `main` requires owner approval via Ivy. This runbook documents the mechanical steps; approval gates are enforced separately.

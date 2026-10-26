@@ -39,5 +39,10 @@ npm run preflight                       # full CI-parity gate; `-- --fast` skips
 - Match import casing exactly (Linux CI is case-sensitive).
 - Build filesystem paths with `path` helpers; never hardcode separators.
 
+## Code hygiene
+
+- ARIA: prefer native elements; any role you add follows its full WAI-ARIA pattern; never aria-label a plain span/div; never leave a focusable control inside an aria-hidden subtree; run axe on changed components.
+- After deleting, renaming or moving a file, symbol, view or path, rg the repo for the old name and fix every comment, doc and spec that still names it in the same PR.
+
 ## Final report
 What changed; tests added or relied on; why `ci` and `notes-windows` should pass (or why N/A); remaining risks.

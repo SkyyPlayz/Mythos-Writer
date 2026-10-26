@@ -9,19 +9,258 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
+
 ### Removed
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
+
+### Fixed
+- Electron 44.9.1 and undici 7.30.1 close high-severity advisories in the desktop shell and its download client (compromised certificate intermediates, and request-parser crashes). ([#1753](https://github.com/SkyyPlayz/Mythos-Writer/pull/1753))
+- Updated the build tool (vite) to close a high-severity security advisory in the dev server. ([#1745](https://github.com/SkyyPlayz/Mythos-Writer/pull/1745))
+- Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed
 - **OpenRouter requests never use Google** — chat, speech, and transcription calls to OpenRouter ignore Google Vertex and Google AI Studio, keep zero-data-retention and data-collection deny, and will not select a google/* model. ([#1741](https://github.com/SkyyPlayz/Mythos-Writer/pull/1741))
 - Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
 - **Timeline views** — the timeline shows Structure and Progress. Plotlines, Spreadsheet, Tension, Relationships, and Subway are hidden from the view switcher; saved timeline data is unchanged. ([#1695](https://github.com/SkyyPlayz/Mythos-Writer/pull/1695))
 - **Graph filters sit at the top-right of the graph card** — the category chips and depth control are a compact bar on the card, and Tab still reaches them after the header controls. ([PR #1715](https://github.com/SkyyPlayz/Mythos-Writer/pull/1715))
+- Electron 44.9.0 (from 42). macOS 13+ required. File dialogs remember the last folder again. Client-certificate requests are declined, not auto-answered. ([#1728](https://github.com/SkyyPlayz/Mythos-Writer/pull/1728))
 - **Theme "Neon Classic" is now "Neon Nebula"** — display name only; the stored preset key is unchanged. (SKY-11589)
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 
 ### Added
 - **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
+
+## [0.5.7] — 2026-10-03
+
+_Draft release that was never published._
+
+_Wording follows the v0.5.7 release notes._
+
+### Added
+
+- **Notes for every level of your book.** The scene notes panel has separate notes for the Book, each Part, each Chapter, and each Scene. Part notes belong to their own book, so two books with a "Part 1" no longer share notes. In the Notes view, the Properties column lists Backlinks first, then properties and tags, then Recent notes. ([#1648](https://github.com/SkyyPlayz/Mythos-Writer/pull/1648))
+- **Agent files in Model & keys.** Settings → Model & keys shows where your agents' files live, with buttons to reveal the folder, open it, or empty it (it asks before deleting anything). ([#1648](https://github.com/SkyyPlayz/Mythos-Writer/pull/1648))
+- **One writing partner.** The writing partner is a single chat with quick actions (Update Timeline, Beta Read, Writer Scan) and uses the name you give your AI. Earlier chats opens past sessions, and Beta Read runs once per click. ([#1646](https://github.com/SkyyPlayz/Mythos-Writer/pull/1646))
+- **New first-run welcome.** A simpler welcome screen replaces the old setup wizard and Getting Started card, and Mythos remembers whether you started from a template, a blank vault, or an import. ([#1646](https://github.com/SkyyPlayz/Mythos-Writer/pull/1646), [#1644](https://github.com/SkyyPlayz/Mythos-Writer/pull/1644))
+- **Timeline and Realm.** The Timeline adds a closer Month zoom and a folder-style tree in its sidebar, and the Realm view fits everything on screen when it opens. ([#1646](https://github.com/SkyyPlayz/Mythos-Writer/pull/1646))
+- **Boards sidebar as a folder tree.** Nested boards are a click or two away, Home stays pinned at the top, and you can drag the sidebar to the width you like. ([#1645](https://github.com/SkyyPlayz/Mythos-Writer/pull/1645))
+- **Notes open in Rich view.** Notes open in Rich view by default, and Markdown and Source modes are turned on in Settings when you want them. A note with content Rich view can't fully keep (Markdown tables, footnotes, raw HTML, or complex callouts) opens in Source with a notice, and choosing "Open in Rich anyway" is remembered for that note. With "Always open in Rich" on (the new default), any other saved view mode for a note is kept but not used until you turn that option off. Page setup gains zoom presets, and the active tab is outlined more clearly. ([#1643](https://github.com/SkyyPlayz/Mythos-Writer/pull/1643))
+- **Smoother links.** Typing `[[` shows suggestions right away, clicking a link to a note that doesn't exist yet creates it, @mentions take you to what they name, and dropping a file into the editor adds a link with its title. ([#1644](https://github.com/SkyyPlayz/Mythos-Writer/pull/1644))
+
+### Changed
+
+- **Settings saves when you close it.** There is no Save button. ([#1644](https://github.com/SkyyPlayz/Mythos-Writer/pull/1644))
+- **AI keys are stored encrypted.** Every saved key, including the Alpha Reader, Storyline Consultant, and Line Editor keys, lives in your system's secure storage instead of in plain text in the settings file. Keys saved by older versions move over on the next start, and the settings file is written so a crash mid-save can't leave it half-written. ([#1661](https://github.com/SkyyPlayz/Mythos-Writer/pull/1661))
+
+### Fixed
+
+- **Restoring a backup no longer wipes your saved AI keys.** Before 0.5.7, restoring a backup made before 0.5.4 erased every saved key, and any restore erased the Alpha Reader, Storyline Consultant, and Line Editor keys. If your keys went blank after a restore, enter them again once. Backups made by 0.3 and later never contain your keys. Backups made by 0.2.x can include your app settings with any saved keys in plain text, so keep those files private or delete them. ([#1661](https://github.com/SkyyPlayz/Mythos-Writer/pull/1661))
+- **Structure and Full Book.** Empty parts show up; you can drag a chapter into a part, add chapters and scenes inside a part, and rename a part from its Full Book heading or the navigator menu. A new chapter goes right after the one you have selected. ([#1645](https://github.com/SkyyPlayz/Mythos-Writer/pull/1645))
+- **Moving and editing scenes.** Text you type right after moving a scene stays with that scene in its new chapter, renaming a part while a save is still going through works, and going Forward brings back the full Continuity note. ([#1645](https://github.com/SkyyPlayz/Mythos-Writer/pull/1645))
+- **Scene Crafter.** Create Scene builds a board from what you filled in (goal, conflict, beats, length, tone, and references) and opens it, instead of making an empty "Board N". ([#1645](https://github.com/SkyyPlayz/Mythos-Writer/pull/1645))
+- **Copied stories.** A story folder copied outside Mythos opens as its own story with its own text. Before, the copy could show the original's text, typing in one could save into the other, or the copy stayed hidden until you rebuilt the vault index. ([#1656](https://github.com/SkyyPlayz/Mythos-Writer/pull/1656))
+- **Notes search** matches the new look, and the Notes sidebar starts a little wider. A width you already set is kept. ([#1655](https://github.com/SkyyPlayz/Mythos-Writer/pull/1655))
+- **The Notes Brainstorm pane** fits at 900 and 1024 px window widths with no sideways scrolling, and its buttons stay clickable. ([#1662](https://github.com/SkyyPlayz/Mythos-Writer/pull/1662))
+- **Look and layout.** Panel headers line up at one height, glass panels and pop-ups stack correctly, the starry wallpaper is the default, the bottom bar spans the full window, and Brainstorm's mode switch is reachable from the ⋯ menu in narrow windows. ([#1644](https://github.com/SkyyPlayz/Mythos-Writer/pull/1644))
+- **Masked key previews are not saved as keys.** If a key field had been saved as its masked preview (for example `sk-ant-…1234`) instead of the real key, Settings marks it as missing and asks you to enter the key again. Pasting a masked preview into a key field shows an error instead of saving it. ([#1660](https://github.com/SkyyPlayz/Mythos-Writer/pull/1660))
+- **`brace-expansion` was updated** to address a high-severity security advisory. ([#1652](https://github.com/SkyyPlayz/Mythos-Writer/pull/1652))
+
+### Known issues
+
+- Vaults created before 0.5.7 keep the old, reversed Timeline order. An opt-in fix is planned.
+- In Settings, the **Move…** button in the agents' files section doesn't move anything yet.
+- Part notes that were saved only under a plain "Part N" name, with no book, no longer show. The notes are still on disk, untouched.
+- A chapter copied within the same story may stay hidden until you use **Rebuild**.
+- If you switch vaults while Settings is open, the key preview can keep showing the previous vault's key status until you close and reopen Settings. Your saved keys aren't affected.
+- On systems without a working keychain (mostly Linux without a keyring), API keys aren't kept between restarts, so the key fields are blank after a restart. If an older version saved a key in plaintext, it stays in the settings file until you save Settings once; that first save removes it. To remove it right away, open Settings and close it again (closing Settings saves).
+- If Mythos can't write its settings file (for example, its settings folder is read-only), Settings won't close and shows "Couldn't save settings. Try again." Make the folder writable again, then press Close.
+- If you go back to 0.5.6, the Alpha Reader, Storyline Consultant, and Line Editor keys will look empty. They're still saved, and they come back when you update to 0.5.7 again. If you enter a key for one of those helpers while on 0.5.6, 0.5.6 saves it unencrypted, the way it always has, and 0.5.7 encrypts it the next time it starts.
+- At narrow window widths (around 900 px), the left navigation rail can overlap the content next to it by a few pixels.
+- If the left pane was saved at its widest (500 px), it can still cut off content at window widths of 900–1024 px.
+- The Notes search box's glow edge can look very slightly different from the design (a faint, 1 px difference). It's cosmetic only.
+- If you turned off the Writing Coach in an older version, it can switch itself back on for about a second while the app starts after you update, then it turns off again on its own. Nothing was sent to an AI provider in our tests. There's no separate Writing Coach switch in Settings yet; it's coming in 0.5.8. To be sure no AI is used, turn off All AI features in Settings → Model & keys.
+- In narrow windows (under about 1000 px wide), the Notes side panel is cramped: the message box is small, tab names can be cut off, and the Properties tab can sit under the Collapse button. Everything still works.
+- If saving keys fails partway, some new keys may still be saved. Check the key fields after you see a save error.
+
+## [0.5.6] — 2026-09-28
+
+_Draft release that was never published._
+
+_Feature list follows the v0.5.6 draft notes (`bf9a6c35..d2838622`). The GitHub release body is a commit list, so the wording is from the pull requests._
+
+### Added
+
+- **Liquid Neon look foundation.** Floating glass rail, title-bar Welcome, workspace tabs, and theme updates for overlay glass, hairlines, motion, scrollbars, and body zoom from density and text size. ([#1635](https://github.com/SkyyPlayz/Mythos-Writer/pull/1635))
+- **Welcome overlay.** Five paths plus Skip, from the title bar or first run. The rail brand mark is gone; account is the title-bar avatar. ([#1637](https://github.com/SkyyPlayz/Mythos-Writer/pull/1637))
+- **Writing-column chrome.** Story document tabs sit in the writing column, the sidebar order is Story Writer, Notes Editor, Boards, Scene Crafter, Partner, Timeline, Vault Graph, the window corners are rounded, and the keyboard-shortcut text is larger. ([#1638](https://github.com/SkyyPlayz/Mythos-Writer/pull/1638))
+- **One Writing Partner with three hands** (Writer, Analyst, Archivist). The four-face agent card is gone. The right panel is your partner's name, Suggestions, Scenes, and Notes & Analysis (Scenes and Notes & Analysis when AI is off). The partner tab is chat-first, with mute, transcript, settings, and End on the card. Beta Reader is reached from the Analyst hand. A new story opens in the Editor at Full Book zoom. ([#1639](https://github.com/SkyyPlayz/Mythos-Writer/pull/1639))
+- **Settings → Writing partner and Model & keys.** Writing partner holds the name, personality, teaching style (Socratic, Guided practice, Feynman, Just tell me, Adaptive), per-hand models, and hard bans. Model & keys replaces the old AI Agents page with CLI, API key, and On this computer. The Claude connect screen stops at Coming soon and does not sign in. Web search and Claude memory default off. Help improve Mythos defaults to Don't send. ([#1640](https://github.com/SkyyPlayz/Mythos-Writer/pull/1640))
+- **Several vaults, a seed pack, and an Agents Vault.** You can keep many Notes vaults and many Story vaults, and a Story vault can hold many stories. New vault from the rail + or Welcome offers Template, Blank, Import, Restore, or Open an Obsidian vault in place. Linked vaults show a green dashed connector and a "from" chip, and each inner vault can be Read & write or Read only. The seed pack is two distinguishable worlds and does not wipe a vault you already have. Agents Vault holds `partner.md`, `writer.md`, `analyst.md`, and `archivist.md`, with Reveal and Clear agent memory. Sync & Backup is a Coming soon page with no sync service behind it. ([#1641](https://github.com/SkyyPlayz/Mythos-Writer/pull/1641))
+- **Timeline calendars per world.** Each world has its own months, days, and hours. Year ratio vs parent is calculated and can't be typed over. Event cards and the Inspector show Local and Standard dates. A sync playhead can be armed and placed (a blank click does not place it). The vertical board zooms from 40% to 160%. The right panel is Inspector and your partner. Structure's card view is resizable, the book title on the story is editable, and `[[` suggestions include story titles and board cards. ([#1642](https://github.com/SkyyPlayz/Mythos-Writer/pull/1642))
+
+### Removed
+
+- **Demo, the tour, and the walkthrough** (title-bar Demo, TourModal, and the Timeline Demo badge). ([#1637](https://github.com/SkyyPlayz/Mythos-Writer/pull/1637), [#1638](https://github.com/SkyyPlayz/Mythos-Writer/pull/1638))
+- **Quick Entry.** ([#1638](https://github.com/SkyyPlayz/Mythos-Writer/pull/1638))
+
+### Fixed
+
+- **Windows uninstall can delete your vaults only if you opt in.** The checkbox is unchecked by default, so uninstall keeps your writing. Deletes are limited to an allowlist, and paths that use `.` or `..` are rejected. ([#1630](https://github.com/SkyyPlayz/Mythos-Writer/pull/1630), [#1632](https://github.com/SkyyPlayz/Mythos-Writer/pull/1632), [#1633](https://github.com/SkyyPlayz/Mythos-Writer/pull/1633))
+
+### Internal
+
+- Fail-closed Mythos gate checks and a minor-and-patch dependency bump. ([#1634](https://github.com/SkyyPlayz/Mythos-Writer/pull/1634), [#1636](https://github.com/SkyyPlayz/Mythos-Writer/pull/1636), [#1624](https://github.com/SkyyPlayz/Mythos-Writer/pull/1624))
+
+## [0.5.5] — 2026-09-28
+
+_Draft release that was never published._
+
+_Record is thin: the GitHub release body repeats older commits. The only change after 0.5.4.5 is the packaging fix below._
+
+### Fixed
+
+- **The app version is 0.5.5, which installers can package.** electron-builder rejected `0.5.4.5` as an invalid version, so Linux and Windows release builds failed. ([#1623](https://github.com/SkyyPlayz/Mythos-Writer/pull/1623))
+
+## [0.5.4.5] — 2026-09-27
+
+_Draft release that was never published._
+
+_The GitHub release body is “Release build in progress…”. This section is from the pull request._
+
+### Changed
+
+- **Nested chrome and press motion.** Panels use nested corner radii, buttons scale slightly when pressed, menus grow from the control that opened them, and the motion is skipped when you prefer reduced motion. The command palette stays instant. Empty states use the same chrome. The package version on this build was `0.5.4.5` (replaced by 0.5.5 so installers can build). ([#1622](https://github.com/SkyyPlayz/Mythos-Writer/pull/1622))
+
+## [0.5.4]
+
+_Never published. No git tag and no GitHub release, draft or otherwise. Slice 1 merged 2026-09-25 and slice 2 merged 2026-09-26, while `package.json` was still 0.5.3._
+
+### Added
+
+- **Boards in the left nav, a Scene Crafter story dropdown, and an auto node board from Create Scene.** Idea Board replaces Brainstorm in the navigation, and Timeline opens on Structure. ([#1618](https://github.com/SkyyPlayz/Mythos-Writer/pull/1618))
+
+### Changed
+
+- **All AI features has a master switch.** Turning it off stops AI network calls and AI entry points; turning it back on restores them. Auto-apply, including Grammar, migrates to off once, the first time you open the app on this version. ([#1621](https://github.com/SkyyPlayz/Mythos-Writer/pull/1621))
+- **Full Book chrome, type size, and menus.** The Full Book sidebar and tabs reach the top of the window. App text size runs from 82% to 118%, using Ctrl+scroll or Ctrl with +, −, or 0. Settings dropdowns use a dark background. ([#1621](https://github.com/SkyyPlayz/Mythos-Writer/pull/1621))
+- **Glow and ambient animation default to off.** ([#1618](https://github.com/SkyyPlayz/Mythos-Writer/pull/1618))
+
+### Removed
+
+- **Archivist.** The Archive Agent hand, its settings card, and the Archive Timeline tab are removed. The transcript can be shown in the chat or in a separate view. ([#1621](https://github.com/SkyyPlayz/Mythos-Writer/pull/1621))
+
+### Fixed
+
+- **Vault and editor bugs from the 0.5.4 slice.** Creating a Notes vault refreshes the picker. Genre starter notes use the grouped Notes path. A failed import says to check the path and try again, and the folder picker shows that it is busy. Scene Crafter falls back to the first story, and the scene list refreshes when vault files change. The Story tab and manuscript Structure stay mounted when you leave them. With a split open, the story navigator targets the focused pane. Markdown images render in the editor. The vault menu includes "Remove from Mythos…". ([#1618](https://github.com/SkyyPlayz/Mythos-Writer/pull/1618))
+
+### Internal
+
+- Release-tag normalization, a dependency bump, and CI hygiene. ([#1610](https://github.com/SkyyPlayz/Mythos-Writer/pull/1610), [#1611](https://github.com/SkyyPlayz/Mythos-Writer/pull/1611), [#1619](https://github.com/SkyyPlayz/Mythos-Writer/pull/1619), [#1620](https://github.com/SkyyPlayz/Mythos-Writer/pull/1620))
+
+## [0.5.3] — 2026-09-19
+
+_Draft release that was never published._
+
+_The GitHub release body is a commit list. Wording is from the pull requests._
+
+### Added
+
+- **Timelines can use more than one calendar.** A timeline can record where its year 0 falls in standard time, what that world calls year zero, and an era suffix. One timeline is the universal standard. ([#1605](https://github.com/SkyyPlayz/Mythos-Writer/pull/1605))
+- **Create-vault chooser.** New vault starts with Create blank or Import vault, then asks for the name and folder. Create blank makes an empty Story vault and Notes vault. ([#1607](https://github.com/SkyyPlayz/Mythos-Writer/pull/1607))
+
+### Changed
+
+- **Command palette and the Welcome window use the same denser overlay glass** as Settings. ([#1608](https://github.com/SkyyPlayz/Mythos-Writer/pull/1608))
+
+### Fixed
+
+- **An imported Obsidian vault shows its notes and scenes.** The copy was already on disk; the app now reindexes the story vault after import. Settings → Vaults layout was reordered in the same change. ([#1606](https://github.com/SkyyPlayz/Mythos-Writer/pull/1606))
+
+### Internal
+
+- Mythos gate auto-merge, the visual-regression auto-squash bypass removal, and Bugbot creed rules. ([#1602](https://github.com/SkyyPlayz/Mythos-Writer/pull/1602), [#1603](https://github.com/SkyyPlayz/Mythos-Writer/pull/1603), [#1604](https://github.com/SkyyPlayz/Mythos-Writer/pull/1604))
+
+## [0.5.2] — 2026-09-17
+
+_Tag date 2026-09-17. The GitHub release body is a commit list. Wording is from the pull requests._
+
+### Added
+
+- **Boards chrome.** Add furniture and Connector sit in the top toolbar, double-clicking a note card opens it, Set thumbnail stores an image on the note, and folders use the Liquid Neon glyphs. The center pane is denser glass, and an empty board keeps its empty state. ([#1592](https://github.com/SkyyPlayz/Mythos-Writer/pull/1592), [#1599](https://github.com/SkyyPlayz/Mythos-Writer/pull/1599))
+- **Lines between paired Notes and Story vaults** on Vaults & Files, so you can see which pairs keep wiki-links intact. ([#1594](https://github.com/SkyyPlayz/Mythos-Writer/pull/1594))
+- **Create a Mythos vault dialog** from the rail and from Settings, with name, folder, Browse, and Default folder. Settings still offers template, blank, and import. ([#1595](https://github.com/SkyyPlayz/Mythos-Writer/pull/1595))
+- **Vaults & Files sections sit on glass cards.** ([#1596](https://github.com/SkyyPlayz/Mythos-Writer/pull/1596))
+
+### Changed
+
+- **Overlay glass is denser.** Menus, popovers, toasts, and Settings use a fill of at least 50%. Full-page shells still do not use a live blur. ([#1600](https://github.com/SkyyPlayz/Mythos-Writer/pull/1600))
+- **Settings closes** when you click another module on the left rail, or the X in the header. ([#1593](https://github.com/SkyyPlayz/Mythos-Writer/pull/1593))
+
+### Fixed
+
+- **Quitting on Windows and Linux no longer hangs** on the window X. The close is treated as a real quit, so a Brainstorm prompt cannot leave the process running. ([#1597](https://github.com/SkyyPlayz/Mythos-Writer/pull/1597))
+- **Less glass jank.** Brainstorm, Entries, Manuscript Structure, and Scene Crafter no longer run a live blur across the whole page. ([#1598](https://github.com/SkyyPlayz/Mythos-Writer/pull/1598))
+
+## [0.5.1] — 2026-09-16
+
+_Tag date 2026-09-16. The GitHub release body is “Release build in progress…”. Entries are from the pull requests merged after the 0.5.0-beta.4 version bump (2026-09-02) through this tag. Draft releases v0.5.0-beta.2, v0.5.0-beta.3, and v0.5.0-beta.4 are not given sections here. CI, dependency, and design-token cleanup pulls in this range are left out._
+
+### Added
+
+- **Notes Board.** A Boards tab with a canvas: auto-layout, zoom, pan, resize, grid snap, furniture (columns, checks, tables, images, sketches, swatches, connectors), per-item icons and colours, cross-board search, a wiki-link overlay, and a minimap. Note and board tools create real files, names can be edited on the canvas, and delete goes to a Recently Deleted list you can undo with Ctrl+Z before it reaches the system trash. Ideas from Brainstorm can be filed onto a board by hand. ([#1424](https://github.com/SkyyPlayz/Mythos-Writer/pull/1424), [#1494](https://github.com/SkyyPlayz/Mythos-Writer/pull/1494), [#1512](https://github.com/SkyyPlayz/Mythos-Writer/pull/1512), [#1513](https://github.com/SkyyPlayz/Mythos-Writer/pull/1513), [#1495](https://github.com/SkyyPlayz/Mythos-Writer/pull/1495), [#1532](https://github.com/SkyyPlayz/Mythos-Writer/pull/1532), [#1539](https://github.com/SkyyPlayz/Mythos-Writer/pull/1539), [#1533](https://github.com/SkyyPlayz/Mythos-Writer/pull/1533))
+- **Kokoro offline voices.** `kokoro:nicole` and `kokoro:sky` play on-device neural speech. A fresh install uses Nicole. An install that already saved a voice keeps it. ([#1417](https://github.com/SkyyPlayz/Mythos-Writer/pull/1417), [#1505](https://github.com/SkyyPlayz/Mythos-Writer/pull/1505))
+- **Vault & Files settings.** The page shows the vaults folder, Open folder, Move, inline rename, and Notes and Story columns with pairing dots, Hide, and Delete. ([#1419](https://github.com/SkyyPlayz/Mythos-Writer/pull/1419))
+- **Story-vault picker** on the left rail: create, list, switch, rename, and pair, separate from the story navigator. ([#1426](https://github.com/SkyyPlayz/Mythos-Writer/pull/1426))
+- **Choose where a new vault is created.** Name and folder, defaulting to the current vault's parent. New vaults no longer land only under the app data folder, and creating one no longer seeds the sample story. ([#1439](https://github.com/SkyyPlayz/Mythos-Writer/pull/1439))
+- **First-run and add-vault flow.** Three cards: template, blank, or import. Import has separate Notes and Story rows. Every path asks for a name and a folder and shows the path it will create. ([#1408](https://github.com/SkyyPlayz/Mythos-Writer/pull/1408))
+- **Production-team roles.** Alpha Reader, Storyline Consultant, and Line Editor, off unless you turn them on. Reader roles omit entity facts that the story has not revealed yet. Beta Reader's live report uses that filtered context. ([#1425](https://github.com/SkyyPlayz/Mythos-Writer/pull/1425), [#1446](https://github.com/SkyyPlayz/Mythos-Writer/pull/1446), [#1448](https://github.com/SkyyPlayz/Mythos-Writer/pull/1448))
+- **Wiki autonomy.** Off, always ask, or auto. The default is always ask, which files a Brainstorm question instead of writing the vault. ([#1420](https://github.com/SkyyPlayz/Mythos-Writer/pull/1420))
+- **Rebuild my timeline.** Its own command, separate from continuity check, and it only rewrites agent events on the active timeline. ([#1422](https://github.com/SkyyPlayz/Mythos-Writer/pull/1422))
+- **Timeline event wiki-links** resolve to a scene, chapter, note, or folder, and you can open the match. ([#1506](https://github.com/SkyyPlayz/Mythos-Writer/pull/1506))
+- **Theme-match wallpaper cycle.** Every Liquid Neon preset ships several wallpapers. Arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. ([#1503](https://github.com/SkyyPlayz/Mythos-Writer/pull/1503), [#1529](https://github.com/SkyyPlayz/Mythos-Writer/pull/1529))
+- **Per-vault appearance.** Each vault keeps its own theme and Liquid Neon settings, and switching vaults repaints immediately. ([#1402](https://github.com/SkyyPlayz/Mythos-Writer/pull/1402))
+- **The book title sits centered** at the top of the manuscript. ([#1431](https://github.com/SkyyPlayz/Mythos-Writer/pull/1431))
+
+### Changed
+
+- **Theme "Neon Classic" is now "Neon Nebula".** Display name only; the stored preset key is unchanged. ([#1503](https://github.com/SkyyPlayz/Mythos-Writer/pull/1503))
+- **The Brainstorm board is named Idea Board** and is stored in the Agent Vault, not as a raw JSON file in your notes. ([#1432](https://github.com/SkyyPlayz/Mythos-Writer/pull/1432), [#1434](https://github.com/SkyyPlayz/Mythos-Writer/pull/1434))
+- **New vaults use `Stories/` and `Notes/` folders.** Existing vaults stay where they are. ([#1514](https://github.com/SkyyPlayz/Mythos-Writer/pull/1514))
+- **Drop cap is a setting, off by default.** ([#1396](https://github.com/SkyyPlayz/Mythos-Writer/pull/1396))
+- **Beta Reader is one agent.** The Writing Assistant no longer intercepts a beta-read request and runs a second panel. ([#1398](https://github.com/SkyyPlayz/Mythos-Writer/pull/1398))
+- **Notes sidebar.** Continuity flags and the Brainstorm chat are separate full-height tabs. ([#1395](https://github.com/SkyyPlayz/Mythos-Writer/pull/1395))
+- **A chapter note renders under its chapter heading** in the editor. ([#1435](https://github.com/SkyyPlayz/Mythos-Writer/pull/1435))
+- **Settings and popup glass follows the opacity slider** (overlay fill is the glass value plus 10 points, capped at 96). ([#1591](https://github.com/SkyyPlayz/Mythos-Writer/pull/1591))
+- **Create Scene keeps the setup you typed** (POV, goal, conflict, beats, tone, and length) on the new scene. ([#1410](https://github.com/SkyyPlayz/Mythos-Writer/pull/1410))
+
+### Removed
+
+- **Branded cloud/sync surface.** The Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that rearranged files matching those providers' naming patterns. A vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged. The concurrent-session lockfile stays. ([#1566](https://github.com/SkyyPlayz/Mythos-Writer/pull/1566))
+- **"No background" wallpaper.** A stored `none` wallpaper falls back to Theme match. ([#1503](https://github.com/SkyyPlayz/Mythos-Writer/pull/1503))
+- **The vault-format upgrade prompt.** Older vaults migrate without a Settings card or a boot-time choice. ([#1530](https://github.com/SkyyPlayz/Mythos-Writer/pull/1530))
+
+### Fixed
+
+- **Notes no longer appear in the wrong vault** after you switch. Open note tabs are stored per vault, so one vault's tabs are not left open on another. ([#1440](https://github.com/SkyyPlayz/Mythos-Writer/pull/1440), [#1403](https://github.com/SkyyPlayz/Mythos-Writer/pull/1403))
+- **The window can always be closed,** including when a panel tries to cancel unload. ([#1437](https://github.com/SkyyPlayz/Mythos-Writer/pull/1437))
+- **Closing the window flushes the scene or note you were typing.** ([#1515](https://github.com/SkyyPlayz/Mythos-Writer/pull/1515))
+- **Word (.docx) story import creates chapters and scenes** and names the files it skipped, instead of reporting success with an empty vault. ([#1572](https://github.com/SkyyPlayz/Mythos-Writer/pull/1572))
+- **Delete and Hide find a custom-named story vault,** so a second world is not left behind. ([#1580](https://github.com/SkyyPlayz/Mythos-Writer/pull/1580))
+- **Kokoro loads on Windows.** Packaged builds passed a drive-letter path that Windows could not import. ([#1582](https://github.com/SkyyPlayz/Mythos-Writer/pull/1582))
+- **Older Notes vaults still migrate.** Session and Brainstorm-board migration looks at the flat Notes Vault that existed before the grouped folders. ([#1583](https://github.com/SkyyPlayz/Mythos-Writer/pull/1583))
+- **Beta Reader reports from local reasoning models** show the report, or an error, instead of silently reverting. ([#1570](https://github.com/SkyyPlayz/Mythos-Writer/pull/1570))
+- **Body text stays readable over bright wallpapers.** Each panel gets a backing tuned to that wallpaper. ([#1565](https://github.com/SkyyPlayz/Mythos-Writer/pull/1565))
+- **A Boards column link still opens after the note is renamed.** ([#1563](https://github.com/SkyyPlayz/Mythos-Writer/pull/1563))
+- **Escape closes a dropdown** even when focus is outside its menu. ([#1567](https://github.com/SkyyPlayz/Mythos-Writer/pull/1567))
+- **After you move a vault, open views drop the old path.** ([#1571](https://github.com/SkyyPlayz/Mythos-Writer/pull/1571))
+- **Renaming a vault writes the new name through.** ([#1473](https://github.com/SkyyPlayz/Mythos-Writer/pull/1473))
+- **Custom note templates can be created and edited again.** ([#1511](https://github.com/SkyyPlayz/Mythos-Writer/pull/1511))
+- **Paragraph drag shows a preview and a gap.** ([#1442](https://github.com/SkyyPlayz/Mythos-Writer/pull/1442))
+- **The active vault tile stays on the vault you switched to.** ([#1441](https://github.com/SkyyPlayz/Mythos-Writer/pull/1441))
+- **Provider settings adapt when the provider is not Anthropic.** ([#1397](https://github.com/SkyyPlayz/Mythos-Writer/pull/1397))
+- **The vault graph's story-cluster toggle loads manuscript nodes.** ([#1394](https://github.com/SkyyPlayz/Mythos-Writer/pull/1394))
+- **Brainstorm uses the one right sidebar** instead of a second column. ([#1388](https://github.com/SkyyPlayz/Mythos-Writer/pull/1388))
 
 ## [0.5.0-beta.1] — 2026-07-23
 
@@ -268,7 +507,15 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Initial internal release.
 
-[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.4.0-beta.1...HEAD
+[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/f0bb94cf20ab8acea7f427c3d5e21ff92b68349c...HEAD
+[0.5.7]: https://github.com/SkyyPlayz/Mythos-Writer/compare/d283862284a4c7bbb17f00a55958e6ce6704e41f...f0bb94cf20ab8acea7f427c3d5e21ff92b68349c
+[0.5.6]: https://github.com/SkyyPlayz/Mythos-Writer/compare/bf9a6c35d2cba4f8b15fc2363d30723a5ef6cd3e...d283862284a4c7bbb17f00a55958e6ce6704e41f
+[0.5.5]: https://github.com/SkyyPlayz/Mythos-Writer/compare/a497d599fdec449f66e64539d829b6a468fd45ac...bf9a6c35d2cba4f8b15fc2363d30723a5ef6cd3e
+[0.5.4.5]: https://github.com/SkyyPlayz/Mythos-Writer/compare/14ca164cc7d48f670d98f8c33b305459a00266bf...a497d599fdec449f66e64539d829b6a468fd45ac
+[0.5.4]: https://github.com/SkyyPlayz/Mythos-Writer/compare/018f33208a7d0fb1513087e0edaa1cd8da59fec7...14ca164cc7d48f670d98f8c33b305459a00266bf
+[0.5.3]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.5.2...018f33208a7d0fb1513087e0edaa1cd8da59fec7
+[0.5.2]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/SkyyPlayz/Mythos-Writer/compare/07c503798510518751fc8d54cd0d57aa5d3ee9ec...v0.5.1
 [0.4.0-beta.1]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.3.0-beta.2...v0.4.0-beta.1
 [0.3.0-beta.2]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.3.0-beta.1...v0.3.0-beta.2
 [0.3.0-beta.1]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0-beta.2...v0.3.0-beta.1

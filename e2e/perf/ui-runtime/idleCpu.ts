@@ -13,7 +13,7 @@
  */
 import fs from 'fs';
 import type { ElectronApplication } from '@playwright/test';
-import { mainOsPid, rendererOsPid } from './launch';
+import { mainOsPid, rendererOsPid } from '../../helpers/launchApp';
 
 /**
  * Conventional Linux clock ticks per second (`getconf CLK_TCK`). This value

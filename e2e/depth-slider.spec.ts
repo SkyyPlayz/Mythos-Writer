@@ -254,7 +254,9 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
   test('TC-DS-02: clicking "Chapter" depth button shows chapter doc view', async () => {
     const chapterBtn = page.getByTestId('msv-zoom-chapter');
     await chapterBtn.click();
-    // SKY-3211: ChapterDocView was replaced with ChapterContinuousView (per-scene editable bands)
+    // SKY-3211 replaced ChapterDocView with ChapterContinuousView. #1694 removed
+    // that view; ManuscriptView is the chapter surface, and this class stays
+    // on its wrap as the selector anchor.
     await expect(page.locator('.chapter-continuous-view')).toBeVisible({ timeout: 4_000 });
   });
 
