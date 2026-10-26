@@ -18,6 +18,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - Electron 44.9.1 and undici 7.30.1 close high-severity advisories in the desktop shell and its download client (compromised certificate intermediates, and request-parser crashes). ([#1753](https://github.com/SkyyPlayz/Mythos-Writer/pull/1753))
 - Updated the build tool (vite) to close a high-severity security advisory in the dev server. ([#1745](https://github.com/SkyyPlayz/Mythos-Writer/pull/1745))
 - Saving a note no longer follows a symbolic link at the note's path, so a link pointing outside the vault can't make the app write there. Saving a note that is a symbolic link now shows: Couldn't save <name>: it's a shortcut (symbolic link). Save it under a new name instead. ([#1748](https://github.com/SkyyPlayz/Mythos-Writer/pull/1748))
+- Opening a note path now refuses a parent folder that is a symlink loop, including when the platform reports the missing note as absent instead of a loop. ([#1748](https://github.com/SkyyPlayz/Mythos-Writer/pull/1748))
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed

@@ -310,6 +310,11 @@ describe('PR A symlink writes', () => {
     return !symlinksWork;
   }
 
+  function pathKey(p: fs.PathLike): string {
+    const resolved = path.resolve(String(p));
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  }
+
   function zeroInoFs(): typeof fs {
     return new Proxy(fs, {
       get(target, prop, receiver) {
@@ -447,6 +452,37 @@ describe('PR A symlink writes', () => {
   it('read-mode refuses a looping folder in front of a missing leaf', () => {
     if (skipSymlink()) return;
     fs.symlinkSync('d', path.join(root, 'd'));
+    expect(() => safeVaultJoin(root, 'd/x.md')).toThrow(/symlink loop/);
+  });
+
+  it('read-mode refuses a looping ancestor when the leaf lstat is a miss', () => {
+    if (skipSymlink()) return;
+    fs.symlinkSync('a', path.join(root, 'a'));
+    const orig = fs.lstatSync.bind(fs);
+    const miss = new Set([path.resolve(root, 'a/b/x.md'), path.resolve(root, 'a/b')].map(pathKey));
+    vi.spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike) => {
+      if (miss.has(pathKey(p))) {
+        const err = new Error('ENOENT') as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return orig(p);
+    }) as typeof fs.lstatSync);
+    expect(() => safeVaultJoin(root, 'a/b/x.md')).toThrow(/symlink loop/);
+  });
+
+  it('read-mode refuses a leaf ELOOP when the parent directory is real', () => {
+    fs.mkdirSync(path.join(root, 'd'));
+    const orig = fs.lstatSync.bind(fs);
+    const leaf = pathKey(path.resolve(root, 'd/x.md'));
+    vi.spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike) => {
+      if (pathKey(p) === leaf) {
+        const err = new Error('ELOOP') as NodeJS.ErrnoException;
+        err.code = 'ELOOP';
+        throw err;
+      }
+      return orig(p);
+    }) as typeof fs.lstatSync);
     expect(() => safeVaultJoin(root, 'd/x.md')).toThrow(/symlink loop/);
   });
 

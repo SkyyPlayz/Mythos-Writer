@@ -123,8 +123,44 @@ function lstatLeaf(p: string, relPath: string): fs.Stats | null {
  * that child is ENOENT on win32 (the loop is not reported until an ancestor
  * is stat'd). A successful lstat of a symlink ancestor is resolved here.
  * An ELOOP from lstat of the path itself is left to lstatLeaf: mapping that
- * to null must stay visible.
+ * to null must stay visible to a read whose parents are real directories.
+ *
+ * Read mode walks every parent component inside the caller's vault root.
+ * A missing leaf does not stop the walk: win32 reports ENOENT for a child of
+ * a file-symlink loop, and a higher component can be the looping link.
+ * ELOOP from lstat or from realpath of any of those components is refused.
+ * There is no win32 exception. A dangling symlink is not a loop; the lexical
+ * read check still decides that path.
  */
+function assertNoReadParentLoop(resolved: string, relPath: string, vaultPath: string): void {
+  let ancestor = path.dirname(resolved);
+  while (isResolvedPathInsideRoot(vaultPath, ancestor)) {
+    let st: fs.Stats | undefined;
+    try {
+      st = fs.lstatSync(ancestor);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ELOOP') throwSymlinkLoop(relPath);
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+        logVaultRefusal(code ?? 'LSTAT', relPath);
+        throw err;
+      }
+      st = undefined;
+    }
+    if (st && isLinkStat(st, ancestor)) {
+      try {
+        fs.realpathSync.native(ancestor);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ELOOP') throwSymlinkLoop(relPath);
+      }
+    }
+    if (containmentKey(ancestor) === containmentKey(vaultPath)) break;
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+}
+
 function symlinkAncestorStopsWalk(ancestor: string, relPath: string): 'stop' | 'continue' | 'posix-loop' {
   let st: fs.Stats;
   try {
@@ -260,8 +296,10 @@ export function safeVaultJoin(
 
   // Read mode: keep the return value anchored to the caller's vault root so
   // callers see the path they passed in. Containment is still checked against
-  // the realpath'd root.
+  // the realpath'd root. Every parent component is lstat'd first so a symlink
+  // loop is refused on win32, where the leaf lstat is ENOENT rather than ELOOP.
   const normalizedRoot = path.resolve(vaultRoot);
+  if (!leaf) assertNoReadParentLoop(resolved, relPath, normalizedRoot);
 
   if (leaf) {
     const realPath = fs.realpathSync.native(resolved);
