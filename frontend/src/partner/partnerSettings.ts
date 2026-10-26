@@ -13,6 +13,14 @@ import type {
 } from './partnerPersonality';
 import type { PartnerHandId } from '../agents/partnerIdentity';
 import type { PartnerQuickCommandId } from './partnerQuickCommands';
+import {
+  applyOpenRouterRequestPolicy,
+  excludeGoogleModelIds,
+  GoogleModelExcludedError,
+  isGoogleModelId,
+  selectModelExcludingGoogle,
+  type OpenRouterProviderBlock,
+} from '@mythos-writer/shared/openRouterPolicy';
 
 export type PartnerIconId =
   | 'sparkle'
@@ -211,11 +219,58 @@ export function resolveWritingPartner(settings: AppSettings | undefined): Writin
 
 /** Scope a saved model to the active provider list; fall back to provider default. */
 export function scopedModel(provider: ModelKeysProviderId, saved: string, fallbackIndex = 0): string {
-  const list = PROVIDER_MODEL_LISTS[provider];
-  if (list.includes(saved)) return saved;
-  return list[fallbackIndex] ?? list[0] ?? saved;
+  const selected = selectModelExcludingGoogle(PROVIDER_MODEL_LISTS[provider], saved, fallbackIndex);
+  if (provider !== 'openrouter' || !selected) return selected;
+  // The id the picker stores is the id the OpenRouter request builder accepts.
+  return buildPartnerOpenRouterRequest({ model: selected }).model;
 }
 
 export function modelsForProvider(provider: ModelKeysProviderId): readonly string[] {
-  return PROVIDER_MODEL_LISTS[provider];
+  const list = PROVIDER_MODEL_LISTS[provider];
+  const filtered = excludeGoogleModelIds(list);
+  return filtered.length === list.length ? list : filtered;
+}
+
+export interface PartnerOpenRouterRequest {
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  max_tokens: number;
+  stream: true;
+  models?: string[];
+  provider: OpenRouterProviderBlock;
+}
+
+/**
+ * OpenRouter chat body for a partner model choice.
+ * An explicit google/* model is refused. When `models` is a routing candidate
+ * list, google/* ids are removed and a google/* `model` falls back to the
+ * first remaining candidate.
+ */
+export function buildPartnerOpenRouterRequest(input: {
+  model: string;
+  models?: readonly string[];
+  messages?: ReadonlyArray<{ role: string; content: string }>;
+  maxTokens?: number;
+}): PartnerOpenRouterRequest {
+  const models = input.models ? excludeGoogleModelIds(input.models) : undefined;
+  let model = input.model;
+  if (isGoogleModelId(model)) {
+    const fallback = models?.[0];
+    if (!fallback) throw new GoogleModelExcludedError(input.model);
+    model = fallback;
+  }
+  const body: {
+    model: string;
+    messages: Array<{ role: string; content: string }>;
+    max_tokens: number;
+    stream: true;
+    models?: string[];
+  } = {
+    model,
+    messages: [...(input.messages ?? [])],
+    max_tokens: input.maxTokens ?? 1024,
+    stream: true,
+  };
+  if (models) body.models = models;
+  return applyOpenRouterRequestPolicy(body);
 }
