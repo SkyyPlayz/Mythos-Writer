@@ -774,12 +774,22 @@ function allowlistByFile(entries: readonly AllowEntry[]): Record<string, number>
   return byFile;
 }
 
-/** Files the allowlist gives more sanctioned usages than their T0 ceiling. */
-function allowlistCeilingProblems(entries: readonly AllowEntry[]): string[] {
+/** The limits an allowlist is held to: per-file ceilings and the entry / usage totals. */
+interface AllowLimits {
+  ceilings: Counts;
+  total: number;
+  entries: number;
+}
+
+/** The limits as they stood at T0. Tests that exercise the rules on a synthetic allowlist pass their own. */
+const T0_ALLOW_LIMITS: AllowLimits = { ceilings: T0_ALLOWLIST_CEILINGS, total: T0.allowlistTotal, entries: T0.allowlistEntries };
+
+/** Files the allowlist gives more sanctioned usages than their ceiling. */
+function allowlistCeilingProblems(entries: readonly AllowEntry[], limits: AllowLimits = T0_ALLOW_LIMITS): string[] {
   return Object.entries(allowlistByFile(entries))
-    .filter(([file, n]) => n > (T0_ALLOWLIST_CEILINGS[file] ?? 0))
+    .filter(([file, n]) => n > (limits.ceilings[file] ?? 0))
     .map(([file, n]) =>
-      `ALLOW-RAISED ${file}: allowlist.json allows ${n}, T0 ceiling ${T0_ALLOWLIST_CEILINGS[file] ?? 0}. ` +
+      `ALLOW-RAISED ${file}: allowlist.json allows ${n}, T0 ceiling ${limits.ceilings[file] ?? 0}. ` +
       'Allowlisted story-page sizes may not move to another file or grow.');
 }
 
@@ -788,16 +798,16 @@ function allowlistCeilingProblems(entries: readonly AllowEntry[]): string[] {
  * keyOf) break the ratchet: pinned counts off, totals over T0, or a file above
  * its T0 ceiling.
  */
-function allowlistProblems(entries: readonly AllowEntry[], found: ReadonlyMap<string, number>): string[] {
+function allowlistProblems(entries: readonly AllowEntry[], found: ReadonlyMap<string, number>, limits: AllowLimits = T0_ALLOW_LIMITS): string[] {
   const counts = entries.flatMap((e) => {
     const f = found.get(keyOf(e)) ?? 0;
     return f > e.count ? [`GREW ${keyOf(e)}: pinned ${e.count}, found ${f}`] : f < e.count ? [`FELL ${keyOf(e)}: pinned ${e.count}, found ${f}`] : [];
   });
   const totals = [
-    ...(sum(allowlistByFile(entries)) > T0.allowlistTotal ? [`TOTAL allowlistTotal: T0 ${T0.allowlistTotal}`] : []),
-    ...(entries.length > T0.allowlistEntries ? [`TOTAL allowlistEntries: T0 ${T0.allowlistEntries}`] : []),
+    ...(sum(allowlistByFile(entries)) > limits.total ? [`TOTAL allowlistTotal: limit ${limits.total}`] : []),
+    ...(entries.length > limits.entries ? [`TOTAL allowlistEntries: limit ${limits.entries}`] : []),
   ];
-  return [...counts, ...totals, ...allowlistCeilingProblems(entries)];
+  return [...counts, ...totals, ...allowlistCeilingProblems(entries, limits)];
 }
 
 /** The baseline ledger's totals that exceed T0. */
@@ -1250,16 +1260,32 @@ describe('#1773 type-scale guard — a ledger edit cannot undo the ratchet', () 
     expect(allowlistProblems(allowlist, matching(allowlist))).toEqual([]);
   });
 
+  // A synthetic allowlist with its own limits, so paying down the real allowlist never touches these cases.
+  const reason = 'synthetic story-page fixture for the allowlist ratchet tests';
+  const fixture: AllowEntry[] = [
+    { file: 'story/Page.css', selector: '.page-title', property: 'font-size', count: 2, reason },
+    { file: 'story/Page.css', selector: '.page-dropcap', property: 'font-size', count: 1, reason },
+    { file: 'story/Sheet.tsx', selector: 'Sheet >> sheetStyle', property: 'font-size', count: 1, reason },
+  ];
+  const limits: AllowLimits = { ceilings: { 'story/Page.css': 3, 'story/Sheet.tsx': 1 }, total: 4, entries: 3 };
+  const moved = (file: string, selector: string) =>
+    fixture.map((e) => (e.selector === '.page-dropcap' ? { ...e, file, selector } : e));
+
   it('an allowlisted usage moved to another file fails, with the allowlist totals level', () => {
-    const rune = allowlist.find((e) => e.file === 'story/pageMode.tsx' && e.selector === 'runeColStyle');
-    expect(rune?.count, 'fixture: the runeColStyle entry').toBe(1);
+    expect(allowlistProblems(fixture, matching(fixture), limits)).toEqual([]);
     // Moved to a new, non-story file: same entry count, same total.
-    const toNewFile = allowlist.map((e) => (e === rune ? { ...e, file: 'components/Toolbar.css', selector: '.toolbar-title' } : e));
-    expect([toNewFile.length, sum(allowlistByFile(toNewFile))]).toEqual([T0.allowlistEntries, T0.allowlistTotal]);
-    expect(allowlistProblems(toNewFile, matching(toNewFile)).map(tag)).toEqual(['ALLOW-RAISED components/Toolbar.css']);
-    // Moved to another allowlisted file, which then goes over its own T0 count.
-    const toBlockEditor = allowlist.map((e) => (e === rune ? { ...e, file: 'BlockEditor.css', selector: '.scene-name' } : e));
-    expect(allowlistProblems(toBlockEditor, matching(toBlockEditor)).map(tag)).toEqual(['ALLOW-RAISED BlockEditor.css']);
+    const toNewFile = moved('components/Toolbar.css', '.toolbar-title');
+    expect(allowlistProblems(toNewFile, matching(toNewFile), limits).map(tag)).toEqual(['ALLOW-RAISED components/Toolbar.css']);
+    // Moved to another allowlisted file, which then goes over its own ceiling.
+    const toSheet = moved('story/Sheet.tsx', 'Sheet >> dropcapStyle');
+    expect(allowlistProblems(toSheet, matching(toSheet), limits).map(tag)).toEqual(['ALLOW-RAISED story/Sheet.tsx']);
+  });
+
+  it('paying the allowlist down (a lower count, a deleted entry) stays green', () => {
+    const lowered = fixture.map((e) => (e.selector === '.page-title' ? { ...e, count: 1 } : e));
+    expect(allowlistProblems(lowered, matching(lowered), limits)).toEqual([]);
+    const deleted = fixture.filter((e) => e.selector !== '.page-dropcap');
+    expect(allowlistProblems(deleted, matching(deleted), limits)).toEqual([]);
   });
 
   it('a raise in one file paid for by a cut in another fails, with the totals level', () => {
