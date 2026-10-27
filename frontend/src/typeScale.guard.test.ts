@@ -13,34 +13,51 @@
  * / `__mocks__` excluded):
  *
  *   - `.css`: every `font-size` and `font` declaration, comments stripped.
- *   - `.ts` / `.tsx`: `fontSize` / `font-size` keys in object literals (inline
- *     styles, `CSSProperties` consts), `fontSize` JSX attributes (SVG),
- *     `el.style.fontSize = …`, `setProperty('font-size', …)`, and
- *     `font-size:` / `font:` declarations inside string and template literals
- *     (inline `cssText`, injected `<style>`).
+ *   - `.ts` / `.tsx` (and `.js` / `.jsx`, should any appear): `fontSize` /
+ *     `font-size` / `font` keys in object literals, computed string keys
+ *     included (inline styles, `CSSProperties` consts); `fontSize` JSX
+ *     attributes (SVG); assignments such as `el.style.fontSize = …`,
+ *     `el.style['font-size'] += …` and `ctx.font = …`;
+ *     `setProperty('font-size' | 'font', …)` and `setAttribute('font-size', …)`;
+ *     and CSS written inside string and template literals: inline `cssText`,
+ *     injected `<style>` sheets, and `style="…"` / `font-size="…"` in markup.
+ *     Template holes count as unknown values. A TS `font` that carries no
+ *     size (`{ font: 'Lora' }`) is a family choice, not a shorthand, so it is
+ *     skipped.
  *
  * A value is ON the scale only when it is `var(--text-<step>)` (a fallback
  * inside the `var()` is fine — the token is always defined), where `<step>`
  * is a `--text-*` token `tokens.css` gives a length. `--text-header`,
  * `--text-muted` and the other colour tokens are not steps. A shorthand
- * `font:` is on the scale when it carries a step. CSS-wide keywords
- * (`inherit`, `unset`, …) and the system-font keywords of the `font`
- * shorthand set no size, so they are not counted at all. Everything else is
- * OFF the scale: px/rem/em/% literals, `calc()`, any other custom property,
- * numbers, and expressions the scanner cannot prove are a step.
+ * `font:` is judged by its size slot (`600 var(--text-sm)/1.4 …` is on;
+ * `13px/var(--text-sm) …` is off). CSS-wide keywords (`inherit`, `unset`, …)
+ * and the system-font keywords of the `font` shorthand set no size, so they
+ * are not counted at all. Everything else is OFF the scale: px/rem/em/%
+ * literals, `calc()`, any other custom property, numbers, and expressions the
+ * scanner cannot prove are a step.
+ *
+ * The scale itself must not be redefined: declaring `--text-<step>`,
+ * `--leading-<step>` or `--weight-<step>` anywhere but `tokens.css` (a CSS
+ * rule, an inline style, `setProperty`) is red, because it would let a
+ * `var(--text-sm)` quietly render 13px again.
  *
  * ## The two ledgers
  *
  *   - `typeScale.allowlist.json` — sanctioned exceptions that stay off the
- *     scale on purpose (story page fonts, which #1773 leaves alone). Keyed
- *     by file + selector + property, never by line number, each with a
- *     reason. Its `count` is pinned: growth is red, and so is a drop (pin the
- *     new, lower count, or delete the entry when it reaches zero).
+ *     scale on purpose: story page fonts, which #1773 leaves alone (sizes
+ *     that come from, or are em-relative to, the user's page font, and the
+ *     page's rune decorations). Keyed by file + selector + property, never by
+ *     line number, each with a reason. Its `count` is pinned: growth is red,
+ *     and so is a drop (pin the new, lower count, or delete the entry when it
+ *     reaches zero).
  *   - `typeScale.baseline.json` — every other off-scale usage, as a count per
  *     file at T0. A file may never exceed its count; a file that is not
  *     listed may have none. Counts only fall: when a file drops below its
  *     count the guard asks for the lower number, so the slack can't be spent
  *     again later.
+ *
+ * The ledger totals at T0 are pinned in this file (`T0`), so raising a count
+ * or adding a key can't land as a data-only edit to the JSON.
  *
  * "Selector" is the CSS rule's selector with its enclosing at-rules
  * (`@media (…) >> .foo`). For TypeScript it is the chain of named scopes
@@ -59,23 +76,34 @@ const TOKENS_CSS = join(SRC, 'tokens.css');
 const BASELINE_FILE = join(SRC, 'typeScale.baseline.json');
 const ALLOWLIST_FILE = join(SRC, 'typeScale.allowlist.json');
 
-const SCANNED_EXT = /\.(css|tsx?)$/;
-const EXCLUDED_FILE = /\.(test|spec)\.tsx?$|\.d\.ts$/;
+const SCANNED_EXT = /\.(css|[cm]?[jt]sx?)$/;
+const EXCLUDED_FILE = /\.(test|spec)\.[cm]?[jt]sx?$|\.d\.[cm]?ts$/;
 const EXCLUDED_DIRS = new Set(['node_modules', '__fixtures__', '__mocks__']);
 
 /** Joins the scopes of a selector key; `>>` is not valid CSS, so it can't collide with a combinator. */
 const SCOPE_JOIN = ' >> ';
+/** Stands in for a template-literal hole. No braces, quotes or `;`, so it can't change how CSS text splits. */
+const HOLE = '⟨expr⟩';
 
 const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 const SYSTEM_FONT_KEYWORDS = new Set(['caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar']);
+/** Tokens that can precede the size in a `font` shorthand (style, variant, weight, stretch). */
+const FONT_PREFIX_KEYWORDS = new Set([
+  'normal', 'italic', 'oblique', 'small-caps', 'bold', 'bolder', 'lighter',
+  'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed',
+  'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded',
+]);
+/** Custom properties that make up the scale; declaring one outside tokens.css redefines a step. */
+const SCALE_PROPERTY = /^--(text|leading|weight)-[\w-]+$/;
 
-type Verdict = 'on' | 'off' | 'neutral';
+/** `redefine`: a scale step declared somewhere other than tokens.css. */
+type Verdict = 'on' | 'off' | 'neutral' | 'redefine';
 
 interface Usage {
   /** Path relative to `frontend/src`, always with `/`. */
   file: string;
   selector: string;
-  /** `font-size` or `font`. TS `fontSize` keys are reported as `font-size`. */
+  /** `font-size`, `font`, or a scale custom property. TS `fontSize` keys are reported as `font-size`. */
   property: string;
   value: string;
   /** 1-based; for failure messages only, never part of a key. */
@@ -95,16 +123,51 @@ function scaleSteps(): string[] {
   return [...steps];
 }
 
-function classify(property: string, rawValue: string, steps: readonly string[]): Verdict {
+/** Splits a value on top-level whitespace, `/` and `,` (kept as tokens); parentheses and quotes stay whole. */
+function topLevelTokens(value: string): string[] {
+  const tokens: string[] = [];
+  let cur = '';
+  let depth = 0;
+  let quote: string | null = null;
+  const push = () => { if (cur) tokens.push(cur); cur = ''; };
+  for (const ch of value) {
+    if (quote) { cur += ch; if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; cur += ch; continue; }
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && /[\s/,]/.test(ch)) { push(); if (ch === '/' || ch === ',') tokens.push(ch); continue; }
+    cur += ch;
+  }
+  push();
+  return tokens;
+}
+
+/** The size slot of a `font` shorthand: the token before `/line-height`, else the first after style/variant/weight/stretch. */
+function fontShorthandSize(value: string): string | undefined {
+  const tokens = topLevelTokens(value);
+  const slash = tokens.indexOf('/');
+  if (slash > 0) return tokens[slash - 1];
+  return tokens.find((t) => !FONT_PREFIX_KEYWORDS.has(t.toLowerCase()) && !/^\d+$/.test(t) && !/^-?[\d.]+deg$/.test(t));
+}
+
+/** A TS value named `font` is only a shorthand when it carries a size or a keyword; `{ font: 'Lora' }` is a family pick. */
+const looksLikeFontShorthand = (value: string) =>
+  CSS_WIDE_KEYWORDS.has(value.trim().toLowerCase()) || SYSTEM_FONT_KEYWORDS.has(value.trim().toLowerCase()) ||
+  /\d(px|rem|em|%|pt|pc|vh|vw|vmin|vmax|ch|ex|q|mm|cm|in)\b|var\(|calc\(|min\(|max\(|clamp\(|\b(xx?-small|small|medium|large|xx?-large|xxx-large|larger|smaller)\b/i.test(value);
+
+function classify(property: string, rawValue: string, steps: readonly string[]): Verdict | undefined {
+  if (property.startsWith('--')) {
+    const m = /^--(?:text|leading|weight)-(.+)$/.exec(property);
+    return m && steps.includes(m[1]) ? 'redefine' : undefined;
+  }
   const value = rawValue.replace(/!\s*important\s*$/i, '').trim();
   const lower = value.toLowerCase();
   if (CSS_WIDE_KEYWORDS.has(lower)) return 'neutral';
   if (property === 'font' && SYSTEM_FONT_KEYWORDS.has(lower)) return 'neutral';
   const step = `(?:${steps.map((s) => s.replace(/[-]/g, '\\-')).join('|')})`;
-  if (property === 'font') {
-    return new RegExp(`(^|[\\s/])var\\(\\s*--text-${step}\\s*[,)]`).test(value) ? 'on' : 'off';
-  }
-  return new RegExp(`^var\\(\\s*--text-${step}\\s*(,[\\s\\S]*)?\\)$`).test(value) ? 'on' : 'off';
+  const onScale = new RegExp(`^var\\(\\s*--text-${step}\\s*(,[\\s\\S]*)?\\)$`);
+  const size = property === 'font' ? fontShorthandSize(value) : value;
+  return size !== undefined && onScale.test(size) ? 'on' : 'off';
 }
 
 // ── CSS scanner ──────────────────────────────────────────────────────────────
@@ -119,10 +182,11 @@ interface CssDecl {
 }
 
 /**
- * Every `font-size` / `font` declaration in `css`, with its rule context.
- * `declarationList` scans an inline `style`/`cssText` string, where
- * declarations sit outside any block. Strings, comments and parentheses are
- * honoured, so a `;` or `{` inside `url(…)` or quotes can't split a rule.
+ * Every `font-size` / `font` / scale custom-property declaration in `css`,
+ * with its rule context. `declarationList` scans an inline `style`/`cssText`
+ * string, where declarations sit outside any block. Strings, comments and
+ * parentheses are honoured, so a `;` or `{` inside `url(…)` or quotes can't
+ * split a rule.
  */
 function scanCss(css: string, declarationList = false, firstLine = 1): CssDecl[] {
   const out: CssDecl[] = [];
@@ -140,8 +204,9 @@ function scanCss(css: string, declarationList = false, firstLine = 1): CssDecl[]
     if (!declarationList && stack.length === 0) return;
     const colon = text.indexOf(':');
     if (colon < 0) return;
-    const property = text.slice(0, colon).trim().toLowerCase();
-    if (property !== 'font-size' && property !== 'font') return;
+    // `${base}font-size:12px`: a hole right before a name ends the interpolated declarations, not the name.
+    const property = (text.slice(0, colon).split(HOLE).pop() ?? '').trim().toLowerCase();
+    if (property !== 'font-size' && property !== 'font' && !SCALE_PROPERTY.test(property)) return;
     out.push({ selector: stack.join(SCOPE_JOIN), property, value: collapse(text.slice(colon + 1)), line: bufLine });
   };
 
@@ -170,11 +235,18 @@ function scanCss(css: string, declarationList = false, firstLine = 1): CssDecl[]
 
 // ── TypeScript scanner ───────────────────────────────────────────────────────
 
+/** Text of a string-ish expression, with HOLE standing in for template holes. */
+function literalText(node: ts.Node): string | undefined {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (ts.isTemplateExpression(node)) return node.head.text + node.templateSpans.map((s) => HOLE + s.literal.text).join('');
+  return undefined;
+}
+
 function nameOf(node: ts.Node): string | undefined {
   const name = (node as { name?: ts.Node }).name;
   if (!name) return undefined;
   if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isPrivateIdentifier(name)) return name.text;
-  if (ts.isComputedPropertyName(name)) return `[${name.expression.getText()}]`;
+  if (ts.isComputedPropertyName(name)) return literalText(name.expression) ?? `[${name.expression.getText()}]`;
   return undefined;
 }
 
@@ -201,61 +273,91 @@ function scopeChain(node: ts.Node): string {
   return scopes.length ? scopes.join(SCOPE_JOIN) : '(module)';
 }
 
-const isFontSizeName = (text: string) => text === 'fontSize' || text === 'font-size';
-
-/** Text of a string-ish expression, with `${…}` standing in for template holes. */
-function literalText(node: ts.Node): string | undefined {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (ts.isTemplateExpression(node)) return node.head.text + node.templateSpans.map((s) => '${…}' + s.literal.text).join('');
+/** A style property name as written in TS (`fontSize`, `'font-size'`, `font`, `'--text-sm'`) → its CSS name, if it is one we track. */
+function cssPropertyOf(name: string | undefined): string | undefined {
+  if (name === 'fontSize' || name === 'font-size') return 'font-size';
+  if (name === 'font') return 'font';
+  if (name && SCALE_PROPERTY.test(name)) return name;
   return undefined;
 }
 
+const isAssignment = (k: ts.SyntaxKind) => k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment;
+
+/** `font-size` / `font` / scale declarations written as CSS text inside a string or template. */
+function scanCssText(text: string, scope: string, line: number): CssDecl[] {
+  const out: CssDecl[] = [];
+  let rest = text;
+  if (rest.includes('<')) {
+    // Markup: style="…" attributes are declaration lists; SVG font-size="…" is a size; <style> bodies are sheets.
+    rest = rest.replace(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/gi, (_, _q, body: string) => {
+      for (const d of scanCss(body, true, line)) out.push({ ...d, selector: scope + SCOPE_JOIN + 'style=""' });
+      return ' ';
+    });
+    rest = rest.replace(/\bfont-size\s*=\s*(["'])([^"']*)\1/gi, (_, _q, value: string) => {
+      out.push({ selector: scope + SCOPE_JOIN + 'font-size=""', property: 'font-size', value, line });
+      return ' ';
+    });
+    rest = rest.replace(/<[^>]*>/g, ' ');
+  }
+  if (/font(-size)?\s*:|--(text|leading|weight)-[\w-]+\s*:/i.test(rest)) {
+    for (const d of scanCss(rest, !rest.includes('{'), line)) {
+      out.push({ ...d, selector: d.selector ? scope + SCOPE_JOIN + d.selector : scope });
+    }
+  }
+  return out.filter((d) => d.property !== 'font' || looksLikeFontShorthand(d.value));
+}
+
 function scanTs(file: string, source: string): CssDecl[] {
-  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : /\.[cm]?jsx$/.test(file) ? ts.ScriptKind.JSX : /\.[cm]?js$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
   const out: CssDecl[] = [];
   const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
   const valueText = (n: ts.Node) => literalText(n) ?? n.getText(sf);
+  const push = (at: ts.Node, property: string, valueNode: ts.Node | undefined, fallback = '') => {
+    const value = valueNode ? valueText(valueNode) : fallback;
+    // `font` is also a common name for a family choice ({ font: 'Lora' }); only a value with a size is a shorthand.
+    if (property === 'font' && (!valueNode || literalText(valueNode) === undefined || !looksLikeFontShorthand(value))) return;
+    out.push({ selector: scopeChain(at), property, value, line: lineOf(at) });
+  };
 
   const visit = (node: ts.Node): void => {
-    // { fontSize: … } / { 'font-size': … } / { fontSize }
-    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && isFontSizeName(nameOf(node) ?? '')) {
-      const value = ts.isPropertyAssignment(node) ? valueText(node.initializer) : node.name.text;
-      out.push({ selector: scopeChain(node), property: 'font-size', value, line: lineOf(node) });
+    // { fontSize: … } / { 'font-size': … } / { ['fontSize']: … } / { fontSize } / { font: '…' } / { '--text-sm': … }
+    if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
+      const property = cssPropertyOf(nameOf(node));
+      if (property) {
+        if (ts.isPropertyAssignment(node)) push(node, property, node.initializer);
+        else if (property === 'font-size') push(node, property, undefined, node.name.text);
+      }
     }
-    // <text fontSize={12}>
-    else if (ts.isJsxAttribute(node) && isFontSizeName(node.name.getText(sf))) {
+    // <text fontSize={12}> / <text font-size="12">
+    else if (ts.isJsxAttribute(node) && cssPropertyOf(node.name.getText(sf)) === 'font-size') {
       const init = node.initializer;
       const expr = init && ts.isJsxExpression(init) ? init.expression : init;
       out.push({ selector: scopeChain(node.name), property: 'font-size', value: expr ? valueText(expr) : '', line: lineOf(node) });
     }
-    // el.style.fontSize = …
-    else if (
-      ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(node.left) && node.left.name.text === 'fontSize'
-    ) {
-      out.push({ selector: scopeChain(node), property: 'font-size', value: valueText(node.right), line: lineOf(node) });
+    // el.style.fontSize = … / el.style['font-size'] = … / ctx.font = … (any assignment operator)
+    else if (ts.isBinaryExpression(node) && isAssignment(node.operatorToken.kind)) {
+      const left = node.left;
+      const name = ts.isPropertyAccessExpression(left) ? left.name.text
+        : ts.isElementAccessExpression(left) ? literalText(left.argumentExpression) : undefined;
+      const property = cssPropertyOf(name);
+      if (property) push(node, property, node.right);
     }
-    // style.setProperty('font-size', …)
-    else if (
-      ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === 'setProperty' && node.arguments.length >= 2 &&
-      literalText(node.arguments[0]) === 'font-size'
-    ) {
-      out.push({ selector: scopeChain(node), property: 'font-size', value: valueText(node.arguments[1]), line: lineOf(node) });
-    }
-    // 'font-size:12px;…' inside a string or template (cssText, injected <style>)
-    else {
-      const text = ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)
-        ? literalText(node)
-        : undefined;
-      if (text !== undefined && /(^|[\s;{"'])font(-size)?\s*:/i.test(text)) {
-        const scope = scopeChain(node);
-        for (const d of scanCss(text, !text.includes('{'), lineOf(node))) {
-          out.push({ ...d, selector: d.selector ? scope + SCOPE_JOIN + d.selector : scope });
-        }
-        return; // a template's spans are already covered by the text above
+    // setProperty('font-size' | 'font' | '--text-sm', …) / setAttribute('font-size', …) / setAttributeNS(ns, 'font-size', …)
+    else if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const method = node.expression.name.text;
+      const at = method === 'setAttributeNS' ? 1 : 0;
+      const name = node.arguments.length > at + 1 ? literalText(node.arguments[at]) : undefined;
+      const property = cssPropertyOf(name);
+      if (property && (method === 'setProperty' || ((method === 'setAttribute' || method === 'setAttributeNS') && property === 'font-size'))) {
+        push(node, property, node.arguments[at + 1]);
       }
     }
+    // 'font-size:12px;…' / `top:${y}px;font-size:12px` / '<span style="font-size:9px">' inside a string or template
+    else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)) {
+      out.push(...scanCssText(literalText(node) ?? '', scopeChain(node), lineOf(node)));
+    }
+    // Template spans are TemplateMiddle/Tail nodes, never re-scanned as strings, so visiting children can't double count.
     ts.forEachChild(node, visit);
   };
   visit(sf);
@@ -281,7 +383,10 @@ function productionFiles(dir = SRC): string[] {
 
 function scanFile(file: string, source: string, steps: readonly string[]): Usage[] {
   const decls = file.endsWith('.css') ? scanCss(source) : scanTs(file, source);
-  return decls.map((d) => ({ file, ...d, verdict: classify(d.property, d.value, steps) }));
+  return decls.flatMap((d) => {
+    const verdict = classify(d.property, d.value, steps);
+    return verdict ? [{ file, ...d, verdict }] : [];
+  });
 }
 
 function scanTree(steps: readonly string[]): Usage[] {
@@ -308,6 +413,13 @@ function readJson<T>(file: string): T {
 }
 const baseline = readJson<{ files: Record<string, number> }>(BASELINE_FILE).files;
 const allowlist = readJson<{ entries: AllowEntry[] }>(ALLOWLIST_FILE).entries;
+
+/**
+ * The ledgers as they stood at T0 (main cc8df81). The per-file and per-entry
+ * checks below compare the tree against the JSON; this pins the JSON itself,
+ * so a raised count or a new key can't ride in on a data-only edit.
+ */
+const T0 = { baselineTotal: 1999, baselineFiles: 176, allowlistTotal: 18, allowlistEntries: 16 } as const;
 
 const where = (us: Usage[]) => us.map((u) => `    ${u.file}:${u.line}  ${u.selector}  { ${u.property}: ${u.value} }`).join('\n');
 
@@ -399,9 +511,106 @@ describe('#1773 type-scale guard — scanner', () => {
       ['Card', 'var(--text-xs)', 'on'],
       ['Card >> <div style>', 'fontSize', 'off'],
       ['Card >> <text fontSize>', '9', 'off'],
-      ['Card >> <span style>', '${…}px', 'off'],
+      ['Card >> <span style>', `${HOLE}px`, 'off'],
       ['toast', '12px', 'off'],
       ['sheet >> .x', '600 var(--text-sm)/1 sans', 'on'],
+    ]);
+  });
+
+  it('reads the size slot of a font shorthand, not whatever slot holds a step', () => {
+    expect(css(`
+      .a { font: 600 13px/var(--text-sm) sans-serif; }
+      .b { font: 13px var(--text-sm), sans-serif; }
+      .c { font: var(--weight-sm) var(--text-sm)/var(--leading-sm) var(--font-sans); }
+      .d { font: italic bold var(--text-lg) serif; }
+      .e { font: caption; }
+    `)).toEqual([
+      ['.a', 'font', '600 13px/var(--text-sm) sans-serif', 'off'],
+      ['.b', 'font', '13px var(--text-sm), sans-serif', 'off'],
+      ['.c', 'font', 'var(--weight-sm) var(--text-sm)/var(--leading-sm) var(--font-sans)', 'on'],
+      ['.d', 'font', 'italic bold var(--text-lg) serif', 'on'],
+      ['.e', 'font', 'caption', 'neutral'],
+    ]);
+  });
+
+  it('does not let quotes, escapes, parentheses or stray top-level text split or invent a rule', () => {
+    expect(css(`
+      font-size: 7px;
+      .f { content: "{"; font-size: 12px; }
+      .g { content: "\\""; font-size: 9px; }
+      .h { background: url(x{y;z); font-size: 8px; }
+    `)).toEqual([
+      ['.f', 'font-size', '12px', 'off'],
+      ['.g', 'font-size', '9px', 'off'],
+      ['.h', 'font-size', '8px', 'off'],
+    ]);
+  });
+
+  it('finds font sizes in templates with holes, in markup strings and in SVG attributes', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement, t: SVGTextElement) {
+        el.style.cssText = \`color:\${c};font-size:12px\`;
+        el.style.cssText = \`font-size:\${n}px\`;
+        el.style.cssText = \`\${base}font-size:11px\`;
+        el.style.cssText = '/*x*/font-size:10px';
+        const sheet = \`.x { font-size: \${n}px; }\`;
+        const both = \`font-size:12px;\${on ? \`font-size:13px\` : ''}\`;
+        el.innerHTML = \`<span style="font-size:13px">\${x}</span>\`;
+        el.innerHTML = '<svg><text font-size="9">A</text></svg>';
+        t.setAttribute('font-size', '8');
+      }
+    `)).toEqual([
+      ['paint', '12px', 'off'],
+      ['paint', `${HOLE}px`, 'off'],
+      ['paint', '11px', 'off'],
+      ['paint', '10px', 'off'],
+      ['paint >> sheet >> .x', `${HOLE}px`, 'off'],
+      ['paint >> both', '12px', 'off'],
+      ['paint >> both', '13px', 'off'],
+      ['paint >> style=""', '13px', 'off'],
+      ['paint >> font-size=""', '9', 'off'],
+      ['paint', '8', 'off'],
+    ]);
+  });
+
+  it('finds element-access, computed-key, compound-assignment and font-shorthand forms', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement, ctx: CanvasRenderingContext2D) {
+        el.style['fontSize'] = '13px';
+        el.style['font-size'] += '1px';
+        const o = { ['fontSize']: 12, font: '600 11px/1 sans', pick: { font: 'Lora' }, fam: { font: fontName } };
+        el.style.font = '10px sans';
+        ctx.font = 'bold 9px serif';
+        el.style.setProperty('font', 'var(--text-sm) x');
+        return <div style={{ font: 'inherit' }} />;
+      }
+    `)).toEqual([
+      ['paint', '13px', 'off'],
+      ['paint', '1px', 'off'],
+      ['paint >> o', '12', 'off'],
+      ['paint >> o', '600 11px/1 sans', 'off'],
+      ['paint', '10px sans', 'off'],
+      ['paint', 'bold 9px serif', 'off'],
+      ['paint', 'var(--text-sm) x', 'on'],
+      ['paint >> <div style>', 'inherit', 'neutral'],
+    ]);
+  });
+
+  it('flags a scale step declared outside tokens.css, and ignores the colour tokens', () => {
+    expect(css(':root { --text-sm: 13px; --text-header: #fff; --leading-sm: 1; } .x { --weight-xs: 700; }')).toEqual([
+      [':root', '--text-sm', '13px', 'redefine'],
+      [':root', '--leading-sm', '1', 'redefine'],
+      ['.x', '--weight-xs', '700', 'redefine'],
+    ]);
+    expect(tsx(`
+      function Dense() {
+        document.documentElement.style.setProperty('--text-sm', '13px');
+        document.documentElement.style.setProperty('--text-header', '#fff');
+        return <div style={{ '--text-xs': '11px' } as CSSProperties} />;
+      }
+    `)).toEqual([
+      ['Dense', '13px', 'redefine'],
+      ['Dense >> <div style>', '11px', 'redefine'],
     ]);
   });
 });
@@ -424,6 +633,15 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
     expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
   });
 
+  it('the ledgers never exceed their T0 totals', () => {
+    const baselineTotal = Object.values(baseline).reduce((a, n) => a + n, 0);
+    const allowTotal = allowlist.reduce((a, e) => a + e.count, 0);
+    const now = { baselineTotal, baselineFiles: Object.keys(baseline).length, allowlistTotal: allowTotal, allowlistEntries: allowlist.length };
+    const over = (Object.keys(T0) as Array<keyof typeof T0>).filter((k) => now[k] > T0[k]);
+    expect(over, `Ledgers may only shrink. T0 ${JSON.stringify(T0)}, now ${JSON.stringify(now)}. ` +
+      'Raising one needs the owner\'s sign-off and an edit to T0 in this file.').toEqual([]);
+  });
+
   it('baseline counts are positive integers with posix paths', () => {
     for (const [file, n] of Object.entries(baseline)) {
       expect(Number.isInteger(n) && n > 0, `${file}: ${n}`).toBe(true);
@@ -434,6 +652,12 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
 
 describe('#1773 type-scale guard — off-scale font sizes may only fall', () => {
   const usages = scanTree(scaleSteps());
+
+  it('no scale step is declared outside tokens.css', () => {
+    const redefined = usages.filter((u) => u.verdict === 'redefine' && u.file !== 'tokens.css');
+    expect(redefined, `The --text-*/--leading-*/--weight-* steps live in tokens.css only:\n${where(redefined)}`).toEqual([]);
+  });
+
   const off = usages.filter((u) => u.verdict === 'off');
   const allowKeys = new Map(allowlist.map((e) => [keyOf(e), e]));
   const allowed = off.filter((u) => allowKeys.has(keyOf(u)));

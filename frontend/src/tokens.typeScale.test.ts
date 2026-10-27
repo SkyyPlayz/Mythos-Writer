@@ -6,7 +6,8 @@
  * later #1773 slices move UI text onto them (13px → `--text-sm`). Neither of
  * those means anything if a step quietly changes value, a new step appears,
  * or a theme, density block or theme.ts starts overriding one at runtime. This
- * pins the scale as it stands at T0.
+ * pins the scale as it stands at T0. A step redeclared in any other source
+ * file is caught by typeScale.guard.test.ts, which already walks the tree.
  *
  * Read-only: it reads tokens.css and theme.ts and never writes to them.
  */
