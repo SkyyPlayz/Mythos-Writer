@@ -34,7 +34,7 @@ const SCALE = [
 interface Decl {
   name: string;
   value: string;
-  /** Selector of the innermost rule the declaration sits in. */
+  /** Every enclosing rule and at-rule from the top level down, joined with ` >> ` (`@media (…) >> :root`). */
   rule: string;
 }
 
@@ -47,7 +47,7 @@ function customProperties(css: string): Decl[] {
     if (ch === '{') { stack.push(buf.replace(/\s+/g, ' ').trim()); buf = ''; continue; }
     if (ch === ';' || ch === '}') {
       const m = /^\s*(--[\w-]+)\s*:\s*([\s\S]*?)\s*$/.exec(buf);
-      if (m && stack.length) out.push({ name: m[1], value: m[2], rule: stack[stack.length - 1] });
+      if (m && stack.length) out.push({ name: m[1], value: m[2], rule: stack.join(' >> ') });
       buf = '';
       if (ch === '}') stack.pop();
       continue;
@@ -62,6 +62,13 @@ const declsOf = (name: string) => decls.filter((d) => d.name === name);
 const isLength = (v: string) => /^-?[\d.]+(px|rem|em)$/.test(v);
 
 describe('#1773 tokens.css — the --text-* type scale', () => {
+  it('records the full rule ancestry, so a step inside @media is not mistaken for :root', () => {
+    expect(customProperties('@media (prefers-color-scheme: dark) { :root { --text-sm: 14px; } } :root { --text-xs: 12px; }')).toEqual([
+      { name: '--text-sm', value: '14px', rule: '@media (prefers-color-scheme: dark) >> :root' },
+      { name: '--text-xs', value: '12px', rule: ':root' },
+    ]);
+  });
+
   it('defines exactly the seven size steps, and no other --text-* token is a length', () => {
     const sizeTokens = [...new Set(decls.filter((d) => d.name.startsWith('--text-') && isLength(d.value)).map((d) => d.name))];
     expect(sizeTokens).toEqual(SCALE.map(([step]) => `--text-${step}`));
@@ -71,7 +78,7 @@ describe('#1773 tokens.css — the --text-* type scale', () => {
     for (const [name, value] of [[`--text-${step}`, `${px}px`], [`--leading-${step}`, String(leading)], [`--weight-${step}`, String(weight)]]) {
       const found = declsOf(name);
       expect(found.map((d) => d.value), `${name} value`).toEqual([value]);
-      expect(found[0].rule, `${name} must live in :root`).toBe(':root');
+      expect(found[0].rule, `${name} must live in a top-level, unconditional :root`).toBe(':root');
     }
   });
 

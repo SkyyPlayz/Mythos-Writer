@@ -142,18 +142,19 @@ function topLevelTokens(value: string): string[] {
   return tokens;
 }
 
-/** The size slot of a `font` shorthand: the token before `/line-height`, else the first after style/variant/weight/stretch. */
+/** The size slot of a `font` shorthand: the token before `/line-height`, else the first after style/variant/weight/stretch (weight tokens included). */
 function fontShorthandSize(value: string): string | undefined {
   const tokens = topLevelTokens(value);
   const slash = tokens.indexOf('/');
   if (slash > 0) return tokens[slash - 1];
-  return tokens.find((t) => !FONT_PREFIX_KEYWORDS.has(t.toLowerCase()) && !/^\d+$/.test(t) && !/^-?[\d.]+deg$/.test(t));
+  return tokens.find((t) =>
+    !FONT_PREFIX_KEYWORDS.has(t.toLowerCase()) && !/^\d+$/.test(t) && !/^-?[\d.]+deg$/.test(t) && !/^var\(\s*--weight-[\w-]+\s*[,)]/.test(t));
 }
 
 /** A TS value named `font` is only a shorthand when it carries a size or a keyword; `{ font: 'Lora' }` is a family pick. */
 const looksLikeFontShorthand = (value: string) =>
   CSS_WIDE_KEYWORDS.has(value.trim().toLowerCase()) || SYSTEM_FONT_KEYWORDS.has(value.trim().toLowerCase()) ||
-  /\d(px|rem|em|%|pt|pc|vh|vw|vmin|vmax|ch|ex|q|mm|cm|in)\b|var\(|calc\(|min\(|max\(|clamp\(|\b(xx?-small|small|medium|large|xx?-large|xxx-large|larger|smaller)\b/i.test(value);
+  new RegExp(`(\\d|${HOLE})(px|rem|em|%|pt|pc|vh|vw|vmin|vmax|ch|ex|q|mm|cm|in)(?![\\w-])|(^|[\\s/])0(?=[\\s/]|$)|var\\(|calc\\(|min\\(|max\\(|clamp\\(|\\b(xx?-small|small|medium|large|xx?-large|xxx-large|larger|smaller)\\b`, 'i').test(value);
 
 function classify(property: string, rawValue: string, steps: readonly string[]): Verdict | undefined {
   if (property.startsWith('--')) {
@@ -530,6 +531,27 @@ describe('#1773 type-scale guard — scanner', () => {
       ['.c', 'font', 'var(--weight-sm) var(--text-sm)/var(--leading-sm) var(--font-sans)', 'on'],
       ['.d', 'font', 'italic bold var(--text-lg) serif', 'on'],
       ['.e', 'font', 'caption', 'neutral'],
+    ]);
+  });
+
+  it('finds the size slot after a weight token when there is no line-height', () => {
+    expect(css('.a { font: var(--weight-sm) var(--text-sm) sans-serif; } .b { font: var(--weight-sm) 13px sans-serif; }')).toEqual([
+      ['.a', 'font', 'var(--weight-sm) var(--text-sm) sans-serif', 'on'],
+      ['.b', 'font', 'var(--weight-sm) 13px sans-serif', 'off'],
+    ]);
+  });
+
+  it('counts a TS font shorthand whose size is a hole, a percentage or a bare zero, but not a family pick', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        const o = { a: { font: \`\${size}px serif\` }, b: { font: '0 sans-serif' }, c: { font: '100% sans-serif' }, d: { font: 'Lora' } };
+        el.style.cssText = 'font: 100% serif';
+      }
+    `)).toEqual([
+      ['paint >> o >> a', `${HOLE}px serif`, 'off'],
+      ['paint >> o >> b', '0 sans-serif', 'off'],
+      ['paint >> o >> c', '100% sans-serif', 'off'],
+      ['paint', '100% serif', 'off'],
     ]);
   });
 
