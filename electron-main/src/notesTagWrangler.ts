@@ -2,7 +2,11 @@
 // No Electron dependency; fully testable in Node.
 import fs from 'fs';
 import path from 'path';
-import { parseFrontmatter, serializeFrontmatter, writeVaultFileAtomic } from './vault.js';
+import { parseFrontmatter, serializeFrontmatter } from './vault.js';
+import { writeNoFollowAtomic } from './vault/noFollowWrite.js';
+import { safeVaultJoin } from './vault/safeVaultJoin.js';
+import { writeVaultFileNoFollow } from './vault/vaultFileWrite.js';
+import { publishNotesTagRefresh } from './notesTagRefresh.js';
 import { isSymlinkWriteRefusal, symlinkSkipLine } from './vault/writeErrors.js';
 
 // ─── Public types ───
@@ -205,10 +209,15 @@ export function renameNotesTag(
   // Write backup before mutating any file. Symlink leaves are already in `skipped`.
   saveTagBackup(notesRoot, { operation: 'rename', oldTag, newTag, files: affected });
 
+  const rewritten: string[] = [];
   let written = 0;
   for (const { relPath, newContent } of affected) {
-    if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) written++;
+    if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) {
+      written++;
+      rewritten.push(relPath);
+    }
   }
+  publishNotesTagRefresh(notesRoot, rewritten);
 
   return { affectedFiles: written, skipped };
 }
@@ -260,10 +269,15 @@ export function mergeNotesTags(
 
   saveTagBackup(notesRoot, { operation: 'merge', oldTag: sourceTag, newTag: targetTag, files: affected });
 
+  const rewritten: string[] = [];
   let written = 0;
   for (const { relPath, newContent } of affected) {
-    if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) written++;
+    if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) {
+      written++;
+      rewritten.push(relPath);
+    }
   }
+  publishNotesTagRefresh(notesRoot, rewritten);
 
   return { affectedFiles: written, skipped };
 }
@@ -297,12 +311,19 @@ function saveTagBackup(
     timestamp: ts,
     files: data.files.map((f) => ({ relPath: f.relPath, content: f.content })),
   };
-  writeVaultFileAtomic(notesRoot, `.tag-wrangler/backups/${ts}.json`, JSON.stringify(entry, null, 2));
+  // Aggregate backups hold every affected note. The 25 MiB note cap would
+  // refuse a backup of notes that are each under that cap. Containment and
+  // the no-follow writer still apply; the cap does not.
+  const rel = `.tag-wrangler/backups/${ts}.json`;
+  const absPath = safeVaultJoin(notesRoot, rel, { writeMode: true });
+  writeNoFollowAtomic(absPath, JSON.stringify(entry, null, 2), { durable: true, mkdir: true, rel });
 }
 
 function writeNoteOrSkip(notesRoot: string, relPath: string, content: string, skipped: string[]): boolean {
   try {
-    writeVaultFileAtomic(notesRoot, relPath, content);
+    // Not writeVaultFileAtomic: that marks a self-write and the notes watcher
+    // then skips the change, so search and note metadata stay stale.
+    writeVaultFileNoFollow(notesRoot, relPath, content);
     return true;
   } catch (err) {
     if (isSymlinkWriteRefusal(err)) {

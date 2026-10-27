@@ -1427,6 +1427,29 @@ describe('PR A symlink writes', () => {
     expect(fs.readFileSync(path.join(storyRoot, 'Zulu', 'book.md'), 'utf8')).toContain('edited');
   });
 
+  it('refuses a leaf swapped for an in-vault symlink between lstat and realpath', () => {
+    if (skipSymlink()) return;
+    const other = path.join(root, 'other.md');
+    const leaf = path.join(root, 'leaf.md');
+    fs.writeFileSync(other, 'OTHER');
+    fs.writeFileSync(leaf, 'ORIGINAL');
+    let swapped = false;
+    const orig = fs.lstatSync.bind(fs);
+    vi.spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike, opts?: { bigint?: boolean }) => {
+      const st = opts === undefined ? orig(p) : orig(p, opts as { bigint: true });
+      if (!swapped && pathKey(p) === pathKey(leaf)) {
+        swapped = true;
+        fs.unlinkSync(leaf);
+        fs.symlinkSync(other, leaf);
+      }
+      return st;
+    }) as typeof fs.lstatSync);
+    expect(swapped).toBe(false);
+    expect(() => writeVaultFileAtomic(root, 'leaf.md', 'NEW')).toThrow(/symlink leaf not allowed on write/);
+    expect(fs.readFileSync(other, 'utf8')).toBe('OTHER');
+    expect(fs.lstatSync(leaf).isSymbolicLink()).toBe(true);
+  });
+
   it('lstats a missing write leaf once and does not existsSync it', () => {
     const rel = 'missing-leaf.md';
     const leafPath = path.resolve(root, rel);

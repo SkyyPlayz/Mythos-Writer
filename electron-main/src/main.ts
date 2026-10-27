@@ -838,6 +838,7 @@ import {
 import { assertBrainstormPayloadValid } from './brainstormIpcSecurity.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { installNotesTagIndexFanout } from './notesTagRefresh.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
 import { getGraphNodes, getGraphEdges, handleNoteFileChanged, invalidateNoteGraphIndex } from './vaultGraph.js';
 import { renameNoteWithCascade, undoLastRenameCascade } from './renameCascade.js';
@@ -1800,6 +1801,20 @@ function notifyNotesVaultMutatedByApp(relPath: string): void {
     mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
   }
 }
+
+// Tag rewrites do not mark self-writes, and they also notify here so search,
+// entity refresh, and note metadata do not wait on the watcher.
+installNotesTagIndexFanout((notesRoot, rel) => {
+  try {
+    handleNoteFileChanged(notesRoot, path.join(notesRoot, rel));
+  } catch {
+    /* the rewrite already landed */
+  }
+  notifyNotesVaultMutatedByApp(rel);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:file-changed', { path: rel });
+  }
+});
 
 function scheduleReindex(changedRelPath?: string) {
   if (changedRelPath === undefined) {
