@@ -367,7 +367,9 @@ function scanCssText(text: string, scope: string, line: number, cssDestination =
   // A lone `font:` in plain text may be prose (`Font: Lora`), so it only counts when it carries a size.
   const loose: CssDecl[] = [];
   let rest = text;
-  if (rest.includes('<')) {
+  // Markup only where a real tag can start (`<div`, `</`, `<!`), and never in a string bound for cssText or a
+  // style attribute: a quoted "<" … ">" in CSS is text, and stripping it as a tag would delete the CSS between.
+  if (!cssDestination && /<[a-zA-Z!/?]/.test(rest)) {
     // Markup: style="…" attributes are declaration lists; SVG font-size="…" is a size; <style> bodies are sheets.
     rest = rest.replace(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/gi, (_, _q, body: string) => {
       for (const d of scanCss(body, true, line)) out.push({ ...d, selector: scope + SCOPE_JOIN + 'style=""' });
@@ -377,9 +379,11 @@ function scanCssText(text: string, scope: string, line: number, cssDestination =
       out.push({ selector: scope + SCOPE_JOIN + 'font-size=""', property: 'font-size', value, line });
       return ' ';
     });
-    rest = rest.replace(/<[^>]*>/g, ' ');
+    rest = rest.replace(/<[a-zA-Z!/?][^>]*>/g, ' ');
   }
   if (/font(-size)?\s*:|--(text|leading|weight)-[\w-]+\s*:|@property/i.test(rest)) {
+    // Comments go first, so a `{` or `;` inside one can't pick the scan mode.
+    rest = stripCssComments(rest);
     const { block, separated } = cssStructure(rest);
     for (const d of scanCss(rest, !block, line)) {
       (cssDestination || block || separated ? out : loose).push({ ...d, selector: d.selector ? scope + SCOPE_JOIN + d.selector : scope });
@@ -935,6 +939,22 @@ describe('#1773 type-scale guard — scanner', () => {
       ['paint', `${HOLE} serif`, 'off'],
       ['paint', `${HOLE} serif`, 'off'],
       ['paint', 'fontSpec', 'off'],
+    ]);
+  });
+
+  it('keeps CSS between a quoted < and > and ignores a { inside a comment when choosing the scan mode', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        el.style.cssText = '--open: "<"; font-size: 13px; --close: ">";';
+        const sheet = '.a::before { content: "<"; } .b { font-size: 12px; } .c::after { content: ">"; }';
+        el.style.cssText = '/* panel { */ font-size: 11px;';
+        el.innerHTML = '<span style="font-size:10px">x</span>';
+      }
+    `)).toEqual([
+      ['paint', '13px', 'off'],
+      ['paint >> sheet >> .b', '12px', 'off'],
+      ['paint', '11px', 'off'],
+      ['paint >> style=""', '10px', 'off'],
     ]);
   });
 

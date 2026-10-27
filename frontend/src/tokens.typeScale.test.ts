@@ -139,7 +139,21 @@ function scaleWrites(file: string, source: string, steps: readonly string[]): st
   const line = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
   const stepIn = new RegExp(`(${steps.map((n) => n.replace(/[-]/g, '\\-')).join('|')})(?![\\w-])`);
 
+  // How many times each name is bound anywhere in the file. A name bound more than once may be shadowed at
+  // the call site, so it is never folded: it stays unknown, which can only make the check stricter.
+  const bindings = new Map<string, number>();
+  const bind = (name: ts.Node) => {
+    if (ts.isIdentifier(name)) bindings.set(name.text, (bindings.get(name.text) ?? 0) + 1);
+    else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+      for (const el of name.elements) if (ts.isBindingElement(el)) bind(el.name);
+    }
+  };
   const collect = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isBindingElement(node)) {
+      if (!ts.isBindingElement(node)) bind(node.name);
+    } else if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
+      bind(node.name);
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
       ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const)) {
       consts.set(node.name.text, node.initializer);
@@ -157,7 +171,7 @@ function scaleWrites(file: string, source: string, steps: readonly string[]): st
     if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       return [...fold(e.left, depth + 1), ...fold(e.right, depth + 1)];
     }
-    if (ts.isIdentifier(e) && consts.has(e.text) && depth < 8) return fold(consts.get(e.text)!, depth + 1);
+    if (ts.isIdentifier(e) && consts.has(e.text) && bindings.get(e.text) === 1 && depth < 8) return fold(consts.get(e.text)!, depth + 1);
     return [null];
   };
   const canName = (parts: Array<string | null>) => {
@@ -265,6 +279,16 @@ describe('#1773 theme.ts — never writes the type scale at runtime', () => {
   it('no string, cssText or setProperty name in theme.ts can write a step, however the name is built', () => {
     const writes = scaleWrites('theme.ts', themeTs, stepNames);
     expect(writes, writes.join('\n')).toEqual([]);
+  });
+
+  it('does not fold a const that another scope shadows, so the override behind it is still caught', () => {
+    expect(scaleWrites('fixture.ts', `
+      const prefix = '--text-';
+      export function a(root: HTMLElement) { root.style.setProperty(prefix + 'sm', '13px'); }
+      export function b(root: HTMLElement) { const prefix = '--neon-'; root.style.setProperty(prefix + 'glow', '#fff'); }
+    `, stepNames).map((w) => w.replace(/ could set .*/, ' could set …'))).toEqual([
+      'fixture.ts:3 setProperty(prefix + \'sm\') could set …',
+    ]);
   });
 
   it('catches step writes built from templates, concatenation, consts, loops and cssText', () => {
