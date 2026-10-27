@@ -15,6 +15,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
 ### Fixed
+- Chapter text and story comments no longer show a refused save as successful. A note that is a symbolic link stays out of the tag list, and renaming or merging tags does not read or back up that link. ([#1748](https://github.com/SkyyPlayz/Mythos-Writer/pull/1748))
 - Tests now clean up their temporary folders, even when interrupted ([#1758](https://github.com/SkyyPlayz/Mythos-Writer/pull/1758)).
 - Electron 44.9.1 and undici 7.30.1 close high-severity advisories in the desktop shell and its download client (compromised certificate intermediates, and request-parser crashes). ([#1753](https://github.com/SkyyPlayz/Mythos-Writer/pull/1753))
 - Updated the build tool (vite) to close a high-severity security advisory in the dev server. ([#1745](https://github.com/SkyyPlayz/Mythos-Writer/pull/1745))

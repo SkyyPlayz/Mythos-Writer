@@ -97,7 +97,13 @@ export default function ChapterInterlude({ chapter, storyId }: ChapterInterludeP
     const fm = fmRawRef.current ?? buildChapterFrontmatter(chapter, storyId);
     fmRawRef.current = fm;
     window.api.writeVault(metaPath, fm + markdown)
-      .then(() => setSaveStatus('saved'))
+      .then((res) => {
+        if (res && typeof res.error === 'string' && res.error) {
+          setSaveStatus('error');
+          return;
+        }
+        setSaveStatus('saved');
+      })
       .catch(() => setSaveStatus('error'));
   }, [metaPath, chapter, storyId]);
 

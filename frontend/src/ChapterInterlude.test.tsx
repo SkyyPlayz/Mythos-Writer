@@ -129,6 +129,21 @@ describe('ChapterInterlude (GH #631)', () => {
     expect(await screen.findByText(/save failed/i)).toBeInTheDocument();
   });
 
+  it('does not treat a fulfilled write refusal as saved', async () => {
+    stubApi({
+      writeVault: vi.fn().mockResolvedValue({
+        path: '01 - Opening/chapter.md',
+        bytes: 0,
+        error: "Couldn't save chapter.md: it's a shortcut (symbolic link). Save it under a new name instead.",
+      }),
+    });
+    render(<ChapterInterlude chapter={chapter} />);
+    await waitFor(() => expect(screen.getByTestId('chapter-interlude')).toBeInTheDocument());
+    await act(async () => { editorProps.onChangeMarkdown?.('x'); });
+    expect(await screen.findByText(/save failed/i)).toBeInTheDocument();
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+  });
+
   it('normalizes Windows-style chapter paths to vault-relative posix', async () => {
     render(<ChapterInterlude chapter={{ ...chapter, path: '01 - Opening\\Sub' }} />);
     await waitFor(() => expect(window.api.readVault).toHaveBeenCalledWith('01 - Opening/Sub/chapter.md'));

@@ -331,7 +331,15 @@ export function writeNoFollowAtomic(
 
     hooksFor(deps).beforeRename(absPath);
 
-    if (network) {
+    if (!skipId) {
+      const again = fsImpl.lstatSync(tmp, { bigint: true });
+      if (isLinkStats(again, tmp, fsImpl)) {
+        throw new VaultWriteRefusedError('LEAF_LINK', rel);
+      }
+      if (fst.dev !== again.dev || fst.ino !== again.ino) {
+        throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
+      }
+    } else if (network) {
       const listed = fsImpl.lstatSync(tmp);
       if (isLinkStats(listed, tmp, fsImpl)) {
         throw new VaultWriteRefusedError('LEAF_LINK', rel);
@@ -369,10 +377,38 @@ export function writeNoFollowAtomic(
 }
 
 /**
- * Append `line` to `absPath`. O_NOFOLLOW is the only POSIX guard against a
- * pre-existing leaf link (do not lstat-refuse before open — that would make
- * removing O_NOFOLLOW unkillable).
+ * Append `line` to `absPath`. An existing name is opened without O_CREAT so
+ * O_NOFOLLOW stays the POSIX guard (do not lstat-refuse before that open —
+ * removing O_NOFOLLOW must stay visible). A missing name is created with
+ * O_EXCL, which does not follow a dangling link.
  */
+function openAppendFd(absPath: string, rel: string, deps: NoFollowDeps): number {
+  const fsImpl = deps.fs;
+  const existing = openFlags(deps, fsImpl.constants.O_WRONLY | fsImpl.constants.O_APPEND);
+  try {
+    return fsImpl.openSync(absPath, existing);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP') {
+      throw new VaultWriteRefusedError('LEAF_LINK', rel, undefined, 'ELOOP');
+    }
+    if (code !== 'ENOENT') throw err;
+  }
+  const created = openFlags(
+    deps,
+    fsImpl.constants.O_WRONLY | fsImpl.constants.O_APPEND | fsImpl.constants.O_CREAT | fsImpl.constants.O_EXCL,
+  );
+  try {
+    return fsImpl.openSync(absPath, created);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP' || code === 'EEXIST') {
+      throw new VaultWriteRefusedError('LEAF_LINK', rel, undefined, code);
+    }
+    throw err;
+  }
+}
+
 export function appendNoFollow(
   absPath: string,
   line: string,
@@ -381,19 +417,7 @@ export function appendNoFollow(
   const deps = depsOf(options);
   const rel = options.rel ?? path.basename(absPath);
   const fsImpl = deps.fs;
-  const flags = openFlags(
-    deps,
-    fsImpl.constants.O_WRONLY | fsImpl.constants.O_APPEND | fsImpl.constants.O_CREAT,
-  );
-  let fd: number;
-  try {
-    fd = fsImpl.openSync(absPath, flags);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ELOOP') {
-      throw new VaultWriteRefusedError('LEAF_LINK', rel, undefined, 'ELOOP');
-    }
-    throw err;
-  }
+  const fd = openAppendFd(absPath, rel, deps);
   try {
     hooksFor(deps).afterOpen(absPath);
     const fst = fsImpl.fstatSync(fd, { bigint: true });
@@ -401,7 +425,15 @@ export function appendNoFollow(
     if (isLinkStats(lst, absPath, fsImpl)) {
       throw new VaultWriteRefusedError('LEAF_LINK', rel);
     }
-    if (fst.ino !== 0n && lst.ino !== 0n && (fst.dev !== lst.dev || fst.ino !== lst.ino)) {
+    if (fst.ino === 0n || lst.ino === 0n) {
+      const policy = zeroIndexPolicy(path.dirname(absPath), deps, false);
+      if (policy === 'unsupported') {
+        throw new VaultWriteRefusedError('VOLUME_UNSUPPORTED', rel, volumeUnsupportedText(fileDisplayName(rel)));
+      }
+      if (policy === 'network' && fst.size !== lst.size) {
+        throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
+      }
+    } else if (fst.dev !== lst.dev || fst.ino !== lst.ino) {
       throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
     }
     if (fst.nlink > 1n) {
@@ -436,8 +468,7 @@ export function copyNoFollowAtomic(
     if (st.size > NOFOLLOW_COPY_MAX_BYTES) {
       throw new VaultFileTooLargeError(st.size, NOFOLLOW_COPY_MAX_BYTES);
     }
-    const buf = Buffer.alloc(st.size);
-    if (st.size > 0) fsImpl.readSync(fd, buf, 0, st.size, 0);
+    const buf = readExact(fsImpl, fd, st.size);
     writeNoFollowAtomic(absDst, buf, {
       durable: options.durable ?? false,
       mkdir: options.mkdir ?? true,
@@ -451,6 +482,19 @@ export function copyNoFollowAtomic(
       /* ignore */
     }
   }
+}
+
+function readExact(fsImpl: typeof fs, fd: number, size: number): Buffer {
+  const buf = Buffer.alloc(size);
+  let offset = 0;
+  while (offset < size) {
+    const n = fsImpl.readSync(fd, buf, offset, size - offset, offset);
+    if (n === 0) {
+      throw new Error(`premature EOF: expected ${size} bytes, got ${offset}`);
+    }
+    offset += n;
+  }
+  return buf;
 }
 
 /** A pre-placed `<manifest>.tmp` symlink is refused. A regular leftover is not. */

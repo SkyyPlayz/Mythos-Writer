@@ -31,21 +31,26 @@ export interface TagMergeResult {
 
 // ─── Internal helpers ───
 
-/** Walk the notes vault and return all .md relative paths, ignoring dotfile dirs. */
-function collectNotesMdFiles(dir: string, base = ''): string[] {
-  const results: string[] = [];
+interface CollectedNote {
+  rel: string;
+  symlink: boolean;
+}
+
+/** Walk the notes vault. Symlink leaves are recorded and never opened. */
+function collectNotesMdFiles(dir: string, base = ''): CollectedNote[] {
+  const results: CollectedNote[] = [];
   if (!fs.existsSync(dir)) return results;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
+    const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isSymbolicLink()) {
-      if (entry.name.endsWith('.md')) results.push(base ? `${base}/${entry.name}` : entry.name);
+      if (entry.name.endsWith('.md')) results.push({ rel, symlink: true });
       continue;
     }
-    const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       results.push(...collectNotesMdFiles(path.join(dir, entry.name), rel));
     } else if (entry.name.endsWith('.md')) {
-      results.push(rel);
+      results.push({ rel, symlink: false });
     }
   }
   return results;
@@ -133,7 +138,9 @@ export function listNotesTags(notesRoot: string): TagEntry[] {
   const files = collectNotesMdFiles(notesRoot);
   const tagData = new Map<string, { count: number; paths: string[] }>();
 
-  for (const relPath of files) {
+  for (const file of files) {
+    if (file.symlink) continue;
+    const relPath = file.rel;
     const tags = readFileTags(notesRoot, relPath);
     for (const tag of tags) {
       if (!tagData.has(tag)) tagData.set(tag, { count: 0, paths: [] });
@@ -164,8 +171,14 @@ export function renameNotesTag(
 
   const files = collectNotesMdFiles(notesRoot);
   const affected: Array<{ relPath: string; content: string; newContent: string }> = [];
+  const skipped: string[] = [];
 
-  for (const relPath of files) {
+  for (const file of files) {
+    if (file.symlink) {
+      skipped.push(symlinkSkipLine(file.rel));
+      continue;
+    }
+    const relPath = file.rel;
     const absPath = path.join(notesRoot, relPath);
     let content: string;
     try {
@@ -187,12 +200,11 @@ export function renameNotesTag(
     affected.push({ relPath, content, newContent });
   }
 
-  if (affected.length === 0) return { affectedFiles: 0, skipped: [] };
+  if (affected.length === 0) return { affectedFiles: 0, skipped };
 
-  // Write backup before mutating any file
+  // Write backup before mutating any file. Symlink leaves are already in `skipped`.
   saveTagBackup(notesRoot, { operation: 'rename', oldTag, newTag, files: affected });
 
-  const skipped: string[] = [];
   let written = 0;
   for (const { relPath, newContent } of affected) {
     if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) written++;
@@ -217,8 +229,14 @@ export function mergeNotesTags(
 
   const files = collectNotesMdFiles(notesRoot);
   const affected: Array<{ relPath: string; content: string; newContent: string }> = [];
+  const skipped: string[] = [];
 
-  for (const relPath of files) {
+  for (const file of files) {
+    if (file.symlink) {
+      skipped.push(symlinkSkipLine(file.rel));
+      continue;
+    }
+    const relPath = file.rel;
     const absPath = path.join(notesRoot, relPath);
     let content: string;
     try {
@@ -238,11 +256,10 @@ export function mergeNotesTags(
     affected.push({ relPath, content, newContent });
   }
 
-  if (affected.length === 0) return { affectedFiles: 0, skipped: [] };
+  if (affected.length === 0) return { affectedFiles: 0, skipped };
 
   saveTagBackup(notesRoot, { operation: 'merge', oldTag: sourceTag, newTag: targetTag, files: affected });
 
-  const skipped: string[] = [];
   let written = 0;
   for (const { relPath, newContent } of affected) {
     if (writeNoteOrSkip(notesRoot, relPath, newContent, skipped)) written++;

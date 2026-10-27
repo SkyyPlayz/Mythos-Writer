@@ -68,7 +68,7 @@ import {
   renameNoteWithCascade,
   undoLastRenameCascade,
 } from '../renameCascade.js';
-import { renameNotesTag } from '../notesTagWrangler.js';
+import { listNotesTags, renameNotesTag } from '../notesTagWrangler.js';
 import { writeReIdFile } from '../mythosFormat/v2IdDedupe.js';
 import { GENRE_SEED_NOTE_PATHS, writeGenreStarterNotes } from '../mythosFormat/genreSeed.js';
 import { VEYNN_STORY_FOLDER, writeVeynnSeed } from '../mythosFormat/veynnSeed.js';
@@ -340,6 +340,22 @@ describe('PR A symlink writes', () => {
 
   function withProbe(kind: VolumeKind) {
     return { ...defaultDeps, fs: zeroInoFs(), probeVolume: () => kind };
+  }
+
+  function readSyncFs(mode: 'short' | 'eof'): typeof fs {
+    const real = fs.readSync.bind(fs);
+    return new Proxy(fs, {
+      get(target, prop, receiver) {
+        if (prop === 'readSync') {
+          return (fd: number, buf: NodeJS.ArrayBufferView, offset: number, length: number, position: number) => {
+            if (mode === 'eof') return 0;
+            return real(fd, buf, offset, Math.min(2, length), position);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
   }
 
   it('A1 refuses a dangling outside leaf on read and write', () => {
@@ -668,18 +684,105 @@ describe('PR A symlink writes', () => {
     }
   });
 
+  it('rechecks a same-size temp swap made in beforeRename', () => {
+    const payload = 'payload-bytes';
+    const target = path.join(root, 'late-swap.md');
+    const decoy = path.join(root, 'late-decoy.md');
+    fs.writeFileSync(decoy, payload);
+    setNoFollowHooksForTests({
+      afterOpen() {},
+      beforeRename(absPath) {
+        const dir = path.dirname(absPath);
+        const tmpName = fs.readdirSync(dir).find((name) => name.startsWith(`${path.basename(absPath)}.`) && name.endsWith('.tmp'));
+        expect(tmpName).toBeTruthy();
+        const full = path.join(dir, tmpName as string);
+        fs.unlinkSync(full);
+        fs.linkSync(decoy, full);
+      },
+    });
+    try {
+      expect(() => writeNoFollowAtomic(target, payload, { durable: false, rel: 'late-swap.md' })).toThrow(VaultWriteRefusedError);
+      try {
+        writeNoFollowAtomic(target, payload, { durable: false, rel: 'late-swap.md' });
+      } catch (err) {
+        expect((err as VaultWriteRefusedError).code).toBe('HANDLE_MISMATCH');
+      }
+      expect(fs.existsSync(target)).toBe(false);
+      expect(fs.readFileSync(decoy, 'utf8')).toBe(payload);
+    } finally {
+      resetNoFollowHooksForTests();
+    }
+  });
+
+  it('append does not create through a dangling link when O_NOFOLLOW is absent', () => {
+    if (skipSymlink()) return;
+    const outside = path.join(tmp, 'append-dangling-out.txt');
+    const link = path.join(root, 'dangling-append.md');
+    fs.symlinkSync(outside, link);
+    const win = { ...defaultDeps, platform: 'win32' as const };
+    expect(() => appendNoFollow(link, 'more', { rel: 'dangling-append.md', deps: win })).toThrow(VaultWriteRefusedError);
+    expect(fs.existsSync(outside)).toBe(false);
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+
+    const created = path.join(root, 'append-new.md');
+    appendNoFollow(created, 'hello', { rel: 'append-new.md' });
+    expect(fs.readFileSync(created, 'utf8')).toBe('hello');
+    appendNoFollow(created, '!', { rel: 'append-new.md' });
+    expect(fs.readFileSync(created, 'utf8')).toBe('hello!');
+  });
+
+  it('append refuses a zero-index volume the atomic writer rejects', () => {
+    const dest = path.join(root, 'append-zero.md');
+    fs.writeFileSync(dest, 'KEEP');
+    expect(() => appendNoFollow(dest, 'X', { rel: 'append-zero.md', deps: withProbe('local') })).toThrow(VaultWriteRefusedError);
+    try {
+      appendNoFollow(dest, 'X', { rel: 'append-zero.md', deps: withProbe('local') });
+    } catch (err) {
+      expect((err as VaultWriteRefusedError).code).toBe('VOLUME_UNSUPPORTED');
+    }
+    expect(fs.readFileSync(dest, 'utf8')).toBe('KEEP');
+
+    const fat = path.join(root, 'append-fat.md');
+    fs.writeFileSync(fat, 'KEEP');
+    appendNoFollow(fat, 'Y', { rel: 'append-fat.md', deps: withProbe('fat') });
+    expect(fs.readFileSync(fat, 'utf8')).toBe('KEEPY');
+  });
+
+  it('copy loops a short read and refuses a premature end', () => {
+    const src = path.join(root, 'short-src.txt');
+    const dst = path.join(root, 'short-dst.txt');
+    fs.writeFileSync(src, 'abcdef');
+    copyNoFollowAtomic(src, dst, { durable: false, deps: { ...defaultDeps, fs: readSyncFs('short') } });
+    expect(fs.readFileSync(dst, 'utf8')).toBe('abcdef');
+
+    const eofSrc = path.join(root, 'eof-src.txt');
+    const eofDst = path.join(root, 'eof-dst.txt');
+    fs.writeFileSync(eofSrc, 'abcdef');
+    expect(() => copyNoFollowAtomic(eofSrc, eofDst, { durable: false, deps: { ...defaultDeps, fs: readSyncFs('eof') } })).toThrow(/premature EOF/);
+    expect(fs.existsSync(eofDst)).toBe(false);
+  });
+
   it('A15c refuses a same-size temp swap that only the identity re-check can see', () => {
     const payload = 'hello';
     const sameSize = path.join(root, 'same-size.md');
     const decoy = path.join(root, 'decoy-same.md');
     fs.writeFileSync(decoy, payload);
+    let openedPath = '';
+    let kept = '';
     setNoFollowHooksForTests({
       afterOpen(opened) {
+        openedPath = opened;
+        kept = `${opened}.keep`;
+        fs.linkSync(opened, kept);
         fs.writeFileSync(opened, payload);
         fs.unlinkSync(opened);
         fs.linkSync(decoy, opened);
       },
-      beforeRename() {},
+      beforeRename() {
+        // Put the opened inode back so a later recheck cannot see this swap.
+        fs.unlinkSync(openedPath);
+        fs.linkSync(kept, openedPath);
+      },
     });
     try {
       expect(() => writeNoFollowAtomic(sameSize, payload, { durable: false, rel: 'same-size.md' })).toThrow(VaultWriteRefusedError);
@@ -1060,6 +1163,35 @@ describe('PR A symlink writes', () => {
     fs.symlinkSync(outside, path.join(root, `${TIMELINES_FILENAME}.corrupt-${stamp}`));
     expect(() => readTimelinesStore(root)).toThrow();
     expect(fs.readFileSync(outside, 'utf8')).toBe('KEEP');
+  });
+
+  it('tag listing ignores an outside note symlink and rename does not back it up', () => {
+    if (skipSymlink()) return;
+    const outsideBody = '---\ntags: [secret-leak]\n---\nSECRET\n';
+    const localBody = '---\ntags: [local]\n---\nlocal\n';
+    fs.writeFileSync(path.join(root, 'a.md'), localBody);
+    const outside = path.join(tmp, 'tagged-secret.md');
+    fs.writeFileSync(outside, outsideBody);
+    fs.symlinkSync(outside, path.join(root, 'link.md'));
+
+    const names = listNotesTags(root).map((entry) => entry.fullName);
+    expect(names).toContain('local');
+    expect(names).not.toContain('secret-leak');
+
+    const before = fs.statSync(outside).mtimeMs;
+    const result = renameNotesTag(root, 'local', 'renamed');
+    expect(result.skipped).toContain('link.md: skipped (symlink)');
+    expect(result.affectedFiles).toBe(1);
+    expect(fs.readFileSync(outside, 'utf8')).toBe(outsideBody);
+    expect(fs.statSync(outside).mtimeMs).toBe(before);
+    const backupDir = path.join(root, '.tag-wrangler', 'backups');
+    const backups = fs.readdirSync(backupDir).filter((name) => name.endsWith('.json'));
+    expect(backups).toHaveLength(1);
+    const backup = JSON.parse(fs.readFileSync(path.join(backupDir, backups[0]), 'utf8')) as {
+      files: Array<{ relPath: string; content: string }>;
+    };
+    expect(backup.files.map((file) => file.relPath)).toEqual(['a.md']);
+    expect(JSON.stringify(backup)).not.toContain('SECRET');
   });
 
   it('A24 tag rewrite lists one symlink and writes the other notes', () => {
