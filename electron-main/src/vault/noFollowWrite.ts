@@ -253,8 +253,17 @@ function cleanupTemp(fsImpl: typeof fs, fd: number | undefined, tmp: string | un
 
 type ZeroPolicy = 'skip' | 'network' | 'unsupported';
 
-/** Write every byte. A short writeSync must not be synced and renamed as a full file. */
-function writeAll(fsImpl: typeof fs, fd: number, buf: Buffer): void {
+/**
+ * Write every byte, then sync the way the caller asked.
+ * `true` is fdatasync, `'fsync'` is fsync, and a missing value leaves the fd unsynced.
+ * A short writeSync must not be synced and renamed as a full file.
+ */
+function writeAll(
+  fsImpl: typeof fs,
+  fd: number,
+  buf: Buffer,
+  sync: boolean | 'fsync' | undefined,
+): void {
   let offset = 0;
   while (offset < buf.length) {
     const wrote = fsImpl.writeSync(fd, buf, offset, buf.length - offset);
@@ -263,6 +272,8 @@ function writeAll(fsImpl: typeof fs, fd: number, buf: Buffer): void {
     }
     offset += wrote;
   }
+  if (sync === true) fsImpl.fdatasyncSync(fd);
+  else if (sync === 'fsync') fsImpl.fsyncSync(fd);
 }
 
 function zeroIndexPolicy(dir: string, deps: NoFollowDeps, exempt: boolean): ZeroPolicy {
@@ -337,9 +348,7 @@ export function writeNoFollowAtomic(
       throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
     }
 
-    writeAll(fsImpl, fd, buf);
-    if (options.durable === true) fsImpl.fdatasyncSync(fd);
-    else if (options.durable === 'fsync') fsImpl.fsyncSync(fd);
+    writeAll(fsImpl, fd, buf, options.durable);
 
     hooksFor(deps).beforeRename(absPath);
 
@@ -465,7 +474,7 @@ export function appendNoFollow(
     if (fst.nlink > 1n) {
       throw new VaultWriteRefusedError('HARD_LINK', rel);
     }
-    fsImpl.writeSync(fd, Buffer.from(line, 'utf-8'));
+    writeAll(fsImpl, fd, Buffer.from(line, 'utf-8'), 'fsync');
   } catch (err) {
     try {
       fsImpl.closeSync(fd);

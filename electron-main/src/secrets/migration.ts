@@ -4,7 +4,7 @@
 // Store-first + read-back before blanking JSON (B2). Masks are never migrated
 // (B4 — left for heal-on-read). Failures leave plaintext for the next boot.
 
-import fs from 'fs';
+import nodePath from 'path';
 import type { AppSettings } from '../ipc.js';
 import {
   getKeyField,
@@ -13,6 +13,7 @@ import {
   type KeyFieldPath,
 } from '../settings-masking.js';
 import { writeJsonAtomicSecure } from './atomicWrite.js';
+import { readUserDataFile } from './userDataRead.js';
 import { KEY_PATH_SECRET_ENTRIES } from './keyFieldMap.js';
 import type { SecretsStore } from './store.js';
 
@@ -47,12 +48,13 @@ export function migrateSecretsFromSettingsFile(
   settingsPath: string,
   store: SecretsStore,
 ): MigrationResult {
-  if (!fs.existsSync(settingsPath)) {
+  const disk = readUserDataFile(settingsPath, nodePath.dirname(settingsPath));
+  if (disk.status !== 'ok') {
     return { migrated: false, movedIds: [] };
   }
   let parsed: AppSettings;
   try {
-    parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+    parsed = JSON.parse(disk.data.toString('utf-8')) as AppSettings;
   } catch {
     return { migrated: false, movedIds: [] };
   }

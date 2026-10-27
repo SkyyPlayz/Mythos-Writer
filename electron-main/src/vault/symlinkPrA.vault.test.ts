@@ -782,6 +782,102 @@ describe('PR A symlink writes', () => {
     console.log('short-write complete', payload.length);
   });
 
+  it('appends every byte when writeSync returns a short count', () => {
+    const dest = path.join(root, 'append-short.md');
+    fs.writeFileSync(dest, 'HEAD');
+    const payload = 'abcdefghij';
+    const fsync = vi.spyOn(fs, 'fsyncSync');
+    appendNoFollow(dest, payload, {
+      rel: 'append-short.md',
+      deps: { ...defaultDeps, fs: shortWriteFs() },
+    });
+    expect(fs.readFileSync(dest, 'utf8')).toBe(`HEAD${payload}`);
+    expect(fsync).toHaveBeenCalled();
+    fsync.mockRestore();
+    console.log('append-short complete', payload.length);
+  });
+
+  function raceReadFs(file: string, swap: () => void): { fsImpl: typeof fs; flags: () => number } {
+    let phase: 'init' | 'realpath-done' | 'checked' = 'init';
+    let seen = 0;
+    const fsImpl = new Proxy(fs, {
+      get(target, prop, receiver) {
+        if (prop === 'realpathSync') {
+          const native = (p: fs.PathLike) => {
+            const resolved = fs.realpathSync.native(p);
+            if (String(p) === file) phase = 'realpath-done';
+            return resolved;
+          };
+          return Object.assign((p: fs.PathLike) => fs.realpathSync(p), { native });
+        }
+        if (prop === 'lstatSync') {
+          return (p: fs.PathLike) => {
+            const st = fs.lstatSync(p);
+            if (String(p) === file && phase === 'realpath-done') phase = 'checked';
+            return st;
+          };
+        }
+        if (prop === 'readFileSync') {
+          return (...args: Parameters<typeof fs.readFileSync>) => {
+            if (String(args[0]) === file && phase === 'realpath-done') swap();
+            return fs.readFileSync(...args);
+          };
+        }
+        if (prop === 'openSync') {
+          return (p: fs.PathLike, flags: fs.OpenMode, mode?: fs.Mode) => {
+            if (String(p) === file && typeof flags === 'number') seen = flags;
+            if (String(p) === file && phase === 'checked') swap();
+            return mode === undefined ? fs.openSync(p, flags) : fs.openSync(p, flags, mode);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    }) as typeof fs;
+    return { fsImpl, flags: () => seen };
+  }
+
+  // win32 open does not implement the POSIX no-follow flag, so this swap cannot be proved there.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a settings file swapped for a symlink between the check and the read (skipped on win32: POSIX open does not follow a file link)',
+    () => {
+      const userData = path.join(tmp, 'swap-userdata');
+      fs.mkdirSync(userData);
+      const file = path.join(userData, 'settings.json');
+      const outside = path.join(tmp, 'swap-outside.json');
+      fs.writeFileSync(file, 'INSIDE');
+      fs.writeFileSync(outside, 'OUTSIDE-BYTES');
+      const raced = raceReadFs(file, () => {
+        fs.rmSync(file);
+        fs.symlinkSync(outside, file);
+      });
+      const result = readUserDataFile(file, userData, raced.fsImpl);
+      expect(result).toEqual({ status: 'denied' });
+      expect(raced.flags() & fs.constants.O_NOFOLLOW).toBe(fs.constants.O_NOFOLLOW);
+      expect(fs.readFileSync(outside, 'utf8')).toBe('OUTSIDE-BYTES');
+      console.log('userdata swap denied');
+    },
+  );
+
+  // A replaced regular file keeps the path and is a file, so only dev/ino can see it.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a settings file replaced with a different file between the check and the read (skipped on win32: dev/ino is not a stable file identity)',
+    () => {
+      const userData = path.join(tmp, 'inode-userdata');
+      fs.mkdirSync(userData);
+      const file = path.join(userData, 'settings.json');
+      const replacement = path.join(userData, 'replacement.json');
+      fs.writeFileSync(file, 'INSIDE');
+      fs.writeFileSync(replacement, 'SWAPPED-BYTES');
+      const raced = raceReadFs(file, () => {
+        fs.renameSync(replacement, file);
+      });
+      const result = readUserDataFile(file, userData, raced.fsImpl);
+      expect(result).toEqual({ status: 'denied' });
+      console.log('userdata inode denied');
+    },
+  );
+
   // win32 has no POSIX mkfifo, so this hang cannot be set up there.
   it.skipIf(process.platform === 'win32')(
     'refuses a FIFO leaf without hanging (skipped on win32: no POSIX mkfifo)',

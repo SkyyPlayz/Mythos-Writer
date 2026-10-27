@@ -111,6 +111,20 @@ describe('assertAiWritable schema (M-B2k)', () => {
     expect(assertAiWritable(root, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'refuses a manifest that is a symlink to another file (skipped on win32: POSIX open does not follow a file link)',
+    () => {
+      const root = tmp('mythos-b2-link-');
+      const outsideDir = tmp('mythos-b2-link-out-');
+      const outside = path.join(outsideDir, 'manifest.json');
+      fs.writeFileSync(outside, JSON.stringify(emptyManifest()), 'utf8');
+      fs.symlinkSync(outside, path.join(root, 'manifest.json'));
+      expect(assertAiWritable(root, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
+      expect(fs.readFileSync(outside, 'utf8')).toContain('"schemaVersion":1');
+      console.log('manifest symlink refused');
+    },
+  );
+
   it('refuses every write when the manifest file is missing or corrupt', () => {
     const missing = tmp('mythos-b2-miss-');
     expect(assertAiWritable(missing, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });

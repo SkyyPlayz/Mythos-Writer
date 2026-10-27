@@ -32,6 +32,26 @@ function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf-8').digest('hex');
 }
 
+/** Read a listed note from the fd opened without following a replacement symlink. */
+function readNoteText(filePath: string): string {
+  const flags = (fs.constants?.O_RDONLY ?? 0) | (fs.constants?.O_NOFOLLOW ?? 0);
+  const fd = fs.openSync(filePath, flags);
+  try {
+    const opened = fs.fstatSync(fd);
+    if (!opened.isFile()) throw new Error('not a regular file');
+    const buf = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < buf.length) {
+      const n = fs.readSync(fd, buf, offset, buf.length - offset, offset);
+      if (n === 0) break;
+      offset += n;
+    }
+    return buf.subarray(0, offset).toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function listMdFilesRecursive(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   const results: string[] = [];
@@ -61,7 +81,7 @@ export function buildEntityIndex(notesVaultRoot: string): EntityIndexEntry[] {
     for (const filePath of files) {
       let content = '';
       try {
-        content = fs.readFileSync(filePath, 'utf-8');
+        content = readNoteText(filePath);
       } catch {
         continue;
       }
@@ -96,7 +116,7 @@ export function loadEntityIndex(notesVaultRoot: string): EntityIndexEntry[] {
     for (const filePath of listMdFilesRecursive(dir)) {
       let content = '';
       try {
-        content = fs.readFileSync(filePath, 'utf-8');
+        content = readNoteText(filePath);
       } catch {
         continue;
       }
