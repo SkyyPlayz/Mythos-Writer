@@ -84,7 +84,9 @@
  *     pieces or holes (`'font-' + 'size: 13px'`, `` `${prop}: 13px` ``);
  *   - `@property` outside tokens.css when it is built at runtime: literal
  *     `@property --text-*` rules and literal `CSS.registerProperty` names are
- *     flagged, generated ones are not.
+ *     flagged, generated ones are not;
+ *   - Tailwind-style arbitrary sizes in class names (`text-[13px]`,
+ *     `text-[0.8rem]`): class strings are not read as CSS.
  *
  * The human review gate (Critic + Shield + Probe, docs/MERGE_GATE.md) covers
  * these.
@@ -1202,6 +1204,18 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
   it('the allowlist ceilings stay within their T0 counts and total (a ceiling may fall, never rise)', () => {
     const problems = ceilingBoundProblems(T0_ALLOWLIST_CEILINGS);
     expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  it('the allowlist ceilings never sum past the T0 allowlist total', () => {
+    expect(sum(T0_ALLOWLIST_CEILINGS)).toBeLessThanOrEqual(T0.allowlistTotal);
+  });
+
+  it('paying down stays green: a ceiling lowered by 1, and an allowlist.json entry lowered by 1', () => {
+    const [file, n] = Object.entries(T0_ALLOWLIST_CEILINGS).find(([, c]) => c > 0) ?? ['', 0];
+    expect(ceilingBoundProblems({ ...T0_ALLOWLIST_CEILINGS, [file]: n - 1 })).toEqual([]);
+    const entry = allowlist.find((e) => e.count > 1) ?? allowlist[0];
+    const paid = allowlist.flatMap((e) => (e === entry ? (e.count > 1 ? [{ ...e, count: e.count - 1 }] : []) : [e]));
+    expect(allowlistProblems(paid, new Map(paid.map((e) => [keyOf(e), e.count])))).toEqual([]);
   });
 
   it('allowlist.json keeps every file at or under its T0 ceiling', () => {
