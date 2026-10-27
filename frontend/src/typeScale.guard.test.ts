@@ -774,6 +774,26 @@ function allowlistByFile(entries: readonly AllowEntry[]): Record<string, number>
   return byFile;
 }
 
+/**
+ * Each file's allowlisted count at T0: the upper bound for T0_ALLOWLIST_CEILINGS. A ceiling may be lowered
+ * (paydown) but never raised above this, and the ceilings may never sum to more than T0.allowlistTotal.
+ */
+const T0_ALLOWLIST_FILE_COUNTS: Counts = {
+  'BlockEditor.css': 2,
+  'story/ManuscriptView.css': 10,
+  'story/ManuscriptView.tsx': 1,
+  'story/pageMode.tsx': 5,
+};
+
+/** Ceilings above their file's T0 count, for a file that had none at T0, or summing past the T0 total. */
+function ceilingBoundProblems(ceilings: Counts, t0Counts: Counts = T0_ALLOWLIST_FILE_COUNTS, t0Total: number = T0.allowlistTotal): string[] {
+  const perFile = Object.entries(ceilings)
+    .filter(([file, n]) => n > (t0Counts[file] ?? 0))
+    .map(([file, n]) => `CEILING-RAISED ${file}: ceiling ${n}, T0 count ${t0Counts[file] ?? 0}`);
+  const total = sum(ceilings) > t0Total ? [`CEILING-TOTAL: ceilings sum to ${sum(ceilings)}, T0 total ${t0Total}`] : [];
+  return [...perFile, ...total];
+}
+
 /** The limits an allowlist is held to: per-file ceilings and the entry / usage totals. */
 interface AllowLimits {
   ceilings: Counts;
@@ -1179,6 +1199,11 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
       'Raising one needs the owner\'s sign-off and an edit to T0 in this file.').toEqual([]);
   });
 
+  it('the allowlist ceilings stay within their T0 counts and total (a ceiling may fall, never rise)', () => {
+    const problems = ceilingBoundProblems(T0_ALLOWLIST_CEILINGS);
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+
   it('allowlist.json keeps every file at or under its T0 ceiling', () => {
     const raised = allowlistCeilingProblems(allowlist);
     expect(raised, raised.join('\n')).toEqual([]);
@@ -1279,6 +1304,25 @@ describe('#1773 type-scale guard — a ledger edit cannot undo the ratchet', () 
     // Moved to another allowlisted file, which then goes over its own ceiling.
     const toSheet = moved('story/Sheet.tsx', 'Sheet >> dropcapStyle');
     expect(allowlistProblems(toSheet, matching(toSheet), limits).map(tag)).toEqual(['ALLOW-RAISED story/Sheet.tsx']);
+  });
+
+  it('a file whose allowlisted count goes from 5 to 6 fails against its ceiling of 5', () => {
+    const five: AllowEntry[] = [
+      { file: 'story/Runes.tsx', selector: 'Runes >> <div style>', property: 'font-size', count: 3, reason },
+      { file: 'story/Runes.tsx', selector: 'runeRow', property: 'font-size', count: 2, reason },
+    ];
+    const capped: AllowLimits = { ceilings: { 'story/Runes.tsx': 5 }, total: 6, entries: 3 };
+    expect(allowlistProblems(five, matching(five), capped)).toEqual([]);
+    const six = [...five, { file: 'story/Runes.tsx', selector: 'runeCol', property: 'font-size', count: 1, reason }];
+    expect(allowlistProblems(six, matching(six), capped).map(tag)).toEqual(['ALLOW-RAISED story/Runes.tsx']);
+  });
+
+  it('a raised allowlist ceiling fails; a lowered one (paydown) passes', () => {
+    const t0 = { 'story/Page.css': 3, 'story/Sheet.tsx': 1 };
+    expect(ceilingBoundProblems({ 'story/Page.css': 99, 'story/Sheet.tsx': 1 }, t0, 4).map(tag)).toEqual(['CEILING-RAISED story/Page.css', 'CEILING-TOTAL']);
+    expect(ceilingBoundProblems({ 'story/Page.css': 3, 'story/New.css': 1 }, t0, 4).map(tag)).toEqual(['CEILING-RAISED story/New.css']);
+    expect(ceilingBoundProblems({ 'story/Page.css': 2, 'story/Sheet.tsx': 1 }, t0, 4)).toEqual([]);
+    expect(ceilingBoundProblems({ 'story/Page.css': 3 }, t0, 4)).toEqual([]);
   });
 
   it('paying the allowlist down (a lower count, a deleted entry) stays green', () => {
