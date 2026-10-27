@@ -2,7 +2,9 @@
 // bulk skip-and-list, and the rename cascade standing in for vaultTransaction
 // until #1746 is on main.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import childProcess, { execFileSync } from 'child_process';
+import childProcess, { execFileSync, spawnSync } from 'child_process';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
@@ -37,6 +39,7 @@ import {
 import { volumeUnsupportedText } from './writeErrorText.js';
 import { renameSyncWithRetry } from './renameSyncWithRetry.js';
 import { writeManifestBytes, writeVaultFileNoFollow } from './vaultFileWrite.js';
+import { ManifestMigrationError, openManifest } from '../manifest.js';
 import {
   commitEpubTargetExport,
   listVaultFiles,
@@ -746,6 +749,102 @@ describe('PR A symlink writes', () => {
     fs.writeFileSync(fat, 'KEEP');
     appendNoFollow(fat, 'Y', { rel: 'append-fat.md', deps: withProbe('fat') });
     expect(fs.readFileSync(fat, 'utf8')).toBe('KEEPY');
+  });
+
+  function shortWriteFs(): typeof fs {
+    const real = fs.writeSync.bind(fs);
+    return new Proxy(fs, {
+      get(target, prop, receiver) {
+        if (prop === 'writeSync') {
+          return (fd: number, buf: Buffer, offset?: number, length?: number, position?: number) => {
+            const start = offset ?? 0;
+            const len = length ?? buf.length - start;
+            const n = Math.min(3, len);
+            if (position === undefined || position === null) return real(fd, buf, start, n);
+            return real(fd, buf, start, n, position);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  }
+
+  it('writes every byte when writeSync returns a short count', () => {
+    const dest = path.join(root, 'short-write.md');
+    const payload = 'abcdefghij';
+    writeNoFollowAtomic(dest, payload, {
+      durable: false,
+      rel: 'short-write.md',
+      deps: { ...defaultDeps, fs: shortWriteFs() },
+    });
+    expect(fs.readFileSync(dest, 'utf8')).toBe(payload);
+    console.log('short-write complete', payload.length);
+  });
+
+  // win32 has no POSIX mkfifo, so this hang cannot be set up there.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a FIFO leaf without hanging (skipped on win32: no POSIX mkfifo)',
+    () => {
+      const fifo = path.join(root, 'pipe.md');
+      execFileSync('mkfifo', [fifo]);
+      const entry = path.join(tmp, 'fifo-entry.mjs');
+      const outfile = path.join(tmp, 'fifo-child.cjs');
+      const joinSrc = path.join(path.dirname(fileURLToPath(new URL('./safeVaultJoin.ts', import.meta.url))));
+      fs.writeFileSync(
+        entry,
+        `import { safeVaultJoin } from ${JSON.stringify(path.join(joinSrc, 'safeVaultJoin.ts'))};\n` +
+          `try {\n` +
+          `  safeVaultJoin(process.argv[2], 'pipe.md', { writeMode: true });\n` +
+          `  console.log('RESULT allowed');\n` +
+          `} catch (err) {\n` +
+          `  console.log('RESULT ' + (err && err.message ? err.message : err));\n` +
+          `}\n`,
+      );
+      const esbuild = createRequire(import.meta.url)('esbuild') as {
+        buildSync: (opts: { entryPoints: string[]; bundle: boolean; platform: string; format: string; outfile: string; logLevel: string }) => void;
+      };
+      esbuild.buildSync({
+        entryPoints: [entry],
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        outfile,
+        logLevel: 'silent',
+      });
+      const started = Date.now();
+      const result = spawnSync(process.execPath, [outfile, root], {
+        encoding: 'utf8',
+        timeout: 3000,
+        killSignal: 'SIGKILL',
+      });
+      const elapsed = Date.now() - started;
+      expect(elapsed).toBeLessThan(2500);
+      expect(result.status).toBe(0);
+      expect(result.stdout ?? '').toMatch(/not a regular file/);
+      expect(fs.lstatSync(fifo).isFIFO()).toBe(true);
+      console.log('fifo refused', elapsed);
+    },
+  );
+
+  it('keeps a manifest backup that is over the vault size cap', () => {
+    const manifestPath = path.join(root, 'manifest.json');
+    const raw = '{ not json ' + 'x'.repeat(MAX_VAULT_FILE_BYTES);
+    fs.writeFileSync(manifestPath, raw);
+    let caught: unknown;
+    try {
+      openManifest(manifestPath, { vaultRoot: root });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ManifestMigrationError);
+    const backupDir = path.join(root, '.mythos', 'backups');
+    const backups = fs.readdirSync(backupDir).filter((name) => name.startsWith('manifest-'));
+    expect(backups).toHaveLength(1);
+    expect(fs.statSync(path.join(backupDir, backups[0]!)).size).toBeGreaterThan(MAX_VAULT_FILE_BYTES);
+    const readerSrc = fs.readFileSync(new URL('./manifest/reader.ts', import.meta.url), 'utf8');
+    expect(readerSrc).toContain('writeManifestBackup');
+    console.log('manifest-backup over cap');
   });
 
   it('copy loops a short read and refuses a premature end', () => {

@@ -107,12 +107,16 @@ function throwSymlinkLoop(relPath: string): never {
 
 /**
  * An existing write leaf was lstat'd as a non-link. Open it with O_NOFOLLOW
- * and require fstat to match that lstat. realpath of the leaf would follow a
- * symlink swapped in after the lstat and hand the writer a different file.
+ * and O_NONBLOCK, then require fstat to match that lstat. A FIFO opened with
+ * plain O_RDONLY waits forever for a writer. realpath of the leaf would follow
+ * a symlink swapped in after the lstat and hand the writer a different file.
  * O_NOFOLLOW is 0 on win32; the fstat comparison still refuses that swap.
+ * O_NONBLOCK is omitted on win32 so a normal file open stays the same there.
+ * Directories stay joinable for mkdir, move, and delete.
  */
 function assertExistingLeafFd(absPath: string, relPath: string, listed: fs.Stats): void {
-  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0);
+  const nonBlock = process.platform === 'win32' ? 0 : (fs.constants.O_NONBLOCK ?? 0);
+  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | nonBlock;
   let fd: number | undefined;
   try {
     fd = fs.openSync(absPath, flags);
@@ -127,6 +131,11 @@ function assertExistingLeafFd(absPath: string, relPath: string, listed: fs.Stats
   }
   try {
     const opened = fs.fstatSync(fd);
+    if (opened.isDirectory() && listed.isDirectory()) return;
+    if (!opened.isFile()) {
+      logVaultRefusal('NOT_REGULAR', relPath);
+      throw new Error(`Path traversal denied: ${relPath} (not a regular file)`);
+    }
     if (opened.dev !== listed.dev || opened.ino !== listed.ino) {
       logVaultRefusal('LEAF_LINK', relPath);
       throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);

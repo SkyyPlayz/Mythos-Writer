@@ -57,3 +57,19 @@ export function writeManifestBytes(manifestPath: string, json: string, vaultRoot
   writeVaultFileNoFollow(root, rel, json, true);
   return Buffer.byteLength(json, 'utf-8');
 }
+
+/**
+ * Raw manifest backup. Same containment and no-follow writer as a note, without
+ * the 25 MiB note cap: one backup can hold prose from many valid scenes.
+ */
+export function writeManifestBackup(manifestPath: string, json: string, vaultRoot?: string): number {
+  const root = vaultRoot ?? inferVaultRoot(manifestPath);
+  const rel = posixRelative(root, manifestPath);
+  assertFixedTmpNotLink(`${manifestPath}.tmp`, rel);
+  if (!fs.existsSync(root)) {
+    fs.mkdirSync(root, { recursive: true });
+  }
+  const absPath = safeVaultJoin(root, rel, { writeMode: true });
+  writeNoFollowAtomic(absPath, json, { durable: true, mkdir: true, rel });
+  return Buffer.byteLength(json, 'utf-8');
+}

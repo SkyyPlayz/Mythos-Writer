@@ -253,6 +253,18 @@ function cleanupTemp(fsImpl: typeof fs, fd: number | undefined, tmp: string | un
 
 type ZeroPolicy = 'skip' | 'network' | 'unsupported';
 
+/** Write every byte. A short writeSync must not be synced and renamed as a full file. */
+function writeAll(fsImpl: typeof fs, fd: number, buf: Buffer): void {
+  let offset = 0;
+  while (offset < buf.length) {
+    const wrote = fsImpl.writeSync(fd, buf, offset, buf.length - offset);
+    if (wrote <= 0) {
+      throw new Error(`short write: wrote ${offset} of ${buf.length} bytes`);
+    }
+    offset += wrote;
+  }
+}
+
 function zeroIndexPolicy(dir: string, deps: NoFollowDeps, exempt: boolean): ZeroPolicy {
   if (exempt) return 'skip';
   const kind = deps.probeVolume(dir);
@@ -325,7 +337,7 @@ export function writeNoFollowAtomic(
       throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
     }
 
-    fsImpl.writeSync(fd, buf);
+    writeAll(fsImpl, fd, buf);
     if (options.durable === true) fsImpl.fdatasyncSync(fd);
     else if (options.durable === 'fsync') fsImpl.fsyncSync(fd);
 

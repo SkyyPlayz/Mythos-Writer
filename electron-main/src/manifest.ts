@@ -2,7 +2,7 @@
 // No Electron dependency; fully testable in Node.
 import fs from 'fs';
 import path from 'path';
-import { writeManifestBytes } from './vault/vaultFileWrite.js';
+import { writeManifestBackup, writeManifestBytes } from './vault/vaultFileWrite.js';
 import crypto from 'crypto';
 import type { Manifest, StoryEntry, PartEntry, SceneEntry, ChapterEntry, BlockEntry } from './ipc.js';
 import { computeSceneBodyLayout } from './sceneBody.js';
@@ -137,7 +137,7 @@ function writeBackup(vaultRoot: string, rawContent: string): string {
   }
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = path.join(backupDir, `manifest-${timestamp}.json`);
-  writeManifestBytes(backupPath, rawContent, vaultRoot);
+  writeManifestBackup(backupPath, rawContent, vaultRoot);
   return backupPath;
 }
 
