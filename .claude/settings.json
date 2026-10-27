@@ -23,6 +23,7 @@
       "Read(~/.config/gh/**)", "Edit(~/.config/gh/**)",
       "Bash(printenv*)", "Bash(env)", "Bash(env *)", "Bash(cat *.env*)",
       "Bash(echo *TOKEN*)", "Bash(echo *SECRET*)", "Bash(echo *KEY*)", "Bash(echo *PAT*)",
+      "Bash(npm ci)",
       "Bash(npm ci --ignore-scripts=false*)", "Bash(npm install*)",
       "Bash(npm i)", "Bash(npm i *)",
       "Bash(npm in)", "Bash(npm in *)",
