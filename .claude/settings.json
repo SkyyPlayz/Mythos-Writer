@@ -5,7 +5,7 @@
       "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)", "Bash(git add *)",
       "Bash(git commit *)", "Bash(git checkout -b *)", "Bash(git switch *)",
       "Bash(git push -u origin claude/*)", "Bash(git push origin claude/*)",
-      "Bash(npm ci --ignore-scripts*)", "Bash(npm test*)", "Bash(npm run test*)", "Bash(npm run lint*)",
+      "Bash(npm ci --ignore-scripts)", "Bash(npm test*)", "Bash(npm run test*)", "Bash(npm run lint*)",
       "Bash(npm run typecheck*)", "Bash(npm run build*)",
       "Bash(npx vitest *)", "Bash(npx tsc *)", "Bash(npx eslint *)", "Bash(rg *)",
       "Bash(gh pr create --draft *)", "Bash(gh pr view *)", "Bash(gh pr checks *)"
@@ -23,6 +23,7 @@
       "Read(~/.config/gh/**)", "Edit(~/.config/gh/**)",
       "Bash(printenv*)", "Bash(env)", "Bash(env *)", "Bash(cat *.env*)",
       "Bash(echo *TOKEN*)", "Bash(echo *SECRET*)", "Bash(echo *KEY*)", "Bash(echo *PAT*)",
+      "Bash(npm ci --ignore-scripts=false*)", "Bash(npm install*)",
       "Bash(git -C *)", "Bash(bash -c *)", "Bash(sh -c *)", "Bash(gh api *)",
       "Bash(gh pr merge*)", "Bash(gh pr ready*)",
       "Bash(git push)", "Bash(git push main*)", "Bash(git push * main*)",
