@@ -9,6 +9,7 @@ import {
 } from './src/uninstallVaultsNsh.path.js';
 
 export default function setup(): () => void {
+  console.log('mythos-test globalSetup nsh');
   const buildPath = defaultUninstallVaultsNshPath();
   if (!existsSync(buildPath)) {
     return () => {};
