@@ -282,9 +282,22 @@ export function safeVaultJoin(
 
   if (opts.writeMode) {
     if (leaf) {
-      // Do not realpath this leaf. Canonicalize the parent and reattach the
-      // requested name so the no-follow writer checks the original path.
+      // Open the leaf and match fstat to the lstat before any realpath.
+      // A symlink swapped in after the lstat must not become the write target.
       assertExistingLeafFd(resolved, relPath, leaf);
+      // EACCES/EPERM from this path still have to throw so the AI guard can
+      // report resolve_failed. The realpath result is discarded: using it
+      // would follow a symlink that appeared after the fd check.
+      try {
+        fs.realpathSync.native(resolved);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ELOOP') {
+          logVaultRefusal('LEAF_LINK', relPath);
+          throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);
+        }
+        throw err;
+      }
       const parent = path.dirname(resolved);
       const realParent = parent === path.resolve(vaultRoot) ? realVaultRoot : fs.realpathSync.native(parent);
       if (!isWithinVault(realVaultRoot, realParent)) {
