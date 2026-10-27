@@ -56,8 +56,11 @@
  *     count the guard asks for the lower number, so the slack can't be spent
  *     again later.
  *
- * The ledger totals at T0 are pinned in this file (`T0`), so raising a count
- * or adding a key can't land as a data-only edit to the JSON.
+ * The ledgers at T0 are pinned in this file: their totals (`T0`) and each
+ * file's baseline count (`T0_CEILINGS`). baseline.json may never put a file
+ * above its T0 ceiling (a new file's ceiling is 0), so raising a count or
+ * adding a file can't land as a data-only edit to the JSON, not even when a
+ * cut elsewhere keeps the totals level.
  *
  * "Selector" is the CSS rule's selector with its enclosing at-rules
  * (`@media (…) >> .foo`). For TypeScript it is the chain of named scopes
@@ -422,6 +425,225 @@ const allowlist = readJson<{ entries: AllowEntry[] }>(ALLOWLIST_FILE).entries;
  */
 const T0 = { baselineTotal: 1999, baselineFiles: 176, allowlistTotal: 18, allowlistEntries: 16 } as const;
 
+type Counts = Readonly<Record<string, number>>;
+
+/**
+ * Per-file ceilings: typeScale.baseline.json as it stood at T0 (main cc8df81).
+ * baseline.json may never put a file above its ceiling, and a file missing
+ * here has ceiling 0, so a raised count or a new file can't land as a
+ * data-only JSON edit, not even when a cut elsewhere keeps the totals level.
+ * Lower an entry when its debt is paid down (delete it at 0); raising one
+ * needs the owner's sign-off.
+ */
+const T0_CEILINGS: Counts = {
+  'AccountModal.css': 2,
+  'AgentHubPanel.css': 39,
+  'App.css': 13,
+  'AppNavRail.css': 16,
+  'ArchiveConfirmDialog.css': 4,
+  'ArchivePanel.css': 13,
+  'Backlinks.css': 6,
+  'BetaReadMargin.css': 5,
+  'BlockEditor.css': 11,
+  'BottomBar.css': 5,
+  'BrainstormPage.css': 90,
+  'ConcurrentSessionModal.css': 3,
+  'ContinuityPanel.css': 2,
+  'DesktopShell.css': 39,
+  'DocHeader.css': 7,
+  'DockedTabBar.css': 7,
+  'DraftHistoryPanel.css': 10,
+  'EmbeddedSpanPreview.css': 1,
+  'EntityBrowser.css': 22,
+  'EntityDetail.css': 35,
+  'EntityMention.css': 3,
+  'EntriesPanel.css': 18,
+  'ExportDialog.css': 19,
+  'FloatingPanelApp.css': 5,
+  'FocusModePrefsDialog.css': 4,
+  'FormatToolbar.css': 3,
+  'GlobalRightSidebar.css': 9,
+  'GlobalSearchPanel.css': 19,
+  'InconsistencyCard.css': 3,
+  'KanbanBoard.css': 24,
+  'KeyboardShortcutsDialog.css': 8,
+  'LayoutManagerDialog.css': 14,
+  'LayoutPicker.css': 8,
+  'LeftRail.css': 25,
+  'ManuscriptStructureView.css': 4,
+  'MarginRuler.css': 1,
+  'MoveVaultWizard.css': 11,
+  'NoteProperties.css': 11,
+  'NoteSplitPane.css': 2,
+  'NoteViewer.css': 34,
+  'NotesTabPanel.css': 15,
+  'NotificationCenter.tsx': 5,
+  'OutlinePlanningPanel.css': 6,
+  'PageChromeToolbar.css': 6,
+  'PageRuler.css': 1,
+  'PageSetupPopover.css': 11,
+  'PaneTip.css': 3,
+  'PanelDragContext.css': 3,
+  'ProgressDashboard.css': 18,
+  'ProjectSwitcher.css': 5,
+  'PromptHistoryPanel.css': 18,
+  'ReferencesPanel.css': 1,
+  'SceneEditorEmptyState.css': 1,
+  'SceneHistory.css': 19,
+  'SceneNotesPanel.css': 7,
+  'ScenePreviewPanel.css': 5,
+  'ScenePropertiesPanel.css': 1,
+  'SearchBar.css': 7,
+  'SettingsPanel.css': 83,
+  'SplitEditorPane.css': 9,
+  'StoryNavigator.css': 14,
+  'StorySubViewBar.css': 5,
+  'StoryTimeline.css': 14,
+  'StructuralBreadcrumb.css': 1,
+  'SuggestionDetailPane.css': 26,
+  'SuggestionReview.css': 34,
+  'TabBar.css': 3,
+  'TagInput.css': 4,
+  'ThemeContrastSlider.css': 5,
+  'TimelineBlock.css': 6,
+  'TimelineCharacterPresenceTable.css': 3,
+  'TimelineHeader.css': 7,
+  'TimelinePicker.css': 10,
+  'TimelinePlotlines.css': 10,
+  'TimelineRelationships.css': 4,
+  'TimelineRoot.css': 33,
+  'TimelineSpreadsheet.css': 6,
+  'TimelineSubway.css': 8,
+  'TimelineSubwayTableToggle.css': 2,
+  'TimelineTension.css': 3,
+  'TimestampEditor.css': 5,
+  'TrackTimeline.css': 8,
+  'UpdateBanner.css': 6,
+  'VaultGraphView.css': 41,
+  'VaultSidebar.css': 37,
+  'WelcomeOverlay.css': 7,
+  'WikiLinkHoverPreview.css': 4,
+  'WikiLinkPicker.css': 3,
+  'WorkspaceSplitDropZones.css': 1,
+  'WorkspaceSplitPane.css': 3,
+  'WorkspaceTabBar.css': 6,
+  'WritingApp.css': 2,
+  'WritingAssistantPanel.css': 48,
+  'beta/BetaReaderPage.css': 43,
+  'canvas/CanvasBoard.css': 7,
+  'coach/CoachPage.css': 27,
+  'components/AgentSessionPicker.css': 8,
+  'components/AiActivityIndicator/AiActivityIndicator.css': 2,
+  'components/BoardIconPicker/BoardIconPicker.css': 4,
+  'components/BrainstormBoard/BrainstormBoard.css': 23,
+  'components/BrainstormCard/IdeaCard.css': 1,
+  'components/BrainstormCard/IdeaDetailDrawer.css': 3,
+  'components/BrainstormCard/ProposalCard.css': 1,
+  'components/ComposerQuickActions.css': 1,
+  'components/ContinuityPanel/ContinuityPanel.css': 14,
+  'components/EmptyState/EmptyState.css': 3,
+  'components/IconPicker/IconPicker.css': 11,
+  'components/ManuscriptStructure/BeatSheetSidebar.css': 8,
+  'components/ManuscriptStructure/ListView.css': 11,
+  'components/ManuscriptStructure/SceneCard.css': 6,
+  'components/ManuscriptStructure/SceneGrid.css': 12,
+  'components/ManuscriptStructure/ViewToggle.css': 1,
+  'components/MigrationBanner/MigrationBanner.css': 6,
+  'components/NewStoryModal.css': 7,
+  'components/NoteCoverBadge.css': 2,
+  'components/NoteTemplateDialog/NoteTemplateDialog.css': 7,
+  'components/NoteThumbnail.css': 1,
+  'components/PresetBrowser.css': 9,
+  'components/PresetEditor.css': 9,
+  'components/PresetSelector.css': 7,
+  'components/QualityRubric.css': 10,
+  'components/RefinementChips.css': 2,
+  'components/SceneHistoryPane/SceneHistoryPane.css': 5,
+  'components/SettingsPanel/sections/AboutSection.tsx': 3,
+  'components/SettingsPanel/sections/AccountProfileSection.tsx': 7,
+  'components/SettingsPanel/sections/AddVaultDialog.css': 11,
+  'components/SettingsPanel/sections/AgentsVaultSection.tsx': 8,
+  'components/SettingsPanel/sections/EditorManuscriptSection.tsx': 13,
+  'components/SettingsPanel/sections/EditorSettingsSection.tsx': 3,
+  'components/SettingsPanel/sections/LiquidNeonAppearanceSection.css': 1,
+  'components/SettingsPanel/sections/LiquidNeonAppearanceSection.tsx': 32,
+  'components/SettingsPanel/sections/M24Controls.tsx': 5,
+  'components/SettingsPanel/sections/M24Sections.css': 4,
+  'components/SettingsPanel/sections/MythosVaultsSection.tsx': 12,
+  'components/SettingsPanel/sections/NotesBoardSection.tsx': 1,
+  'components/SettingsPanel/sections/ShortcutsSection.tsx': 2,
+  'components/SettingsPanel/sections/SyncBackupSection.tsx': 8,
+  'components/SettingsPanel/sections/VaultCreateModePicker.css': 3,
+  'components/SettingsPanel/sections/VaultLinkingColumns.tsx': 12,
+  'components/SettingsPanel/sections/VaultOverflowMenu.tsx': 1,
+  'components/SettingsPanel/sections/liquidNeonControls.tsx': 6,
+  'components/StoryVaultPicker.css': 2,
+  'components/TagPane/TagPane.css': 5,
+  'components/Toast/Toast.css': 3,
+  'components/VaultBrowser/VaultBrowser.css': 24,
+  'components/VaultNotFoundScreen/VaultNotFoundScreen.css': 3,
+  'components/ui/Dialog.css': 1,
+  'components/ui/VaultIconAvatar.css': 3,
+  'components/ui/WindowChrome.css': 12,
+  'drafts/DraftDiffView.css': 9,
+  'drafts/DraftsCompareSplit.css': 11,
+  'drafts/DraftsPopover.css': 13,
+  'index.css': 1,
+  'migration/MythosBootMigrationNotice.css': 4,
+  'migration/MythosMigration.css': 7,
+  'pages/Boards/BoardCanvas.css': 17,
+  'pages/Boards/BoardsTabPanel.css': 21,
+  'pages/Boards/BrainstormBoardPage.css': 14,
+  'pages/Boards/RecentlyDeletedPanel.css': 7,
+  'pages/SceneCrafter/SceneCrafterPage.css': 55,
+  'partner/ModelKeysSection.css': 26,
+  'partner/PartnerCallChrome.css': 8,
+  'partner/QuestionsForYou.css': 12,
+  'partner/WritingPartnerSection.css': 25,
+  'story/BookPreview.css': 23,
+  'story/CommentsGutter.css': 17,
+  'story/ManuscriptView.css': 14,
+  'story/ReaderBar.css': 11,
+  'story/TitleRow.css': 9,
+  'theme/lnToast.ts': 1,
+  'timeline2/AxisView.css': 32,
+  'timeline2/DualStampChips.css': 1,
+  'timeline2/SyncLineOverlay.css': 4,
+  'timeline2/Timeline2Modals.css': 15,
+  'timeline2/TimelineWikiText.css': 1,
+  'timeline2/panel/TimelineRightPanel.css': 57,
+};
+
+const sum = (c: Counts) => Object.values(c).reduce((a, n) => a + n, 0);
+
+/** The baseline ledger's totals that exceed T0. */
+function baselineTotalsOver(ledger: Counts): string[] {
+  const now = { baselineTotal: sum(ledger), baselineFiles: Object.keys(ledger).length };
+  return (Object.keys(now) as Array<keyof typeof now>)
+    .filter((k) => now[k] > T0[k])
+    .map((k) => `TOTAL ${k}: T0 ${T0[k]}, now ${now[k]}`);
+}
+
+/** Files baseline.json puts above their T0 ceiling. */
+function ceilingProblems(ledger: Counts): string[] {
+  return Object.entries(ledger)
+    .filter(([file, n]) => n > (T0_CEILINGS[file] ?? 0))
+    .map(([file, n]) =>
+      `RAISED ${file}: baseline.json says ${n}, T0 ceiling ${T0_CEILINGS[file] ?? 0}. ` +
+      'Counts may only fall; move the size onto a --text-* token instead.');
+}
+
+/** Every way per-file off-scale counts (`found`) and a baseline ledger break the ratchet. */
+function baselineProblems(found: Counts, ledger: Counts): string[] {
+  const files = [...new Set([...Object.keys(found), ...Object.keys(ledger)])].sort();
+  const counts = files.flatMap((file) => {
+    const f = found[file] ?? 0;
+    const n = ledger[file] ?? 0;
+    return f > n ? [`GREW ${file}: baseline ${n}, found ${f}`] : f < n ? [`FELL ${file}: baseline ${n}, found ${f}`] : [];
+  });
+  return [...counts, ...ceilingProblems(ledger), ...baselineTotalsOver(ledger)];
+}
+
 const where = (us: Usage[]) => us.map((u) => `    ${u.file}:${u.line}  ${u.selector}  { ${u.property}: ${u.value} }`).join('\n');
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -664,11 +886,42 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
       'Raising one needs the owner\'s sign-off and an edit to T0 in this file.').toEqual([]);
   });
 
+  it('baseline.json keeps every file at or under its T0 ceiling', () => {
+    const raised = ceilingProblems(baseline);
+    expect(raised, raised.join('\n')).toEqual([]);
+  });
+
   it('baseline counts are positive integers with posix paths', () => {
     for (const [file, n] of Object.entries(baseline)) {
       expect(Number.isInteger(n) && n > 0, `${file}: ${n}`).toBe(true);
       expect(file, 'use / in baseline paths').not.toContain('\\');
     }
+  });
+});
+
+describe('#1773 type-scale guard — a ledger edit cannot undo the ratchet', () => {
+  const tag = (problem: string) => problem.slice(0, problem.indexOf(':'));
+  const edit = (ledger: Counts, changes: Record<string, number>) =>
+    Object.fromEntries(Object.entries({ ...ledger, ...changes }).filter(([, n]) => n > 0));
+
+  it('the T0 ledger, matched by its tree, has no problems', () => {
+    expect(baselineProblems(T0_CEILINGS, T0_CEILINGS)).toEqual([]);
+  });
+
+  it('a raise in one file paid for by a cut in another fails, with the totals level', () => {
+    // App.css gains a hard-coded size and its count is raised to match; AccountModal.css pays one down.
+    const ledger = edit(T0_CEILINGS, { 'App.css': T0_CEILINGS['App.css'] + 1, 'AccountModal.css': T0_CEILINGS['AccountModal.css'] - 1 });
+    expect(sum(ledger)).toBe(sum(T0_CEILINGS));
+    expect(baselineProblems(ledger, ledger).map(tag)).toEqual(['RAISED App.css']);
+  });
+
+  it('a new file with one stray off-scale size fails, whether or not baseline.json lists it', () => {
+    const stray = 'components/NewStray.css';
+    expect(baselineProblems(edit(T0_CEILINGS, { [stray]: 1 }), T0_CEILINGS).map(tag)).toEqual([`GREW ${stray}`]);
+    // Listing it while a one-count file is paid down to zero keeps both totals level, and still fails.
+    const ledger = edit(T0_CEILINGS, { [stray]: 1, 'PageRuler.css': 0 });
+    expect([sum(ledger), Object.keys(ledger).length]).toEqual([T0.baselineTotal, T0.baselineFiles]);
+    expect(baselineProblems(ledger, ledger).map(tag)).toEqual([`RAISED ${stray}`]);
   });
 });
 
