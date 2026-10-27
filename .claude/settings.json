@@ -11,11 +11,14 @@
       "Bash(gh pr create --draft *)", "Bash(gh pr view *)", "Bash(gh pr checks *)"
     ],
     "deny": [
+      "Edit(.claude/**)", "Edit(.github/**)",
       "Bash(gh pr merge*)", "Bash(gh pr ready*)",
       "Bash(git push)", "Bash(git push main*)", "Bash(git push * main*)",
       "Bash(git push origin HEAD*)", "Bash(git push -u origin HEAD*)", "Bash(git push HEAD*)",
       "Bash(git push *:main*)", "Bash(git push *:refs/heads/main*)",
-      "Bash(git push --force*)", "Bash(git push -f*)", "Bash(git reset --hard*)",
+      "Bash(git push --force*)", "Bash(git push -f*)",
+      "Bash(git push * --force*)", "Bash(git push * -f*)", "Bash(git push * +*)",
+      "Bash(git reset --hard*)",
       "Bash(git commit --amend*)", "Bash(git commit * --amend*)"
     ]
   }
