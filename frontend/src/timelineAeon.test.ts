@@ -86,14 +86,14 @@ describe('resolveTimelineMode', () => {
 });
 
 describe('resolveVisibleTimelineMode', () => {
-  it('pins the hide flag to the five timeline surfaces and leaves Structure and Progress visible', () => {
+  it('pins the hide flag to the four timeline surfaces and leaves Structure, Progress and Plotlines visible', () => {
     expect([...HIDDEN_TIMELINE_MODES].sort()).toEqual(
-      ['plot', 'relations', 'spreadsheet', 'subway', 'tension'],
+      ['relations', 'spreadsheet', 'subway', 'tension'],
     );
     expect(VISIBLE_TIMELINE_MODES).toEqual(
       VALID_TIMELINE_MODES.filter((mode) => !HIDDEN_TIMELINE_MODES.has(mode)),
     );
-    expect(VISIBLE_TIMELINE_MODES).toEqual(['progress', 'structure']);
+    expect(VISIBLE_TIMELINE_MODES).toEqual(['progress', 'structure', 'plot']);
     expect(isTimelineModeVisible('structure')).toBe(true);
     expect(isTimelineModeVisible('progress')).toBe(true);
     for (const mode of HIDDEN_TIMELINE_MODES) {
@@ -104,10 +104,11 @@ describe('resolveVisibleTimelineMode', () => {
   it('passes Structure and Progress through', () => {
     expect(resolveVisibleTimelineMode('structure')).toBe('structure');
     expect(resolveVisibleTimelineMode('progress')).toBe('progress');
+    expect(resolveVisibleTimelineMode('plot')).toBe('plot');
   });
 
   it('falls back to structure for every hidden mode', () => {
-    for (const mode of ['plot', 'spreadsheet', 'tension', 'relations', 'subway'] as const) {
+    for (const mode of ['spreadsheet', 'tension', 'relations', 'subway'] as const) {
       expect(resolveVisibleTimelineMode(mode)).toBe('structure');
     }
   });
@@ -131,11 +132,12 @@ describe('resolveVisibleTimelineMode', () => {
   it('ignores a storage key that tries to unhide the hidden modes', () => {
     localStorage.setItem('timeline:hiddenModesOverride', '[]');
     try {
-      expect(isTimelineModeVisible('plot')).toBe(false);
+      expect(isTimelineModeVisible('plot')).toBe(true);
+      expect(isTimelineModeVisible('tension')).toBe(false);
       expect(resolveVisibleTimelineMode('spreadsheet')).toBe('structure');
       expect(resolveVisibleTimelineMode('track')).toBe('structure');
       expect([...HIDDEN_TIMELINE_MODES].sort()).toEqual(
-        ['plot', 'relations', 'spreadsheet', 'subway', 'tension'],
+        ['relations', 'spreadsheet', 'subway', 'tension'],
       );
     } finally {
       localStorage.removeItem('timeline:hiddenModesOverride');
