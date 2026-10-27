@@ -59,12 +59,29 @@ interface Decl {
   rule: string;
 }
 
-/** Every custom-property declaration in tokens.css with its enclosing rule. */
+/**
+ * Every custom-property declaration in tokens.css with its enclosing rule.
+ * Quotes (with escapes) and parentheses are honoured, so a `}` or `;` inside
+ * `"…"` or `url(…)` can't end a rule early.
+ */
 function customProperties(css: string): Decl[] {
   const out: Decl[] = [];
   const stack: string[] = [];
   let buf = '';
-  for (const ch of css) {
+  let quote: string | null = null;
+  let parens = 0;
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    if (quote) {
+      buf += ch;
+      if (ch === '\\' && i + 1 < css.length) buf += css[++i];
+      else if (ch === quote || ch === '\n') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; buf += ch; continue; }
+    if (ch === '(') parens++;
+    if (ch === ')') parens = Math.max(0, parens - 1);
+    if (parens > 0) { buf += ch; continue; }
     if (ch === '{') { stack.push(buf.replace(/\s+/g, ' ').trim()); buf = ''; continue; }
     if (ch === ';' || ch === '}') {
       const m = /^\s*(--[\w-]+)\s*:\s*([\s\S]*?)\s*$/.exec(buf);
@@ -89,6 +106,15 @@ describe('#1773 tokens.css — the --text-* type scale', () => {
       { name: '--text-sm', value: '14px', rule: '@media (prefers-color-scheme: dark) >> :root' },
       { name: '--text-xs', value: '12px', rule: ':root' },
     ]);
+  });
+
+  it('does not let a quoted } or ; end a rule, so a step after it is still seen in :root', () => {
+    expect(customProperties(':root { --marker: "}"; --sep: url(a;b); --text-sm: 13px; }'))
+      .toEqual([
+        { name: '--marker', value: '"}"', rule: ':root' },
+        { name: '--sep', value: 'url(a;b)', rule: ':root' },
+        { name: '--text-sm', value: '13px', rule: ':root' },
+      ]);
   });
 
   it('does not mistake a quoted /* or */ for a comment, so a step between them is still seen', () => {

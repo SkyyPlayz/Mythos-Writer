@@ -276,8 +276,18 @@ function scanCss(css: string, declarationList = false, firstLine = 1): CssDecl[]
 
 // ── TypeScript scanner ───────────────────────────────────────────────────────
 
-/** Text of a string-ish expression, with HOLE standing in for template holes. */
-function literalText(node: ts.Node): string | undefined {
+/** Strips syntax that doesn't change a value: `(…)`, `as T`, `satisfies T`, `<T>…`, `…!`. */
+function unwrap(node: ts.Node): ts.Node {
+  while (
+    ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node) ||
+    ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node)
+  ) node = node.expression;
+  return node;
+}
+
+/** Text of a string-ish expression (wrappers stripped), with HOLE standing in for template holes. */
+function literalText(expr: ts.Node): string | undefined {
+  const node = unwrap(expr);
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
   if (ts.isTemplateExpression(node)) return node.head.text + node.templateSpans.map((s) => HOLE + s.literal.text).join('');
   return undefined;
@@ -383,11 +393,13 @@ function scanTs(file: string, source: string): CssDecl[] {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
   const out: CssDecl[] = [];
   const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
-  const valueText = (n: ts.Node) => literalText(n) ?? n.getText(sf);
-  const push = (at: ts.Node, property: string, valueNode: ts.Node | undefined, fallback = '') => {
+  const valueText = (n: ts.Node) => literalText(n) ?? unwrap(n).getText(sf);
+  /** `objectKey`: the value sits under a `font` key in an object literal, which may be data rather than a style. */
+  const push = (at: ts.Node, property: string, valueNode: ts.Node | undefined, fallback = '', objectKey = false) => {
     const value = valueNode ? valueText(valueNode) : fallback;
-    // `font` is also a common name for a family choice ({ font: 'Lora' }); only a value with a size is a shorthand.
-    if (property === 'font' && (!valueNode || literalText(valueNode) === undefined || !looksLikeFontShorthand(value))) return;
+    // `font` is also a common name for a family choice ({ font: 'Lora' }); under an object key, only a value with a
+    // size is a shorthand. `el.style.font`, `ctx.font` and setProperty('font', …) always take one, so they always count.
+    if (property === 'font' && objectKey && (!valueNode || literalText(valueNode) === undefined || !looksLikeFontShorthand(value))) return;
     out.push({ selector: scopeChain(at), property, value, line: lineOf(at) });
   };
 
@@ -396,7 +408,7 @@ function scanTs(file: string, source: string): CssDecl[] {
     if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
       const property = cssPropertyOf(nameOf(node));
       if (property) {
-        if (ts.isPropertyAssignment(node)) push(node, property, node.initializer);
+        if (ts.isPropertyAssignment(node)) push(node, property, node.initializer, '', true);
         else if (property === 'font-size') push(node, property, undefined, node.name.text);
       }
     }
@@ -887,6 +899,39 @@ describe('#1773 type-scale guard — scanner', () => {
       ['paint', `${HOLE} serif`, 'off'],
       ['paint', `${HOLE} serif`, 'off'],
       ['paint', `${HOLE} serif`, 'off'],
+    ]);
+  });
+
+  it('sees through parentheses, as const, satisfies and other syntax-only wrappers', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        const o = { a: { font: '13px serif' as const }, b: { fontSize: 'var(--text-sm)' as const }, c: { fontSize: (12) } };
+        el.style.font = ('13px serif');
+        el.style.fontSize = '12px' satisfies string;
+        el.style.setProperty('font-size', ('var(--text-xs)' as string)!);
+      }
+    `)).toEqual([
+      ['paint >> o >> a', '13px serif', 'off'],
+      ['paint >> o >> b', 'var(--text-sm)', 'on'],
+      ['paint >> o >> c', '12', 'off'],
+      ['paint', '13px serif', 'off'],
+      ['paint', '12px', 'off'],
+      ['paint', 'var(--text-xs)', 'on'],
+    ]);
+  });
+
+  it('counts any value at a CSS font destination; only an object key named font may be a family pick', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement, ctx: CanvasRenderingContext2D) {
+        el.style.setProperty('font', \`\${size} serif\`);
+        el.style.font = \`\${size} serif\`;
+        ctx.font = fontSpec;
+        const prefs = { font: fontName, story: { font: \`\${family}\` } };
+      }
+    `)).toEqual([
+      ['paint', `${HOLE} serif`, 'off'],
+      ['paint', `${HOLE} serif`, 'off'],
+      ['paint', 'fontSpec', 'off'],
     ]);
   });
 
