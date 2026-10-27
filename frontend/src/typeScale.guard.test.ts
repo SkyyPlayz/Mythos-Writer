@@ -188,8 +188,10 @@ const looksLikeFontShorthand = (value: string) =>
 
 function classify(property: string, rawValue: string, steps: readonly string[]): Verdict | undefined {
   if (property.startsWith('--')) {
-    const m = /^--(?:text|leading|weight)-(.+)$/.exec(property);
-    return m && steps.includes(m[1]) ? 'redefine' : undefined;
+    // A computed name (`--text-⟨expr⟩`) redefines a step if any step could fill the hole.
+    const name = new RegExp(`^--(?:text|leading|weight)-(${property.split(HOLE).map((p) => p.replace(/^--(?:text|leading|weight)-/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\S]*')})$`);
+    return /^--(?:text|leading|weight)-/.test(property) && steps.some((s) => name.test(`--text-${s}`) || name.test(`--leading-${s}`) || name.test(`--weight-${s}`))
+      ? 'redefine' : undefined;
   }
   const value = rawValue.replace(/!\s*important\s*$/i, '').trim();
   const lower = value.toLowerCase();
@@ -328,11 +330,28 @@ function scopeChain(node: ts.Node): string {
 function cssPropertyOf(name: string | undefined): string | undefined {
   if (name === 'fontSize' || name === 'font-size') return 'font-size';
   if (name === 'font') return 'font';
-  if (name && SCALE_PROPERTY.test(name)) return name;
+  if (name && (SCALE_PROPERTY.test(name) || /^--(?:text|leading|weight)-/.test(name))) return name;
   return undefined;
 }
 
 const isAssignment = (k: ts.SyntaxKind) => k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment;
+
+/**
+ * A custom-property name built with `+` or a template: literal parts are kept and every unknown part becomes
+ * HOLE (`'--text-' + step` → `--text-⟨expr⟩`). Only a name that starts with a scale family is returned, so a
+ * name that is entirely unknown (`setProperty(k, v)`) is left alone rather than flagged.
+ */
+function foldedName(expr: ts.Node): string | undefined {
+  const fold = (n: ts.Node): string => {
+    const e = unwrap(n);
+    const text = literalText(e);
+    if (text !== undefined) return text;
+    if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) return fold(e.left) + fold(e.right);
+    return HOLE;
+  };
+  const name = fold(expr);
+  return /^--(?:text|leading|weight)-/.test(name) ? name : undefined;
+}
 
 /** `x.cssText` / `x['cssText']` → `cssText`. */
 const accessName = (n: ts.Node) =>
@@ -431,13 +450,13 @@ function scanTs(file: string, source: string): CssDecl[] {
     else if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const method = node.expression.name.text;
       const at = method === 'setAttributeNS' ? 1 : 0;
-      const name = node.arguments.length > at + 1 ? literalText(node.arguments[at]) : undefined;
+      const name = node.arguments.length > at + 1 ? literalText(node.arguments[at]) ?? foldedName(node.arguments[at]) : undefined;
       const property = cssPropertyOf(name);
       if (property && (method === 'setProperty' || ((method === 'setAttribute' || method === 'setAttributeNS') && property === 'font-size'))) {
         push(node, property, node.arguments[at + 1]);
       }
       // CSS.registerProperty({ name: '--text-sm', inherits: false, initialValue: '13px' }) re-registers a step.
-      const spec = node.arguments[0];
+      const spec = node.arguments[0] && unwrap(node.arguments[0]);
       if (method === 'registerProperty' && spec && ts.isObjectLiteralExpression(spec)) {
         const nameProp = spec.properties.find((p) => ts.isPropertyAssignment(p) && nameOf(p) === 'name');
         const registered = nameProp && ts.isPropertyAssignment(nameProp) ? literalText(nameProp.initializer) : undefined;
@@ -448,11 +467,14 @@ function scanTs(file: string, source: string): CssDecl[] {
     }
     // 'font-size:12px;…' / `top:${y}px;font-size:12px` / '<span style="font-size:9px">' inside a string or template
     else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)) {
-      const parent = node.parent;
+      // Climb through `(…)` / `as` / `satisfies` / `!` so a wrapped value still finds its CSS destination.
+      let value: ts.Node = node;
+      while (unwrap(value.parent) !== value.parent || ts.isParenthesizedExpression(value.parent)) value = value.parent;
+      const parent = value.parent;
       const cssDestination =
-        (ts.isBinaryExpression(parent) && parent.right === node && isAssignment(parent.operatorToken.kind) && accessName(parent.left) === 'cssText') ||
+        (ts.isBinaryExpression(parent) && parent.right === value && isAssignment(parent.operatorToken.kind) && accessName(parent.left) === 'cssText') ||
         (ts.isCallExpression(parent) && ts.isPropertyAccessExpression(parent.expression) && parent.expression.name.text === 'setAttribute' &&
-          parent.arguments[1] === node && literalText(parent.arguments[0]) === 'style');
+          parent.arguments[1] === value && literalText(parent.arguments[0]) === 'style');
       out.push(...scanCssText(literalText(node) ?? '', scopeChain(node), lineOf(node), cssDestination));
     }
     // Template spans are TemplateMiddle/Tail nodes, never re-scanned as strings, so visiting children can't double count.
@@ -942,6 +964,18 @@ describe('#1773 type-scale guard — scanner', () => {
     ]);
   });
 
+  it('finds the CSS destination through (…), as and ! wrappers around the value', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        el.style.cssText = (\`font: \${size} serif\` as string);
+        el.setAttribute('style', (\`font: \${size} serif\`)!);
+      }
+    `)).toEqual([
+      ['paint', `${HOLE} serif`, 'off'],
+      ['paint', `${HOLE} serif`, 'off'],
+    ]);
+  });
+
   it('keeps CSS between a quoted < and > and ignores a { inside a comment when choosing the scan mode', () => {
     expect(tsx(`
       function paint(el: HTMLElement) {
@@ -1097,6 +1131,25 @@ describe('#1773 type-scale guard — the scale is defined in tokens.css only', (
       ['theme.ts', 'applyDensity', '--text-sm', '13px'],
       ['theme.ts', 'applyDensity', '--leading-sm', '1.2'],
       ['theme.ts', 'applyDensity', '--weight-sm', '500'],
+    ]);
+  });
+
+  it('flags computed step names and wrapped registerProperty options in any file, not just theme.ts', () => {
+    expect(redefined('components/Dense.ts', `
+      export function dense(root: HTMLElement, step: string, k: string, v: string) {
+        root.style.setProperty('--text-' + 'sm', '13px');
+        root.style.setProperty(\`--leading-\${step}\`, '1.2');
+        root.style.setProperty(('--weight-' + step) as string, '500');
+        root.style.setProperty(k, v);
+        root.style.setProperty('--neon-' + step, '#fff');
+        root.style.setProperty('--text-' + 'header', '#fff');
+        CSS.registerProperty(({ name: '--text-sm', syntax: '<length>', inherits: false, initialValue: '13px' } as const));
+      }
+    `)).toEqual([
+      ['components/Dense.ts', 'dense', '--text-sm', '13px'],
+      ['components/Dense.ts', 'dense', `--leading-${HOLE}`, '1.2'],
+      ['components/Dense.ts', 'dense', `--weight-${HOLE}`, '500'],
+      ['components/Dense.ts', 'dense', '--text-sm', 'registerProperty'],
     ]);
   });
 

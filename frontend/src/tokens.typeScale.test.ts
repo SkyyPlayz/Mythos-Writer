@@ -106,7 +106,31 @@ const decls = customProperties(tokensCss);
 const stepNames: string[] = SCALE.flatMap(([step]) => [`--text-${step}`, `--leading-${step}`, `--weight-${step}`]);
 const declsOf = (name: string) => decls.filter((d) => d.name === name);
 
-const COLOUR_VALUE = /^(#[0-9a-f]{3,8}|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(.*\)|transparent|currentcolor|black|white)$/i;
+/** CSS named colours and system colours, lower-cased. */
+const NAMED_COLOURS = new Set([
+  'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black', 'blanchedalmond', 'blue',
+  'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse', 'chocolate', 'coral', 'cornflowerblue', 'cornsilk',
+  'crimson', 'cyan', 'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki',
+  'darkmagenta', 'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen',
+  'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet', 'deeppink', 'deepskyblue',
+  'dimgray', 'dimgrey', 'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro',
+  'ghostwhite', 'gold', 'goldenrod', 'gray', 'green', 'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred',
+  'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral',
+  'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey', 'lightpink', 'lightsalmon',
+  'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime',
+  'limegreen', 'linen', 'magenta', 'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid', 'mediumpurple',
+  'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 'midnightblue',
+  'mintcream', 'mistyrose', 'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab', 'orange',
+  'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff',
+  'peru', 'pink', 'plum', 'powderblue', 'purple', 'rebeccapurple', 'red', 'rosybrown', 'royalblue', 'saddlebrown',
+  'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna', 'silver', 'skyblue', 'slateblue', 'slategray',
+  'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'teal', 'thistle', 'tomato', 'turquoise', 'violet',
+  'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen', 'transparent', 'currentcolor', 'canvas', 'canvastext',
+  'linktext', 'visitedtext', 'activetext', 'buttonface', 'buttontext', 'buttonborder', 'field', 'fieldtext',
+  'highlight', 'highlighttext', 'selecteditem', 'selecteditemtext', 'mark', 'marktext', 'graytext', 'accentcolor',
+  'accentcolortext',
+]);
+const COLOUR_VALUE = /^(#[0-9a-f]{3,8}|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\([\s\S]*\))$/i;
 
 /**
  * Whether a token's value is a colour: a colour literal or function, or a
@@ -115,7 +139,7 @@ const COLOUR_VALUE = /^(#[0-9a-f]{3,8}|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|colo
  */
 function isColour(value: string, all: readonly Decl[], seen: ReadonlySet<string> = new Set()): boolean {
   const v = value.replace(/!\s*important\s*$/i, '').trim();
-  if (COLOUR_VALUE.test(v)) return true;
+  if (COLOUR_VALUE.test(v) || NAMED_COLOURS.has(v.toLowerCase())) return true;
   const ref = /^var\(\s*(--[\w-]+)\s*(?:,[\s\S]*)?\)$/.exec(v)?.[1];
   if (!ref || seen.has(ref)) return false;
   const targets = all.filter((d) => d.name === ref);
@@ -236,6 +260,16 @@ describe('#1773 tokens.css — the --text-* type scale', () => {
 
   it('a new step hidden after a quoted } still counts against the seven', () => {
     expect(sizeTokenNames(customProperties(':root { --icon: "}"; --text-4xl: 32px }'))).toEqual(['--text-4xl']);
+  });
+
+  it('named colours, system colours and colour functions split over lines are colours, not steps', () => {
+    expect(sizeTokenNames(customProperties(`:root {
+      --text-xs: 12px; --text-hint: red; --text-mark: RebeccaPurple; --text-sys: CanvasText;
+      --text-rule: rgb(
+        10 20 30
+      ); --text-mix: color-mix(in srgb,
+        var(--text-hint) 40%, transparent);
+    }`))).toEqual(['--text-xs']);
   });
 
   it('a step defined with calc(), clamp(), min() or var() still counts as a size; only colours are exempt', () => {
