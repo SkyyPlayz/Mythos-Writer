@@ -24,6 +24,7 @@
       "Bash(printenv*)", "Bash(env)", "Bash(env *)", "Bash(cat *.env*)",
       "Bash(echo *TOKEN*)", "Bash(echo *SECRET*)", "Bash(echo *KEY*)", "Bash(echo *PAT*)",
       "Bash(npm ci --ignore-scripts=false*)", "Bash(npm install*)",
+      "Bash(npm i)", "Bash(npm i *)",
       "Bash(git -C *)", "Bash(bash -c *)", "Bash(sh -c *)", "Bash(gh api *)",
       "Bash(gh pr merge*)", "Bash(gh pr ready*)",
       "Bash(git push)", "Bash(git push main*)", "Bash(git push * main*)",
