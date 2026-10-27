@@ -394,6 +394,20 @@ function openAppendFd(absPath: string, rel: string, deps: NoFollowDeps): number 
     }
     if (code !== 'ENOENT') throw err;
   }
+  // A dangling link can report ENOENT from the open above. On Windows,
+  // O_CREAT|O_EXCL still follows that link and creates the outside file.
+  // Refuse from lstat before any creating open. A real missing file has no lstat.
+  try {
+    const st = fsImpl.lstatSync(absPath);
+    if (isLinkStats(st, absPath, fsImpl)) {
+      throw new VaultWriteRefusedError('LEAF_LINK', rel);
+    }
+    throw new VaultWriteRefusedError('LEAF_LINK', rel, undefined, 'EEXIST');
+  } catch (err) {
+    if (err instanceof VaultWriteRefusedError) throw err;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') throw err;
+  }
   const created = openFlags(
     deps,
     fsImpl.constants.O_WRONLY | fsImpl.constants.O_APPEND | fsImpl.constants.O_CREAT | fsImpl.constants.O_EXCL,
