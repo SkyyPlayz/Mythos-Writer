@@ -16,7 +16,28 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const SRC = resolve(__dirname);
-const stripCssComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+/** Drops CSS comments, but not a `/*` inside a quoted string (a string ends at a newline, as in CSS). */
+function stripCssComments(css: string): string {
+  let out = '';
+  let quote: string | null = null;
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    if (quote) {
+      out += ch;
+      if (ch === '\\' && i + 1 < css.length) out += css[++i];
+      else if (ch === quote || ch === '\n') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; out += ch; continue; }
+    if (ch === '/' && css[i + 1] === '*') {
+      const end = css.indexOf('*/', i + 2);
+      i = end < 0 ? css.length : end + 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
 const tokensCss = stripCssComments(readFileSync(join(SRC, 'tokens.css'), 'utf-8'));
 const themeTs = readFileSync(join(SRC, 'theme.ts'), 'utf-8');
 
@@ -58,6 +79,7 @@ function customProperties(css: string): Decl[] {
 }
 
 const decls = customProperties(tokensCss);
+const stepNames: string[] = SCALE.flatMap(([step]) => [`--text-${step}`, `--leading-${step}`, `--weight-${step}`]);
 const declsOf = (name: string) => decls.filter((d) => d.name === name);
 const isLength = (v: string) => /^-?[\d.]+(px|rem|em)$/.test(v);
 
@@ -67,6 +89,19 @@ describe('#1773 tokens.css — the --text-* type scale', () => {
       { name: '--text-sm', value: '14px', rule: '@media (prefers-color-scheme: dark) >> :root' },
       { name: '--text-xs', value: '12px', rule: ':root' },
     ]);
+  });
+
+  it('does not mistake a quoted /* or */ for a comment, so a step between them is still seen', () => {
+    expect(customProperties(stripCssComments(':root { --open: "/*"; --text-sm: 13px; --close: "*/"; } /* gone */')).map((d) => [d.name, d.value]))
+      .toEqual([['--open', '"/*"'], ['--text-sm', '13px'], ['--close', '"*/"']]);
+  });
+
+  it('no step is re-registered with @property, which would stop descendants inheriting it from :root', () => {
+    const registrations = (css: string) =>
+      [...css.matchAll(/@property\s+(--(?:text|leading|weight)-[\w-]+)/gi)].map((m) => m[1]).filter((name) => stepNames.includes(name));
+    expect(registrations('@property --text-sm { syntax: "<length>"; inherits: false; initial-value: 13px; } @property --glow { syntax: "*"; inherits: false; }'))
+      .toEqual(['--text-sm']);
+    expect(registrations(tokensCss)).toEqual([]);
   });
 
   it('defines exactly the seven size steps, and no other --text-* token is a length', () => {
@@ -98,7 +133,6 @@ describe('#1773 tokens.css — the --text-* type scale', () => {
 });
 
 describe('#1773 theme.ts — never writes the type scale at runtime', () => {
-  const stepNames = SCALE.flatMap(([step]) => [`--text-${step}`, `--leading-${step}`, `--weight-${step}`]);
 
   it('names no --text-/--leading-/--weight- step token anywhere', () => {
     const literals = [...themeTs.matchAll(/['"`](--(?:text|leading|weight)-[\w-]+)['"`]/g)].map((m) => m[1]);

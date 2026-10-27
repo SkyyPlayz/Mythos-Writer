@@ -116,7 +116,34 @@ interface Usage {
 
 // ── Scale ────────────────────────────────────────────────────────────────────
 
-const stripCssComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));
+/**
+ * Blanks CSS comments, keeping newlines so line numbers hold. A `/*` inside a
+ * quoted string is text, not a comment, and a string ends at a newline (as in
+ * CSS), so quoted delimiters can't hide the declarations between them.
+ */
+function stripCssComments(css: string): string {
+  let out = '';
+  let quote: string | null = null;
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    if (quote) {
+      out += ch;
+      if (ch === '\\' && i + 1 < css.length) out += css[++i];
+      else if (ch === quote || ch === '\n') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; out += ch; continue; }
+    if (ch === '/' && css[i + 1] === '*') {
+      const end = css.indexOf('*/', i + 2);
+      const stop = end < 0 ? css.length : end + 2;
+      out += css.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop - 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
 
 /** The `--text-*` tokens tokens.css gives a length — the steps of the scale. */
 function scaleSteps(): string[] {
@@ -220,7 +247,7 @@ function scanCss(css: string, declarationList = false, firstLine = 1): CssDecl[]
     if (ch === '\n') line++;
     if (quote) {
       if (ch === '\\') { buf += ch + (src[i + 1] ?? ''); i++; continue; }
-      if (ch === quote) quote = null;
+      if (ch === quote || ch === '\n') quote = null;
       buf += ch;
       continue;
     }
@@ -228,7 +255,17 @@ function scanCss(css: string, declarationList = false, firstLine = 1): CssDecl[]
     if (ch === '(') parens++;
     if (ch === ')') parens = Math.max(0, parens - 1);
     if (parens > 0) { buf += ch; continue; }
-    if (ch === '{') { stack.push(collapse(buf)); buf = ''; continue; }
+    if (ch === '{') {
+      const prelude = collapse(buf);
+      // `@property --text-sm { inherits: false; initial-value: 13px }` re-registers a step: descendants stop inheriting :root's value.
+      const registered = /^@property\s+(--[\w-]+)$/i.exec(prelude)?.[1];
+      if (registered && SCALE_PROPERTY.test(registered)) {
+        out.push({ selector: [...stack, prelude].join(SCOPE_JOIN), property: registered, value: '@property', line: bufLine });
+      }
+      stack.push(prelude);
+      buf = '';
+      continue;
+    }
     if (ch === ';') { flushDecl(); continue; }
     if (ch === '}') { flushDecl(); stack.pop(); continue; }
     buf += ch;
@@ -287,9 +324,38 @@ function cssPropertyOf(name: string | undefined): string | undefined {
 
 const isAssignment = (k: ts.SyntaxKind) => k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment;
 
-/** `font-size` / `font` / scale declarations written as CSS text inside a string or template. */
-function scanCssText(text: string, scope: string, line: number): CssDecl[] {
+/** `x.cssText` / `x['cssText']` → `cssText`. */
+const accessName = (n: ts.Node) =>
+  ts.isPropertyAccessExpression(n) ? n.name.text : ts.isElementAccessExpression(n) ? literalText(n.argumentExpression) : undefined;
+
+/** Whether `text` has a `{` (a sheet) or a `;` (a declaration list) outside quotes and parentheses. */
+function cssStructure(text: string): { block: boolean; separated: boolean } {
+  let quote: string | null = null;
+  let parens = 0;
+  let block = false;
+  let separated = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) { if (ch === '\\') i++; else if (ch === quote || ch === '\n') quote = null; continue; }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(') parens++;
+    else if (ch === ')') parens = Math.max(0, parens - 1);
+    else if (parens === 0 && ch === '{') block = true;
+    else if (parens === 0 && ch === ';') separated = true;
+  }
+  return { block, separated };
+}
+
+/**
+ * `font-size` / `font` / scale declarations written as CSS text inside a string
+ * or template. `cssDestination`: the string is assigned to `cssText` or passed
+ * to `setAttribute('style', …)`, so it is CSS whatever it looks like.
+ */
+function scanCssText(text: string, scope: string, line: number, cssDestination = false): CssDecl[] {
+  // CSS by construction: markup style attributes, sheets, `;`-separated lists and CSS destinations.
   const out: CssDecl[] = [];
+  // A lone `font:` in plain text may be prose (`Font: Lora`), so it only counts when it carries a size.
+  const loose: CssDecl[] = [];
   let rest = text;
   if (rest.includes('<')) {
     // Markup: style="…" attributes are declaration lists; SVG font-size="…" is a size; <style> bodies are sheets.
@@ -303,12 +369,13 @@ function scanCssText(text: string, scope: string, line: number): CssDecl[] {
     });
     rest = rest.replace(/<[^>]*>/g, ' ');
   }
-  if (/font(-size)?\s*:|--(text|leading|weight)-[\w-]+\s*:/i.test(rest)) {
-    for (const d of scanCss(rest, !rest.includes('{'), line)) {
-      out.push({ ...d, selector: d.selector ? scope + SCOPE_JOIN + d.selector : scope });
+  if (/font(-size)?\s*:|--(text|leading|weight)-[\w-]+\s*:|@property/i.test(rest)) {
+    const { block, separated } = cssStructure(rest);
+    for (const d of scanCss(rest, !block, line)) {
+      (cssDestination || block || separated ? out : loose).push({ ...d, selector: d.selector ? scope + SCOPE_JOIN + d.selector : scope });
     }
   }
-  return out.filter((d) => d.property !== 'font' || looksLikeFontShorthand(d.value));
+  return [...out, ...loose.filter((d) => d.property !== 'font' || looksLikeFontShorthand(d.value))];
 }
 
 function scanTs(file: string, source: string): CssDecl[] {
@@ -341,10 +408,7 @@ function scanTs(file: string, source: string): CssDecl[] {
     }
     // el.style.fontSize = … / el.style['font-size'] = … / ctx.font = … (any assignment operator)
     else if (ts.isBinaryExpression(node) && isAssignment(node.operatorToken.kind)) {
-      const left = node.left;
-      const name = ts.isPropertyAccessExpression(left) ? left.name.text
-        : ts.isElementAccessExpression(left) ? literalText(left.argumentExpression) : undefined;
-      const property = cssPropertyOf(name);
+      const property = cssPropertyOf(accessName(node.left));
       if (property) push(node, property, node.right);
     }
     // setProperty('font-size' | 'font' | '--text-sm', …) / setAttribute('font-size', …) / setAttributeNS(ns, 'font-size', …)
@@ -356,10 +420,24 @@ function scanTs(file: string, source: string): CssDecl[] {
       if (property && (method === 'setProperty' || ((method === 'setAttribute' || method === 'setAttributeNS') && property === 'font-size'))) {
         push(node, property, node.arguments[at + 1]);
       }
+      // CSS.registerProperty({ name: '--text-sm', inherits: false, initialValue: '13px' }) re-registers a step.
+      const spec = node.arguments[0];
+      if (method === 'registerProperty' && spec && ts.isObjectLiteralExpression(spec)) {
+        const nameProp = spec.properties.find((p) => ts.isPropertyAssignment(p) && nameOf(p) === 'name');
+        const registered = nameProp && ts.isPropertyAssignment(nameProp) ? literalText(nameProp.initializer) : undefined;
+        if (registered && SCALE_PROPERTY.test(registered)) {
+          out.push({ selector: scopeChain(node), property: registered, value: 'registerProperty', line: lineOf(node) });
+        }
+      }
     }
     // 'font-size:12px;…' / `top:${y}px;font-size:12px` / '<span style="font-size:9px">' inside a string or template
     else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)) {
-      out.push(...scanCssText(literalText(node) ?? '', scopeChain(node), lineOf(node)));
+      const parent = node.parent;
+      const cssDestination =
+        (ts.isBinaryExpression(parent) && parent.right === node && isAssignment(parent.operatorToken.kind) && accessName(parent.left) === 'cssText') ||
+        (ts.isCallExpression(parent) && ts.isPropertyAccessExpression(parent.expression) && parent.expression.name.text === 'setAttribute' &&
+          parent.arguments[1] === node && literalText(parent.arguments[0]) === 'style');
+      out.push(...scanCssText(literalText(node) ?? '', scopeChain(node), lineOf(node), cssDestination));
     }
     // Template spans are TemplateMiddle/Tail nodes, never re-scanned as strings, so visiting children can't double count.
     ts.forEachChild(node, visit);
@@ -774,6 +852,41 @@ describe('#1773 type-scale guard — scanner', () => {
       ['paint >> o >> b', '0 sans-serif', 'off'],
       ['paint >> o >> c', '100% sans-serif', 'off'],
       ['paint', '100% serif', 'off'],
+    ]);
+  });
+
+  it('does not take a quoted /* or */ for a comment, so declarations between them still count', () => {
+    expect(css('.a { --open: "/*"; font-size: 13px; --close: "*/"; } /* .gone { font-size: 9px; } */')).toEqual([
+      ['.a', 'font-size', '13px', 'off'],
+    ]);
+  });
+
+  it('flags a scale step re-registered with @property or CSS.registerProperty', () => {
+    expect(css('@property --text-sm { syntax: "<length>"; inherits: false; initial-value: 13px; } @property --glow { syntax: "*"; inherits: false; }')).toEqual([
+      ['@property --text-sm', '--text-sm', '@property', 'redefine'],
+    ]);
+    expect(tsx(`
+      function paint() {
+        CSS.registerProperty({ name: '--text-sm', syntax: '<length>', inherits: false, initialValue: '13px' });
+        CSS.registerProperty({ name: '--glow', syntax: '*', inherits: false });
+      }
+    `)).toEqual([['paint', 'registerProperty', 'redefine']]);
+  });
+
+  it('reads CSS strings by their structure and destination, not by a stray brace or a missing size', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        el.style.cssText = 'content: "{"; font-size: 13px;';
+        el.style.cssText = \`font: \${size} serif;\`;
+        el.style.cssText = \`font: \${size} serif\`;
+        el.setAttribute('style', \`font: \${size} serif\`);
+        const label = \`Font: \${name}\`;
+      }
+    `)).toEqual([
+      ['paint', '13px', 'off'],
+      ['paint', `${HOLE} serif`, 'off'],
+      ['paint', `${HOLE} serif`, 'off'],
+      ['paint', `${HOLE} serif`, 'off'],
     ]);
   });
 
