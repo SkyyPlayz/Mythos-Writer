@@ -734,6 +734,9 @@ function baselineProblems(found: Counts, ledger: Counts): string[] {
   return [...counts, ...ceilingProblems(ledger), ...baselineTotalsOver(ledger)];
 }
 
+/** Scale steps declared or registered anywhere but tokens.css, the one file allowed to define them. */
+const redefinitionsOutsideTokens = (us: readonly Usage[]) => us.filter((u) => u.verdict === 'redefine' && u.file !== 'tokens.css');
+
 const where = (us: Usage[]) => us.map((u) => `    ${u.file}:${u.line}  ${u.selector}  { ${u.property}: ${u.value} }`).join('\n');
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -1057,6 +1060,34 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
   });
 });
 
+describe('#1773 type-scale guard — the scale is defined in tokens.css only', () => {
+  const steps = ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl'];
+  const redefined = (file: string, src: string) =>
+    redefinitionsOutsideTokens(scanFile(file, src, steps)).map((u) => [u.file, u.selector, u.property, u.value]);
+
+  it('flags theme.ts writing a step, through setProperty, a style object or cssText', () => {
+    expect(redefined('theme.ts', `
+      export function applyDensity(root: HTMLElement) {
+        root.style.setProperty('--text-sm', '13px');
+        Object.assign(root.style, { '--leading-sm': '1.2' });
+        root.style.cssText += '--weight-sm: 500;';
+        root.style.setProperty('--text-header', '#fff');
+      }
+    `)).toEqual([
+      ['theme.ts', 'applyDensity', '--text-sm', '13px'],
+      ['theme.ts', 'applyDensity', '--leading-sm', '1.2'],
+      ['theme.ts', 'applyDensity', '--weight-sm', '500'],
+    ]);
+  });
+
+  it('flags @property re-registering a step in any stylesheet but tokens.css', () => {
+    const rule = '@property --text-sm { syntax: "<length>"; inherits: false; initial-value: 13px; }';
+    expect(redefined('components/Dense.css', rule)).toEqual([['components/Dense.css', '@property --text-sm', '--text-sm', '@property']]);
+    expect(redefined('theme/inject.ts', `export const sheet = '${rule}';`)).toEqual([['theme/inject.ts', 'sheet >> @property --text-sm', '--text-sm', '@property']]);
+    expect(redefined('tokens.css', `:root { --text-sm: 14px; } ${rule}`)).toEqual([]);
+  });
+});
+
 describe('#1773 type-scale guard — a ledger edit cannot undo the ratchet', () => {
   const tag = (problem: string) => problem.slice(0, problem.indexOf(':'));
   const edit = (ledger: Counts, changes: Record<string, number>) =>
@@ -1087,7 +1118,7 @@ describe('#1773 type-scale guard — off-scale font sizes may only fall', () => 
   const usages = scanTree(scaleSteps());
 
   it('no scale step is declared outside tokens.css', () => {
-    const redefined = usages.filter((u) => u.verdict === 'redefine' && u.file !== 'tokens.css');
+    const redefined = redefinitionsOutsideTokens(usages);
     expect(redefined, `The --text-*/--leading-*/--weight-* steps live in tokens.css only:\n${where(redefined)}`).toEqual([]);
   });
 
