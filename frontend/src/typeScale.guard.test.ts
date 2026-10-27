@@ -56,16 +56,38 @@
  *     count the guard asks for the lower number, so the slack can't be spent
  *     again later.
  *
- * The ledgers at T0 are pinned in this file: their totals (`T0`) and each
- * file's baseline count (`T0_CEILINGS`). baseline.json may never put a file
- * above its T0 ceiling (a new file's ceiling is 0), so raising a count or
- * adding a file can't land as a data-only edit to the JSON, not even when a
- * cut elsewhere keeps the totals level.
+ * The ledgers at T0 are pinned in this file: their totals (`T0`), each
+ * file's baseline count (`T0_CEILINGS`) and each file's allowlisted count
+ * (`T0_ALLOWLIST_CEILINGS`). Neither JSON may put a file above its T0 ceiling
+ * (a file missing from the snapshot has ceiling 0), so raising a count, adding
+ * a file or moving allowlisted debt to another file can't land as a data-only
+ * edit, not even when a cut elsewhere keeps the totals level.
  *
  * "Selector" is the CSS rule's selector with its enclosing at-rules
  * (`@media (…) >> .foo`). For TypeScript it is the chain of named scopes
  * around the value plus the JSX element it styles
  * (`ManuscriptView >> sheetWrapStyle`, `PageModeRunes >> <div style>`).
+ *
+ * ## Known limits
+ *
+ * The guard reads source statically. It does not try to follow values that
+ * only exist at runtime, so these forms are not guaranteed to be caught:
+ *
+ *   - object `font` from a variable: `{ font: someVar }` (indistinguishable
+ *     from a font-family pick);
+ *   - string concatenation: CSS text assembled from pieces with `+` or helper
+ *     calls, where the size or property only exists once the pieces are joined;
+ *   - computed `--text-*` keys: style-object keys and property names computed
+ *     at runtime (`{ [key]: v }`, `setProperty(k, v)`); only names with a
+ *     visible `--text-` / `--leading-` / `--weight-` prefix are folded;
+ *   - split-name `cssText`: a declaration whose property name is split across
+ *     pieces or holes (`'font-' + 'size: 13px'`, `` `${prop}: 13px` ``);
+ *   - `@property` outside tokens.css when it is built at runtime: literal
+ *     `@property --text-*` rules and literal `CSS.registerProperty` names are
+ *     flagged, generated ones are not.
+ *
+ * The human review gate (Critic + Shield + Probe, docs/MERGE_GATE.md) covers
+ * these.
  *
  * Read-only: nothing here writes to the source tree.
  */
@@ -730,7 +752,53 @@ const T0_CEILINGS: Counts = {
   'timeline2/panel/TimelineRightPanel.css': 57,
 };
 
+/**
+ * Per-file allowlist ceilings: the allowlisted count for each file in
+ * typeScale.allowlist.json at T0. allowlist.json may never give a file more
+ * than its ceiling, and a file missing here has ceiling 0, so sanctioned
+ * story-page debt can't be moved to another file by editing an entry's `file`.
+ */
+const T0_ALLOWLIST_CEILINGS: Counts = {
+  'BlockEditor.css': 2,
+  'story/ManuscriptView.css': 10,
+  'story/ManuscriptView.tsx': 1,
+  'story/pageMode.tsx': 5,
+};
+
 const sum = (c: Counts) => Object.values(c).reduce((a, n) => a + n, 0);
+
+/** An allowlist's pinned counts summed per file. */
+function allowlistByFile(entries: readonly AllowEntry[]): Record<string, number> {
+  const byFile: Record<string, number> = {};
+  for (const e of entries) byFile[e.file] = (byFile[e.file] ?? 0) + e.count;
+  return byFile;
+}
+
+/** Files the allowlist gives more sanctioned usages than their T0 ceiling. */
+function allowlistCeilingProblems(entries: readonly AllowEntry[]): string[] {
+  return Object.entries(allowlistByFile(entries))
+    .filter(([file, n]) => n > (T0_ALLOWLIST_CEILINGS[file] ?? 0))
+    .map(([file, n]) =>
+      `ALLOW-RAISED ${file}: allowlist.json allows ${n}, T0 ceiling ${T0_ALLOWLIST_CEILINGS[file] ?? 0}. ` +
+      'Allowlisted story-page sizes may not move to another file or grow.');
+}
+
+/**
+ * Every way an allowlist and the usages found under its keys (`found`, by
+ * keyOf) break the ratchet: pinned counts off, totals over T0, or a file above
+ * its T0 ceiling.
+ */
+function allowlistProblems(entries: readonly AllowEntry[], found: ReadonlyMap<string, number>): string[] {
+  const counts = entries.flatMap((e) => {
+    const f = found.get(keyOf(e)) ?? 0;
+    return f > e.count ? [`GREW ${keyOf(e)}: pinned ${e.count}, found ${f}`] : f < e.count ? [`FELL ${keyOf(e)}: pinned ${e.count}, found ${f}`] : [];
+  });
+  const totals = [
+    ...(sum(allowlistByFile(entries)) > T0.allowlistTotal ? [`TOTAL allowlistTotal: T0 ${T0.allowlistTotal}`] : []),
+    ...(entries.length > T0.allowlistEntries ? [`TOTAL allowlistEntries: T0 ${T0.allowlistEntries}`] : []),
+  ];
+  return [...counts, ...totals, ...allowlistCeilingProblems(entries)];
+}
 
 /** The baseline ledger's totals that exceed T0. */
 function baselineTotalsOver(ledger: Counts): string[] {
@@ -1101,6 +1169,11 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
       'Raising one needs the owner\'s sign-off and an edit to T0 in this file.').toEqual([]);
   });
 
+  it('allowlist.json keeps every file at or under its T0 ceiling', () => {
+    const raised = allowlistCeilingProblems(allowlist);
+    expect(raised, raised.join('\n')).toEqual([]);
+  });
+
   it('baseline.json keeps every file at or under its T0 ceiling', () => {
     const raised = ceilingProblems(baseline);
     expect(raised, raised.join('\n')).toEqual([]);
@@ -1168,6 +1241,25 @@ describe('#1773 type-scale guard — a ledger edit cannot undo the ratchet', () 
 
   it('the T0 ledger, matched by its tree, has no problems', () => {
     expect(baselineProblems(T0_CEILINGS, T0_CEILINGS)).toEqual([]);
+  });
+
+  /** The usages a tree would have if it matched `entries` exactly. */
+  const matching = (entries: readonly AllowEntry[]) => new Map(entries.map((e) => [keyOf(e), e.count]));
+
+  it('the T0 allowlist, matched by its tree, has no problems', () => {
+    expect(allowlistProblems(allowlist, matching(allowlist))).toEqual([]);
+  });
+
+  it('an allowlisted usage moved to another file fails, with the allowlist totals level', () => {
+    const rune = allowlist.find((e) => e.file === 'story/pageMode.tsx' && e.selector === 'runeColStyle');
+    expect(rune?.count, 'fixture: the runeColStyle entry').toBe(1);
+    // Moved to a new, non-story file: same entry count, same total.
+    const toNewFile = allowlist.map((e) => (e === rune ? { ...e, file: 'components/Toolbar.css', selector: '.toolbar-title' } : e));
+    expect([toNewFile.length, sum(allowlistByFile(toNewFile))]).toEqual([T0.allowlistEntries, T0.allowlistTotal]);
+    expect(allowlistProblems(toNewFile, matching(toNewFile)).map(tag)).toEqual(['ALLOW-RAISED components/Toolbar.css']);
+    // Moved to another allowlisted file, which then goes over its own T0 count.
+    const toBlockEditor = allowlist.map((e) => (e === rune ? { ...e, file: 'BlockEditor.css', selector: '.scene-name' } : e));
+    expect(allowlistProblems(toBlockEditor, matching(toBlockEditor)).map(tag)).toEqual(['ALLOW-RAISED BlockEditor.css']);
   });
 
   it('a raise in one file paid for by a cut in another fails, with the totals level', () => {
