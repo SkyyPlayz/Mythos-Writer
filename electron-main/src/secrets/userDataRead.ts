@@ -5,6 +5,7 @@
 
 import fs from 'fs';
 
+import { openNoFollow } from '../vault/noFollowOpen.js';
 import { isResolvedPathInsideRoot } from '../vault/safeVaultJoin.js';
 
 function readFd(fsImpl: typeof fs, fd: number, size: number): Buffer {
@@ -42,8 +43,7 @@ export function readUserDataFile(
     if (!isResolvedPathInsideRoot(root, resolved)) return { status: 'denied' };
     const listed = fsImpl.lstatSync(resolved);
     if (!listed.isFile()) return { status: 'denied' };
-    const noFollow = fsImpl.constants.O_NOFOLLOW ?? 0;
-    fd = fsImpl.openSync(resolved, fsImpl.constants.O_RDONLY | noFollow);
+    fd = openNoFollow(fsImpl, resolved, fsImpl.constants.O_RDONLY);
     const opened = fsImpl.fstatSync(fd);
     if (!opened.isFile()) return { status: 'denied' };
     if (opened.dev !== listed.dev || opened.ino !== listed.ino) return { status: 'denied' };

@@ -48,6 +48,7 @@ export function migrateSecretsFromSettingsFile(
   settingsPath: string,
   store: SecretsStore,
 ): MigrationResult {
+  // The settings file is opened by readUserDataFile, which uses the shared win32 guard.
   const disk = readUserDataFile(settingsPath, nodePath.dirname(settingsPath));
   if (disk.status !== 'ok') {
     return { migrated: false, movedIds: [] };

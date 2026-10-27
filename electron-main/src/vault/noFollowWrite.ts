@@ -3,6 +3,7 @@
 import crypto from 'crypto';
 import { execFileSync as nodeExecFileSync } from 'child_process';
 import fs from 'fs';
+import { NOFOLLOW_MISMATCH, openNoFollow } from './noFollowOpen.js';
 import path from 'path';
 
 import { VaultFileTooLargeError, MAX_VAULT_FILE_BYTES } from './limits.js';
@@ -326,7 +327,7 @@ export function writeNoFollowAtomic(
   );
   let fd: number | undefined;
   try {
-    fd = options.mode !== undefined ? fsImpl.openSync(tmp, flags, options.mode) : fsImpl.openSync(tmp, flags);
+    fd = openNoFollow(fsImpl, tmp, flags, options.mode, deps.platform);
     hooksFor(deps).afterOpen(tmp);
 
     const lst = fsImpl.lstatSync(tmp, { bigint: true });
@@ -400,19 +401,21 @@ export function writeNoFollowAtomic(
 /**
  * Append `line` to `absPath`. An existing name is opened without O_CREAT so
  * O_NOFOLLOW stays the POSIX guard (do not lstat-refuse before that open —
- * removing O_NOFOLLOW must stay visible). A missing name is created with
+ * removing O_NOFOLLOW must stay visible). win32 uses the shared guard instead,
+ * because that flag is zero there. A missing name is created with
  * O_EXCL, which does not follow a dangling link.
  */
 function openAppendFd(absPath: string, rel: string, deps: NoFollowDeps): number {
   const fsImpl = deps.fs;
   const existing = openFlags(deps, fsImpl.constants.O_WRONLY | fsImpl.constants.O_APPEND);
   try {
-    return fsImpl.openSync(absPath, existing);
+    return openNoFollow(fsImpl, absPath, existing, undefined, deps.platform);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ELOOP') {
       throw new VaultWriteRefusedError('LEAF_LINK', rel, undefined, 'ELOOP');
     }
+    if (code === NOFOLLOW_MISMATCH) throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
     if (code !== 'ENOENT') throw err;
   }
   // A dangling link can report ENOENT from the open above. On Windows,
@@ -434,12 +437,13 @@ function openAppendFd(absPath: string, rel: string, deps: NoFollowDeps): number 
     fsImpl.constants.O_WRONLY | fsImpl.constants.O_APPEND | fsImpl.constants.O_CREAT | fsImpl.constants.O_EXCL,
   );
   try {
-    return fsImpl.openSync(absPath, created);
+    return openNoFollow(fsImpl, absPath, created, undefined, deps.platform);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ELOOP' || code === 'EEXIST') {
       throw new VaultWriteRefusedError('LEAF_LINK', rel, undefined, code);
     }
+    if (code === NOFOLLOW_MISMATCH) throw new VaultWriteRefusedError('HANDLE_MISMATCH', rel);
     throw err;
   }
 }

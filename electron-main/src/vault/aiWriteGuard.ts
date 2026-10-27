@@ -3,6 +3,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { openNoFollow } from './noFollowOpen.js';
 import { safeVaultJoin } from './safeVaultJoin.js';
 import { resolveManifestPath } from '../mythosFormat/mythosJson.js';
 import { BOOK_FILENAME } from '../mythosFormat/bookFile.js';
@@ -153,10 +154,9 @@ function bindManuscript(vaultReal: string, rel: string): string | null {
   return abs;
 }
 
-/** Read a manifest without following a symlink placed at its path. */
+/** Read a manifest without following a symlink or junction placed at its path. */
 function readManifestText(manifestPath: string): string {
-  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0);
-  const fd = fs.openSync(manifestPath, flags);
+  const fd = openNoFollow(fs, manifestPath, fs.constants.O_RDONLY);
   try {
     const opened = fs.fstatSync(fd);
     if (!opened.isFile()) throw new Error('manifest is not a regular file');

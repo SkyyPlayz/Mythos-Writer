@@ -21,6 +21,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { NOFOLLOW_MISMATCH, openNoFollow } from './noFollowOpen.js';
 
 export interface SafeVaultJoinOptions {
   /** Treat as a write/create — the leaf is allowed to not exist yet. */
@@ -106,23 +107,23 @@ function throwSymlinkLoop(relPath: string): never {
 }
 
 /**
- * An existing write leaf was lstat'd as a non-link. Open it with O_NOFOLLOW
- * and O_NONBLOCK, then require fstat to match that lstat. A FIFO opened with
- * plain O_RDONLY waits forever for a writer. realpath of the leaf would follow
+ * An existing write leaf was lstat'd as a non-link. Open it through the shared
+ * no-follow helper, then require fstat to match that earlier lstat. A FIFO opened
+ * with plain O_RDONLY waits forever for a writer. realpath of the leaf would follow
  * a symlink swapped in after the lstat and hand the writer a different file.
- * O_NOFOLLOW is 0 on win32; the fstat comparison still refuses that swap.
- * O_NONBLOCK is omitted on win32 so a normal file open stays the same there.
+ * On win32 the helper lstats again and refuses a symlink or junction before the open.
+ * The immediate-return flag is omitted on win32 so a normal file open stays the same there.
  * Directories stay joinable for mkdir, move, and delete.
  */
 function assertExistingLeafFd(absPath: string, relPath: string, listed: fs.Stats): void {
   const nonBlock = process.platform === 'win32' ? 0 : (fs.constants.O_NONBLOCK ?? 0);
-  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | nonBlock;
+  const flags = fs.constants.O_RDONLY | nonBlock;
   let fd: number | undefined;
   try {
-    fd = fs.openSync(absPath, flags);
+    fd = openNoFollow(fs, absPath, flags);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ELOOP') {
+    if (code === 'ELOOP' || code === NOFOLLOW_MISMATCH) {
       logVaultRefusal('LEAF_LINK', relPath);
       throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);
     }

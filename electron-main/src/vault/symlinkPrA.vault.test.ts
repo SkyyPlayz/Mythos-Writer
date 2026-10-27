@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import JSZip from 'jszip';
 
+import { assertAiWritable } from './aiWriteGuard.js';
 import { safeVaultJoin } from './safeVaultJoin.js';
 import * as joinMod from './safeVaultJoin.js';
 import {
@@ -858,6 +859,131 @@ describe('PR A symlink writes', () => {
       console.log('userdata swap denied');
     },
   );
+
+  const NOFOLLOW_PLATFORM = Symbol.for('mythos.noFollowPlatform');
+
+  function emptyManifestJson(): string {
+    return JSON.stringify({ schemaVersion: 1, stories: [], scenes: [], entities: [] });
+  }
+
+  /** Ask the shared guard to use the win32 path, and open the way win32 does when the flag is zero. */
+  function forceWin32NoFollow(): () => void {
+    const marked = fs as unknown as Record<symbol, NodeJS.Platform>;
+    marked[NOFOLLOW_PLATFORM] = 'win32';
+    const realOpen = fs.openSync.bind(fs);
+    const spy = vi.spyOn(fs, 'openSync').mockImplementation((p, flags, mode) => {
+      const next = typeof flags === 'number' ? flags & ~fs.constants.O_NOFOLLOW : flags;
+      return mode == null ? realOpen(p, next) : realOpen(p, next, mode);
+    });
+    return () => {
+      spy.mockRestore();
+      delete marked[NOFOLLOW_PLATFORM];
+    };
+  }
+
+  function proxyStat(st: fs.Stats, patch: { symlink?: boolean; file?: boolean; attrs?: number }): fs.Stats {
+    return new Proxy(st, {
+      get(target, prop, receiver) {
+        if (prop === 'isSymbolicLink' && patch.symlink !== undefined) return () => patch.symlink;
+        if (prop === 'isFile' && patch.file !== undefined) return () => patch.file;
+        if (prop === 'fileAttributes') return patch.attrs;
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  }
+
+  it('refuses a file symlink when the no-follow flag is zero (runs on win32)', () => {
+    const release = forceWin32NoFollow();
+    try {
+      const vault = path.join(tmp, 'sym-vault');
+      fs.mkdirSync(vault);
+      const manifest = path.join(vault, 'manifest.json');
+      fs.writeFileSync(manifest, emptyManifestJson());
+      const orig = fs.lstatSync.bind(fs);
+      const lstat = vi.spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike, opts?: { bigint?: boolean }) => {
+        const st = opts === undefined ? orig(p) : orig(p, opts as { bigint: true });
+        if (pathKey(p) === pathKey(manifest)) return proxyStat(st as fs.Stats, { symlink: true, file: true });
+        return st;
+      }) as typeof fs.lstatSync);
+      try {
+        expect(assertAiWritable(vault, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
+      } finally {
+        lstat.mockRestore();
+      }
+      if (!skipSymlink()) {
+        const vault2 = path.join(tmp, 'sym-real');
+        const outside = path.join(tmp, 'sym-outside.json');
+        fs.mkdirSync(vault2);
+        fs.writeFileSync(outside, emptyManifestJson());
+        fs.symlinkSync(outside, path.join(vault2, 'manifest.json'));
+        expect(assertAiWritable(vault2, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
+        expect(fs.readFileSync(outside, 'utf8')).toContain('"schemaVersion":1');
+      }
+      console.log('win32 symlink refused');
+    } finally {
+      release();
+    }
+  });
+
+  it('refuses a junction or reparse point when the no-follow flag is zero (runs on win32)', () => {
+    const release = forceWin32NoFollow();
+    try {
+      const vault = path.join(tmp, 'reparse-vault');
+      fs.mkdirSync(vault);
+      const manifest = path.join(vault, 'manifest.json');
+      fs.writeFileSync(manifest, emptyManifestJson());
+      const orig = fs.lstatSync.bind(fs);
+      const lstat = vi.spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike, opts?: { bigint?: boolean }) => {
+        const st = opts === undefined ? orig(p) : orig(p, opts as { bigint: true });
+        if (pathKey(p) === pathKey(manifest)) return proxyStat(st as fs.Stats, { symlink: false, file: true, attrs: 0x400 });
+        return st;
+      }) as typeof fs.lstatSync);
+      try {
+        expect(assertAiWritable(vault, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
+      } finally {
+        lstat.mockRestore();
+      }
+      if (process.platform === 'win32') {
+        const vault2 = path.join(tmp, 'junc-vault');
+        const target = path.join(tmp, 'junc-target');
+        fs.mkdirSync(vault2);
+        fs.mkdirSync(target);
+        fs.symlinkSync(target, path.join(vault2, 'manifest.json'), 'junction');
+        expect(assertAiWritable(vault2, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
+      }
+      console.log('win32 junction refused');
+    } finally {
+      release();
+    }
+  });
+
+  it('refuses a file swapped after lstat when the no-follow flag is zero (runs on win32)', () => {
+    const release = forceWin32NoFollow();
+    try {
+      const vault = path.join(tmp, 'swap-after-lstat');
+      fs.mkdirSync(vault);
+      const manifest = path.join(vault, 'manifest.json');
+      const replacement = path.join(vault, 'replacement.json');
+      fs.writeFileSync(manifest, emptyManifestJson());
+      fs.writeFileSync(replacement, JSON.stringify({ schemaVersion: 1, stories: [], scenes: [], entities: [], swapped: true }));
+      let swapped = false;
+      const orig = fs.lstatSync.bind(fs);
+      vi.spyOn(fs, 'lstatSync').mockImplementation(((p: fs.PathLike, opts?: { bigint?: boolean }) => {
+        const st = opts === undefined ? orig(p) : orig(p, opts as { bigint: true });
+        if (!swapped && pathKey(p) === pathKey(manifest)) {
+          swapped = true;
+          fs.renameSync(replacement, manifest);
+        }
+        return st;
+      }) as typeof fs.lstatSync);
+      expect(assertAiWritable(vault, 'entities/characters/a.md')).toEqual({ ok: false, reason: 'no_manifest' });
+      expect(swapped).toBe(true);
+      console.log('win32 swap denied');
+    } finally {
+      release();
+    }
+  });
 
   // A replaced regular file keeps the path and is a file, so only dev/ino can see it.
   it.skipIf(process.platform === 'win32')(

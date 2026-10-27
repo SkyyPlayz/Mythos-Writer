@@ -5,6 +5,7 @@
 // remains the pure, DB-free full rebuild the cache regenerates from.
 import fs from 'fs';
 import path from 'path';
+import { openNoFollow } from './noFollowOpen.js';
 import { createHash } from 'crypto';
 import { parseEntityFrontmatter } from './entityFrontmatterParser.js';
 import { findBestMatch } from './entityMatcher.js';
@@ -32,10 +33,10 @@ function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf-8').digest('hex');
 }
 
-/** Read a listed note from the fd opened without following a replacement symlink. */
+/** Read a listed note from the fd opened without following a replacement symlink or junction. */
 function readNoteText(filePath: string): string {
-  const flags = (fs.constants?.O_RDONLY ?? 0) | (fs.constants?.O_NOFOLLOW ?? 0);
-  const fd = fs.openSync(filePath, flags);
+  const flags = fs.constants?.O_RDONLY ?? 0;
+  const fd = openNoFollow(fs, filePath, flags);
   try {
     const opened = fs.fstatSync(fd);
     if (!opened.isFile()) throw new Error('not a regular file');
