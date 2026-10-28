@@ -1,0 +1,8 @@
+setup
+paths-filter
+mode
+lint
+typecheck
+unit
+ci-light
+ci

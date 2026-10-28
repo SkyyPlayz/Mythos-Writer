@@ -1,0 +1,85 @@
+{
+  "workflow_run": {
+    "path": ".github/workflows/ci.yml",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": 1001
+  },
+  "jobs": [
+    {
+      "name": "setup",
+      "conclusion": "success"
+    },
+    {
+      "name": "paths-filter",
+      "conclusion": "success"
+    },
+    {
+      "name": "mode",
+      "conclusion": "success"
+    },
+    {
+      "name": "lint",
+      "conclusion": "success"
+    },
+    {
+      "name": "typecheck",
+      "conclusion": "success"
+    },
+    {
+      "name": "unit",
+      "conclusion": "success"
+    },
+    {
+      "name": "ci-light",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "ci",
+      "conclusion": "failure"
+    },
+    {
+      "name": "oracle-sweeps (1/2)",
+      "conclusion": "success"
+    },
+    {
+      "name": "oracle-sweeps (2/2)",
+      "conclusion": "success"
+    },
+    {
+      "name": "build-electron",
+      "conclusion": "success"
+    },
+    {
+      "name": "e2e-shard-1",
+      "conclusion": "success"
+    },
+    {
+      "name": "e2e-shard-2",
+      "conclusion": "success"
+    },
+    {
+      "name": "e2e-shard-3",
+      "conclusion": "success"
+    },
+    {
+      "name": "e2e-shard-4",
+      "conclusion": "success"
+    },
+    {
+      "name": "notes-windows",
+      "conclusion": "success"
+    },
+    {
+      "name": "build-linux",
+      "conclusion": "success"
+    },
+    {
+      "name": "build-windows",
+      "conclusion": "success"
+    }
+  ],
+  "pull_request": {
+    "draft": false,
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

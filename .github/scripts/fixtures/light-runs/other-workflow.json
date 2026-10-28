@@ -1,0 +1,85 @@
+{
+  "workflow_run": {
+    "path": ".github/workflows/fuzz.yml",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": 1001
+  },
+  "jobs": [
+    {
+      "name": "setup",
+      "conclusion": "success"
+    },
+    {
+      "name": "paths-filter",
+      "conclusion": "success"
+    },
+    {
+      "name": "mode",
+      "conclusion": "success"
+    },
+    {
+      "name": "lint",
+      "conclusion": "success"
+    },
+    {
+      "name": "typecheck",
+      "conclusion": "success"
+    },
+    {
+      "name": "unit",
+      "conclusion": "success"
+    },
+    {
+      "name": "ci-light",
+      "conclusion": "success"
+    },
+    {
+      "name": "ci",
+      "conclusion": "failure"
+    },
+    {
+      "name": "oracle-sweeps (1/2)",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "oracle-sweeps (2/2)",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "build-electron",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "e2e-shard-1",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "e2e-shard-2",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "e2e-shard-3",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "e2e-shard-4",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "notes-windows",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "build-linux",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "build-windows",
+      "conclusion": "skipped"
+    }
+  ],
+  "pull_request": {
+    "draft": true,
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}
