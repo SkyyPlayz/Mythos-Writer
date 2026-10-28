@@ -4,7 +4,7 @@
 // cascade-delete, and the item-delete stub. Real filesystem via
 // fs.mkdtempSync (no fs mocking), matching vaultIcons.test.ts's pattern.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +17,8 @@ import {
   patchLayout,
   patchColors,
   flushPendingNotesBoardWrites,
+  setBoardWriteRefusalHandler,
+  NOTES_BOARD_DEBOUNCE_MS,
   furnitureCreate,
   furnitureUpdate,
   furnitureDelete,
@@ -770,5 +772,57 @@ describe('rename is a Store B no-op by construction (§2, §15 test 3)', () => {
     expect(board.children).toEqual([{ path: 'Aria.md', kind: 'note', id }]);
     expect(board.layout[`n:${id}`]).toEqual({ x: 90, y: 40 });
     expect(fs.readFileSync(path.join(root, BOARD_SIDECAR_FILE_NAME), 'utf-8')).toBe(before);
+  });
+});
+
+describe('debounced board save when the sidecar is a symlink', () => {
+  let root: string;
+  let outside: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-nb-link-'));
+    outside = path.join(os.tmpdir(), `vb-nb-outside-${process.pid}-${Date.now()}.json`);
+    fs.writeFileSync(outside, '{"secret":"KEEP"}\n');
+    setBoardWriteRefusalHandler(null);
+  });
+
+  afterEach(() => {
+    setBoardWriteRefusalHandler(null);
+    vi.useRealTimers();
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { force: true });
+  });
+
+  function linkSidecar(): void {
+    writeNote(root, 'Idea.md', '# Idea\n');
+    fs.symlinkSync(outside, path.join(root, BOARD_SIDECAR_FILE_NAME));
+  }
+
+  it('reports a refusal and does not throw or write the link target', () => {
+    linkSidecar();
+    const seen: Array<{ folderRelPath: string; code: string; message: string }> = [];
+    setBoardWriteRefusalHandler((info) => seen.push(info));
+    patchLayout(root, '', 'Idea.md', { x: 4, y: 5 });
+
+    expect(() => flushPendingNotesBoardWrites(root)).not.toThrow();
+    expect(seen).toHaveLength(1);
+    expect(seen[0].folderRelPath).toBe('');
+    expect(seen[0].code).toBe('LEAF_LINK');
+    expect(seen[0].message).toContain('shortcut');
+    expect(seen[0].message).not.toContain(root);
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+    expect(fs.lstatSync(path.join(root, BOARD_SIDECAR_FILE_NAME)).isSymbolicLink()).toBe(true);
+  });
+
+  it('the debounce timer reports the refusal instead of throwing', () => {
+    linkSidecar();
+    const seen: Array<{ code: string }> = [];
+    setBoardWriteRefusalHandler((info) => seen.push(info));
+    vi.useFakeTimers();
+    patchLayout(root, '', 'Idea.md', { x: 1, y: 2 });
+
+    expect(() => vi.advanceTimersByTime(NOTES_BOARD_DEBOUNCE_MS)).not.toThrow();
+    expect(seen.map((info) => info.code)).toEqual(['LEAF_LINK']);
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
   });
 });

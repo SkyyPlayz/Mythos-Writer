@@ -286,6 +286,14 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     };
   }, [notesVaultValid, folderPath, loadBoard]);
 
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    return window.api.onNotesBoardWriteRefused?.((info) => {
+      if (info.folderRelPath !== folderPath) return;
+      setActionError(info.message);
+    });
+  }, [notesVaultValid, folderPath]);
+
   const onItemMove = useCallback(async (itemPath: string, x: number, y: number) => {
     try {
       const { key } = await window.api.notesBoardPatchLayout(folderPath, itemPath, { x, y });

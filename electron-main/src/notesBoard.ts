@@ -47,6 +47,7 @@ import {
   listVaultFiles,
   markSelfWrite,
 } from './vault.js';
+import { isSymlinkWriteRefusal, mapVaultWriteError, SYMLINK_SAVE_TEXT, vaultRelativeName } from './vault/writeErrors.js';
 
 // ─── Constants ───
 
@@ -529,6 +530,37 @@ interface PendingBoardWrite {
 // DIFFERENT boards never interfere with each other.
 const pendingWrites = new Map<string, PendingBoardWrite>();
 
+export interface BoardWriteRefusal {
+  folderRelPath: string;
+  code: string;
+  message: string;
+}
+
+type BoardWriteRefusalHandler = (refusal: BoardWriteRefusal) => void;
+let boardWriteRefusalHandler: BoardWriteRefusalHandler | null = null;
+
+/** Main registers this so a debounced board save can tell the renderer. */
+export function setBoardWriteRefusalHandler(handler: BoardWriteRefusalHandler | null): void {
+  boardWriteRefusalHandler = handler;
+}
+
+function reportBoardWriteRefusal(folderRelPath: string, err: unknown): void {
+  const rel = boardSidecarRel(folderRelPath);
+  const mapped = mapVaultWriteError(err, rel);
+  const refusal: BoardWriteRefusal = mapped
+    ? { folderRelPath, code: mapped.code, message: mapped.error }
+    : isSymlinkWriteRefusal(err)
+      ? { folderRelPath, code: 'LEAF_LINK', message: SYMLINK_SAVE_TEXT(vaultRelativeName(rel)) }
+      : { folderRelPath, code: 'WRITE_FAILED', message: "Couldn't save the board." };
+  // Code and the vault-relative sidecar only. err.message can carry an absolute path.
+  console.error(`[notesBoard] board save refused: ${refusal.code} ${rel}`);
+  try {
+    boardWriteRefusalHandler?.(refusal);
+  } catch {
+    console.error('[notesBoard] board refusal handler failed');
+  }
+}
+
 function isUnder(childAbs: string, rootAbs: string): boolean {
   const rel = path.relative(rootAbs, childAbs);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -571,26 +603,33 @@ function flushBoardWrite(folderAbs: string): void {
   pendingWrites.delete(folderAbs);
   clearTimeout(entry.timer);
 
-  const board = readBoardFileRaw(folderAbs) ?? defaultBoardFile();
-  let changed = false;
+  try {
+    const board = readBoardFileRaw(folderAbs) ?? defaultBoardFile();
+    let changed = false;
 
-  for (const [key, patch] of Object.entries(entry.pendingLayout)) {
-    board.layout[key] = { ...board.layout[key], ...patch } as BoardLayoutEntry;
-    changed = true;
-  }
-  for (const [key, color] of Object.entries(entry.pendingColors)) {
-    if (color === null) {
-      if (key in board.colors) changed = true;
-      delete board.colors[key];
-    } else {
-      board.colors[key] = color;
+    for (const [key, patch] of Object.entries(entry.pendingLayout)) {
+      board.layout[key] = { ...board.layout[key], ...patch } as BoardLayoutEntry;
       changed = true;
     }
-  }
+    for (const [key, color] of Object.entries(entry.pendingColors)) {
+      if (color === null) {
+        if (key in board.colors) changed = true;
+        delete board.colors[key];
+      } else {
+        board.colors[key] = color;
+        changed = true;
+      }
+    }
 
-  if (changed) {
-    board.updated = new Date().toISOString();
-    writeBoardFileRaw(entry.vaultRoot, entry.folderRelPath, board);
+    if (changed) {
+      board.updated = new Date().toISOString();
+      writeBoardFileRaw(entry.vaultRoot, entry.folderRelPath, board);
+    }
+  } catch (err) {
+    // The debounce timer is not an IPC handler. A symlink sidecar throws here,
+    // and an uncaught throw in the main process takes the app down. The
+    // pending buffer is already dropped; the renderer hears the refusal.
+    reportBoardWriteRefusal(entry.folderRelPath, err);
   }
 }
 

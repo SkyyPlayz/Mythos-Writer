@@ -542,6 +542,7 @@ export const IPC_CHANNELS = {
   NOTES_BOARD_GET: 'notesBoard:get',
   NOTES_BOARD_PATCH_LAYOUT: 'notesBoard:patchLayout',
   NOTES_BOARD_PATCH_COLORS: 'notesBoard:patchColors',
+  NOTES_BOARD_WRITE_REFUSED: 'notesBoard:writeRefused',
   NOTES_BOARD_FURNITURE_CREATE: 'notesBoard:furnitureCreate',
   NOTES_BOARD_FURNITURE_UPDATE: 'notesBoard:furnitureUpdate',
   NOTES_BOARD_FURNITURE_DELETE: 'notesBoard:furnitureDelete',

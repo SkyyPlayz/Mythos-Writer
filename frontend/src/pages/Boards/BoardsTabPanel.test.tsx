@@ -70,6 +70,9 @@ const api = {
   }),
   onVaultNotesUpdated: vi.fn((_cb: (data: { count: number; path?: string }) => void) => () => {}),
   onVaultNotesAssetChanged: vi.fn(() => () => {}),
+  onNotesBoardWriteRefused: vi.fn(
+    (_cb: (info: { folderRelPath: string; code: string; message: string }) => void) => () => {},
+  ),
   // SKY-11189 §7/§8
   notesBoardTrashItems: vi.fn(async (
     _folder: string,
@@ -95,6 +98,7 @@ const api = {
 beforeEach(() => {
   vaultItems = [];
   vi.clearAllMocks();
+  api.onNotesBoardWriteRefused.mockImplementation(() => () => {});
   vi.stubGlobal('ResizeObserver', ViewportResizeObserver);
   vi.stubGlobal('window', window);
   (window as unknown as { api: typeof api }).api = api;
@@ -463,5 +467,22 @@ describe('F1#5 — Boards navigable sidebar', () => {
     });
     expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
     expect(await screen.findByTestId('boards-nav-folder-Extra')).toBeTruthy();
+  });
+
+  it('shows a refused board save for this folder', async () => {
+    let deliver: ((info: { folderRelPath: string; code: string; message: string }) => void) | null = null;
+    api.onNotesBoardWriteRefused.mockImplementation((cb) => {
+      deliver = cb;
+      return () => {
+        deliver = null;
+      };
+    });
+    await mountPanel();
+    expect(deliver).not.toBeNull();
+    const message = "Couldn't save .mythos-board.json: it's a shortcut (symbolic link). Save it under a new name instead.";
+    act(() => {
+      deliver?.({ folderRelPath: '', code: 'LEAF_LINK', message });
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('shortcut');
   });
 });

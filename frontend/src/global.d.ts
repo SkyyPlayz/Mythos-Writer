@@ -1809,6 +1809,9 @@ interface Window {
       patch: { x?: number; y?: number; w?: number; h?: number },
     ) => Promise<{ key: string; id: string }>;
     notesBoardPatchColors: (folderPath: string, itemPath: string, color: string | null) => Promise<{ key: string; id: string }>;
+    onNotesBoardWriteRefused?: (
+      cb: (info: { folderRelPath: string; code: string; message: string }) => void,
+    ) => () => void;
     notesBoardFurnitureCreate: (folderPath: string, item: Record<string, unknown>) => Promise<{ item: Record<string, unknown> & { id: string } }>;
     notesBoardFurnitureUpdate: (folderPath: string, furnitureId: string, patch: Record<string, unknown>) => Promise<{ item: (Record<string, unknown> & { id: string }) | null }>;
     notesBoardFurnitureDelete: (folderPath: string, furnitureId: string) => Promise<{ ok: true }>;

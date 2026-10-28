@@ -454,6 +454,7 @@ import {
   itemRenameNotify as notesBoardItemRenameNotify,
   itemDeleteStub as notesBoardItemDeleteStub,
   flushPendingNotesBoardWrites,
+  setBoardWriteRefusalHandler,
   // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5).
   createBoardItem as notesBoardCreateItem,
   boardItemRenameTarget as notesBoardRenameTarget,
@@ -11921,6 +11922,11 @@ app.whenReady().then(async () => {
   // harness or plugin registering a handler first) is logged loudly and boot
   // proceeds to create the window instead of dying as an unhandled rejection
   // before any UI exists.
+  setBoardWriteRefusalHandler((refusal) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send(IPC_CHANNELS.NOTES_BOARD_WRITE_REFUSED, refusal);
+  });
   try {
     setupIpcMain(handlers);
   } catch (e) {
