@@ -3,7 +3,7 @@
 
 import { ipcMain, ipcRenderer } from 'electron';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
-import { sanitizeIpcError, withIpcLog, IPC_ERROR_CATEGORIES } from './ipcErrors.js';
+import { sanitizeIpcError, withIpcLog, IPC_ERROR_CATEGORIES, SafeIpcError } from './ipcErrors.js';
 import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
 import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/types.js';
@@ -35,17 +35,6 @@ export type {
   TimelineEvent,
   TimelineTensionPoint,
 };
-
-// Re-export canonical payload/policy types from @mythos-writer/shared.
-// SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
-export type {
-  SuggestionPayload,
-  VaultContentPayload,
-  TypedRelationPayload,
-  ManuscriptInconsistencyPayload,
-  AutoApplyPolicy,
-  AgentBudgetUsage,
-} from '@mythos-writer/shared/types/suggestion';
 
 // ─── Channel names ───
 export const IPC_CHANNELS = {
@@ -844,6 +833,15 @@ export function setupIpcMain(handlers: IpcHandlers) {
         try {
           return await handler(payload);
         } catch (error) {
+          // Accept and rollback refusals must reject the invoke so the
+          // renderer catch shows the row error. sanitizeIpcError would
+          // resolve { error } and the catch would not run.
+          if (
+            error instanceof SafeIpcError
+            && (channel === IPC_CHANNELS.SUGGESTIONS_ACCEPT || channel === IPC_CHANNELS.SUGGESTIONS_ROLLBACK)
+          ) {
+            throw error;
+          }
           return sanitizeIpcError(channel, error);
         }
       });
@@ -926,13 +924,13 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SUGGESTIONS_LIST]: (payload: SuggestionsListPayload) => SuggestionsListResponse;
   [IPC_CHANNELS.SUGGESTIONS_GET]: (payload: SuggestionsGetPayload) => SuggestionsGetResponse;
   [IPC_CHANNELS.SUGGESTIONS_UPSERT]: (payload: SuggestionsUpsertPayload) => SuggestionsUpsertResponse;
-  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => SuggestionsAcceptResponse;
+  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => Promise<SuggestionsAcceptResponse>;
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => SuggestionsApplyResponse;
   [IPC_CHANNELS.SUGGESTIONS_REJECT]: (payload: SuggestionsRejectPayload) => SuggestionsRejectResponse;
-  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => SuggestionsRollbackResponse;
+  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => Promise<SuggestionsRollbackResponse>;
   [IPC_CHANNELS.SUGGESTIONS_SEARCH]: (payload: SuggestionsSearchPayload) => SuggestionsSearchResponse;
   [IPC_CHANNELS.SUGGESTIONS_IGNORE]: (payload: SuggestionsIgnorePayload) => SuggestionsIgnoreResponse;
-  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => SuggestionsBatchActionResponse;
+  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => Promise<SuggestionsBatchActionResponse>;
   [IPC_CHANNELS.SUGGESTIONS_UNIFIED_LIST]: (payload: SuggestionsUnifiedListPayload) => SuggestionsUnifiedListResponse;
   [IPC_CHANNELS.AUDIT_LIST]: (payload: AuditListPayload) => AuditListResponse;
   [IPC_CHANNELS.PROVENANCE_UPSERT]: (payload: ProvenanceUpsertPayload) => ProvenanceUpsertResponse;
@@ -1010,7 +1008,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_SURFACE_REVEAL_VAULTS_PARENT]: (payload: never) => Promise<VaultSurfaceRevealVaultsParentResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_REVEAL_MYTHOS]: (payload: VaultSurfaceRevealMythosPayload) => Promise<VaultSurfaceRevealVaultsParentResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_MOVE_VAULTS_PARENT]: (payload: VaultSurfaceMoveVaultsParentPayload) => Promise<VaultSurfaceMoveVaultsParentResponse>;
-  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
+  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => Promise<ArchiveConfirmResponse>;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
   [IPC_CHANNELS.ARCHIVE_ACCEPT_LINK]: (payload: ArchiveAcceptLinkPayload) => ArchiveAcceptLinkResponse;
@@ -3667,7 +3665,7 @@ export interface TelemetryReportResponse {
 export type { SuggestionStatus } from './shared/types/suggestion.js';
 import type { SuggestionStatus } from './shared/types/suggestion.js';
 export type SourceAgent = 'writing-assistant' | 'brainstorm' | 'archive';
-export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore';
+export type AuditAction = 'accept' | 'apply' | 'reject' | 'rollback' | 'ignore' | 'refuse';
 export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';
 export type UnifiedSuggestionStatus = 'proposed' | 'accepted' | 'applied' | 'rejected' | 'ignored' | 'rolled_back';
 export type TimelineSource = 'explicit_marker' | 'prose';
@@ -4918,7 +4916,7 @@ export interface ArchiveConfirmResponse {
   /** Set when action='suggest_story_change' and a counter-suggestion was created.
    *  While AI text apply is off, that verb is refused with reason 'suggest_only' and this is unset. */
   newSuggestionId?: string;
-  reason?: 'suggest_only';
+  reason?: 'suggest_only' | 'note_not_found' | 'excerpt_not_found' | 'manuscript_target' | 'not_allowlisted' | 'resolve_failed' | 'unresolved_relation' | 'unknown_kind' | 'no_manifest';
 }
 
 export interface ArchiveIgnoreEntry {
@@ -5001,7 +4999,7 @@ export interface ArchiveResolveContinuityPayload {
  *  open and the renderer surfaces `reason`. */
 export interface ArchiveResolveContinuityResponse {
   ok: boolean;
-  reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only';
+  reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only' | 'manuscript_target' | 'not_allowlisted' | 'resolve_failed' | 'unresolved_relation' | 'unknown_kind' | 'no_manifest';
 }
 
 export interface ArchiveListContinuityPayload {

@@ -4,6 +4,17 @@ import './ArchiveConfirmDialog.css';
 
 export type ArchiveConfirmAction = 'match_archive' | 'suggest_story_change' | 'ignore';
 
+const W8_GUARD_REASONS = new Set([
+  'manuscript_target',
+  'not_allowlisted',
+  'resolve_failed',
+  'unresolved_relation',
+  'unknown_kind',
+  'no_manifest',
+]);
+
+export const W8_NOTE_REFUSAL = "1 note suggestion couldn't be saved. It's waiting for you to review.";
+
 export interface ArchiveConfirmDialogProps {
   suggestionId: string;
   rationale: string;
@@ -39,6 +50,11 @@ export default function ArchiveConfirmDialog({
         if (typeof api?.archiveConfirm === 'function') {
           const result = await api.archiveConfirm(suggestionId, action);
           if (result?.error) throw new Error(result.error);
+          if (result?.ok === false && W8_GUARD_REASONS.has(result.reason ?? '')) {
+            setError(W8_NOTE_REFUSAL);
+            setBusy(false);
+            return;
+          }
         }
       }
       onResolved(action);

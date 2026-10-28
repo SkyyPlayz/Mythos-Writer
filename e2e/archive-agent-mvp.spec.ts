@@ -207,6 +207,9 @@ function initContinuitySchema(db: DatabaseSync): void {
   `);
 }
 
+/** Class C note: Universes/<universe>/{Characters,…}/file.md. A shorter path is not allowlisted. */
+const MARA_NOTE_REL = path.join('Universes', 'Aster', 'Characters', 'Mara.md');
+
 function seedContinuityIssues(vaultDir: string, issues: IssueSeed[]): void {
   const mythosDir = path.join(vaultDir, '.mythos');
   fs.mkdirSync(mythosDir, { recursive: true });
@@ -219,7 +222,7 @@ function seedContinuityIssues(vaultDir: string, issues: IssueSeed[]): void {
          manuscript_excerpt, vault_note_path, vault_line, vault_excerpt, rationale,
          proposed_match_archive, proposed_suggest_story, status, resolved_at, resolved_action, created_at)
       VALUES
-        (?, 'character_attribute_drift', ?, ?, 12, ?, 'Universes/Aster/Mara.md',
+        (?, 'character_attribute_drift', ?, ?, 12, ?, '${MARA_NOTE_REL.split(path.sep).join('/')}',
          8, ?, ?, ?, ?, ?, NULL, NULL, ?)
     `);
     for (const issue of issues) {
@@ -245,7 +248,6 @@ function seedContinuityIssues(vaultDir: string, issues: IssueSeed[]): void {
  *  the Notes Vault at the exact path the seeded flags anchor to. Since M9d,
  *  "Apply vault change" patches this file for real (and refuses to resolve
  *  the flag when the note or its excerpt is missing). */
-const MARA_NOTE_REL = path.join('Universes', 'Aster', 'Mara.md');
 function seedNotesVault(notesVaultDir: string): void {
   const notePath = path.join(notesVaultDir, MARA_NOTE_REL);
   fs.mkdirSync(path.dirname(notePath), { recursive: true });

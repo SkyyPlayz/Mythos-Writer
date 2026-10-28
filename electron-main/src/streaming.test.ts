@@ -67,6 +67,7 @@ vi.mock('./provider.js', () => {
   };
 });
 
+import { GoogleModelExcludedError } from '@mythos-writer/shared/openRouterPolicy';
 import { ipcMain } from 'electron';
 import { streamFromProvider, EmptyProviderResponseError, TokenBudgetExhaustedError } from './provider.js';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
@@ -1078,6 +1079,13 @@ describe('categorizeStreamError', () => {
     const msg = streamErrorUserMessage(STREAM_ERROR_CATEGORIES.BUDGET_EXHAUSTED);
     expect(msg).toMatch(/token budget|token limit/i);
     expect(msg).not.toContain('http');
+  });
+
+  it('categorizes a Google model exclusion as an invalid request and forwards the model id', () => {
+    const err = new GoogleModelExcludedError('Google/Gemini');
+    expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.INVALID_REQUEST);
+    expect(streamErrorUserMessage(STREAM_ERROR_CATEGORIES.INVALID_REQUEST, err)).toBe(err.message);
+    expect(err.message).toContain('Google/Gemini');
   });
 });
 

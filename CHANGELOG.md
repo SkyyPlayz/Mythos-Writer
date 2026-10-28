@@ -15,11 +15,15 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
 ### Fixed
+- Tests now clean up their temporary folders, even when interrupted ([#1758](https://github.com/SkyyPlayz/Mythos-Writer/pull/1758)).
 - Electron 44.9.1 and undici 7.30.1 close high-severity advisories in the desktop shell and its download client (compromised certificate intermediates, and request-parser crashes). ([#1753](https://github.com/SkyyPlayz/Mythos-Writer/pull/1753))
 - Updated the build tool (vite) to close a high-severity security advisory in the dev server. ([#1745](https://github.com/SkyyPlayz/Mythos-Writer/pull/1745))
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed
+- **README matches the current app.** Windows is the primary platform. AI is your own OpenRouter key, Paste key (OpenAI-compatible), or a model on this computer (Ollama, LM Studio, or llama.cpp). A subscription sign-in is in beta. The screenshots are the current Liquid Neon window. ([#1759](https://github.com/SkyyPlayz/Mythos-Writer/pull/1759))
+- **OpenRouter requests never use Google** — chat, speech, and transcription calls to OpenRouter ignore Google Vertex and Google AI Studio, keep zero-data-retention and data-collection deny, and will not select a google/* model. ([#1741](https://github.com/SkyyPlayz/Mythos-Writer/pull/1741))
+- AI suggestions can no longer write into your manuscript files. Auto-mark no longer edits notes: suggestions for your notes now wait in the inbox until you accept them, and suggestions for your manuscript are just marked done. ([#1742](https://github.com/SkyyPlayz/Mythos-Writer/pull/1742))
 - Continuity fixes now show how to fix the issue, with no Apply Edit button; manuscript suggestions are marked done instead of accepted; the Add to scene draft menu item and drawer button are gone. ([#1740](https://github.com/SkyyPlayz/Mythos-Writer/pull/1740))
 - **Timeline views** — the timeline shows Structure and Progress. Plotlines, Spreadsheet, Tension, Relationships, and Subway are hidden from the view switcher; saved timeline data is unchanged. ([#1695](https://github.com/SkyyPlayz/Mythos-Writer/pull/1695))
 - **Graph filters sit at the top-right of the graph card** — the category chips and depth control are a compact bar on the card, and Tab still reaches them after the header controls. ([PR #1715](https://github.com/SkyyPlayz/Mythos-Writer/pull/1715))
