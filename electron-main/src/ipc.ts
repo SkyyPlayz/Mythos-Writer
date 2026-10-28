@@ -6,6 +6,15 @@ import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 import { sanitizeIpcError, withIpcLog, IPC_ERROR_CATEGORIES, SafeIpcError } from './ipcErrors.js';
 import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
+import {
+  handleArtifactBind,
+  handleArtifactDelete,
+  handleArtifactRefresh,
+  handleArtifactSave,
+  handleArtifactSharePrompt,
+  handleArtifactSweep,
+  handleArtifactWriteBack,
+} from './artifacts/artifactStore.js';
 import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/types.js';
 export type { StoryTimeOfDay, ManifestTimelineEntry };
 import type { OutlineNode, OutlineData } from './outline.js';
@@ -770,6 +779,16 @@ export const IPC_CHANNELS = {
   AGENT_INDEX_GET_STATS: 'agent-index:get-stats',
   AGENT_INDEX_CLEAN: 'agent-index:clean',
   AGENT_INDEX_REBUILD: 'agent-index:rebuild',
+
+  // S3 artifacts engine. Handlers stay flag-off until Skyy says yes.
+  ARTIFACTS_CREATE: 'artifacts:create',
+  ARTIFACTS_SAVE: 'artifacts:save',
+  ARTIFACTS_BIND: 'artifacts:bind',
+  ARTIFACTS_WRITE_BACK: 'artifacts:writeBack',
+  ARTIFACTS_REFRESH: 'artifacts:refresh',
+  ARTIFACTS_SHARE_PROMPT: 'artifacts:sharePrompt',
+  ARTIFACTS_DELETE: 'artifacts:delete',
+  ARTIFACTS_SWEEP: 'artifacts:sweep',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -818,6 +837,60 @@ function untrustedFrameEnvelope(): IpcEnvelope<never> {
 // Each handler: receive request → process → send response via IPC
 
 export function setupIpcMain(handlers: IpcHandlers) {
+  const guardArtifact = async (
+    channel: string,
+    event: IpcMainInvokeEvent,
+    payload: unknown,
+    run: (body: unknown) => unknown,
+  ) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    try {
+      return await run(payload);
+    } catch (error) {
+      return sanitizeIpcError(channel, error);
+    }
+  };
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_CREATE, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_CREATE, event, payload, handleArtifactSave));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:create:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_SAVE, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_SAVE, event, payload, handleArtifactSave));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:save:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_BIND, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_BIND, event, payload, handleArtifactBind));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:bind:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_WRITE_BACK, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_WRITE_BACK, event, payload, handleArtifactWriteBack));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:writeBack:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_REFRESH, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_REFRESH, event, payload, handleArtifactRefresh));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:refresh:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_SHARE_PROMPT, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_SHARE_PROMPT, event, payload, handleArtifactSharePrompt));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:sharePrompt:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_DELETE, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_DELETE, event, payload, handleArtifactDelete));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:delete:', error);
+  }
+  try {
+    ipcMain.handle(IPC_CHANNELS.ARTIFACTS_SWEEP, (event, payload) => guardArtifact(IPC_CHANNELS.ARTIFACTS_SWEEP, event, payload, handleArtifactSweep));
+  } catch (error) {
+    console.error('[ipc] failed to register artifacts:sweep:', error);
+  }
+
   for (const [channel, handler] of Object.entries(handlers)) {
     const returnsEnvelope = ENVELOPED_IPC_CHANNELS.has(channel);
     const loggedHandler = returnsEnvelope

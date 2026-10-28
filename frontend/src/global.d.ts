@@ -2314,6 +2314,17 @@ interface Window {
       rebuild: () => Promise<{ jobId: string } | { error: string }>;
     };
 
+    artifacts: {
+      create: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+      save: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+      bind: (payload: unknown) => Promise<{ ok: boolean; reason?: string; sha256?: string }>;
+      writeBack: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+      refresh: (payload: unknown) => Promise<{ ok: boolean; error?: string }>;
+      sharePrompt: (payload: unknown) => Promise<{ ok: boolean; error?: string }>;
+      delete: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+      sweep: (payload: unknown) => Promise<{ ok: boolean; reason?: string }>;
+    };
+
   };
 
   // Non-standard browser speech recognition (Chromium only)

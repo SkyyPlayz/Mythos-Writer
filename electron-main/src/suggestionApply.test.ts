@@ -19,6 +19,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import {
   openDb,
   closeDb,
@@ -36,7 +37,7 @@ import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 let _seq = 0;
 
 function makeVaultSuggestion(overrides: Partial<DbSuggestion> = {}): DbSuggestion {
-  const id = overrides.id ?? `sug-av-${++_seq}`;
+  const id = overrides.id ?? crypto.randomUUID();
   return {
     id,
     source_agent: 'writing-assistant',
@@ -101,7 +102,7 @@ afterEach(() => {
 
 describe('§1 applyVaultWrite — standard vault-content suggestion', () => {
   it('writes new content to the vault file', () => {
-    const s = makeVaultSuggestion({ id: 'av-1' });
+    const s = makeVaultSuggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890ab' });
     upsertSuggestion(s);
 
     const originalContent = 'ORIGINAL CONTENT\n';
@@ -121,7 +122,7 @@ describe('§1 applyVaultWrite — standard vault-content suggestion', () => {
   });
 
   it('creates a snapshot file with the original content', () => {
-    const s = makeVaultSuggestion({ id: 'av-2' });
+    const s = makeVaultSuggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890ac' });
     upsertSuggestion(s);
 
     const originalContent = 'PRE-APPLY CONTENT\n';
@@ -146,7 +147,7 @@ describe('§1 applyVaultWrite — standard vault-content suggestion', () => {
   });
 
   it('caller can update DB to applied after a successful applyVaultWrite', () => {
-    const s = makeVaultSuggestion({ id: 'av-3' });
+    const s = makeVaultSuggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890ad' });
     upsertSuggestion(s);
 
     const targetFullPath = path.join(vaultDir, s.target_path!);
@@ -222,7 +223,7 @@ describe('§2 reject — no vault write', () => {
 
 describe('§3 rollbackVaultWrite — restores file from snapshot', () => {
   it('restores original file content after a successful apply', () => {
-    const s = makeVaultSuggestion({ id: 'rb-1' });
+    const s = makeVaultSuggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890ae' });
     upsertSuggestion(s);
 
     const originalContent = 'ORIGINAL BEFORE APPLY\n';
@@ -259,7 +260,7 @@ describe('§3 rollbackVaultWrite — restores file from snapshot', () => {
   });
 
   it('updates DB to rolled_back after rollback + full audit trail', () => {
-    const s = makeVaultSuggestion({ id: 'rb-2' });
+    const s = makeVaultSuggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890af' });
     upsertSuggestion(s);
 
     const targetFullPath = path.join(vaultDir, s.target_path!);
@@ -313,7 +314,7 @@ describe('§4 non-vault suggestion — applyVaultWrite is a no-op', () => {
 
 describe('§5 apply to new vault file — originalContent is empty string', () => {
   it('creates the file and snapshot with empty originalContent', () => {
-    const s = makeVaultSuggestion({ id: 'new-1', target_path: 'entities/characters/brand-new.md' });
+    const s = makeVaultSuggestion({ id: '4a1b0c2d-e3f4-4123-8abc-1234567890b0', target_path: 'entities/characters/brand-new.md' });
     upsertSuggestion(s);
 
     // Do NOT create the target file — it does not exist yet.

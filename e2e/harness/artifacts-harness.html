@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Artifacts harness</title>
+</head>
+<body>
+  <button id="bind" type="button">Bind note</button>
+  <textarea id="note" aria-label="Note"></textarea>
+  <button id="edit" type="button">Edit</button>
+  <button id="write-back" type="button">Write back</button>
+  <button id="undo" type="button">Undo</button>
+  <button id="save" type="button">Save</button>
+  <button id="refresh" type="button">Refresh</button>
+  <button id="ipc-write" type="button">IPC write</button>
+  <button id="theme" type="button">Theme</button>
+  <p id="status"></p>
+  <p id="theme-ack"></p>
+  <iframe id="art" title="Artifact" sandbox="allow-scripts"></iframe>
+  <script src="./artifacts-harness.js"></script>
+</body>
+</html>

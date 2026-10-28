@@ -21,6 +21,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import {
   openDb,
   closeDb,
@@ -656,7 +657,7 @@ import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 
 function makeVaultWriteSuggestion(vaultRoot: string, overrides: Partial<DbSuggestion> = {}): DbSuggestion {
   return {
-    id: `vw-${++_seq}`,
+    id: crypto.randomUUID(),
     source_agent: 'writing-assistant',
     confidence: 0.9,
     rationale: 'improve prose clarity',
@@ -703,7 +704,7 @@ describe('Vault write round-trip (§8 — SKY-2555)', () => {
     fs.mkdirSync(scenesDir, { recursive: true });
     fs.writeFileSync(path.join(vaultRoot, 'entities', 'characters', 'ch1.md'), original, 'utf-8');
 
-    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-01' });
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: '4a1b0c2d-e3f4-4123-8abc-1234567890c1' });
     upsertSuggestion(sug);
     const now = new Date().toISOString();
 
@@ -733,22 +734,22 @@ describe('Vault write round-trip (§8 — SKY-2555)', () => {
     fs.mkdirSync(scenesDir, { recursive: true });
     fs.writeFileSync(path.join(vaultRoot, 'entities', 'characters', 'ch1.md'), original, 'utf-8');
 
-    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-02' });
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: '4a1b0c2d-e3f4-4123-8abc-1234567890c2' });
     upsertSuggestion(sug);
     const now = new Date().toISOString();
 
     // Rejection: just update DB status + write audit log — no vault write
-    updateSuggestionStatus('tc-ipc-02', 'rejected');
+    updateSuggestionStatus('4a1b0c2d-e3f4-4123-8abc-1234567890c2', 'rejected');
     insertAuditLog({
       id: 'audit-tc02',
-      suggestion_id: 'tc-ipc-02',
+      suggestion_id: '4a1b0c2d-e3f4-4123-8abc-1234567890c2',
       action: 'reject',
       snapshot_path: null,
       actor: 'user',
       created_at: now,
     });
 
-    expect(getSuggestion('tc-ipc-02')!.status).toBe('rejected');
+    expect(getSuggestion('4a1b0c2d-e3f4-4123-8abc-1234567890c2')!.status).toBe('rejected');
 
     // File unchanged
     const content = fs.readFileSync(path.join(vaultRoot, 'entities', 'characters', 'ch1.md'), 'utf-8');
@@ -762,7 +763,7 @@ describe('Vault write round-trip (§8 — SKY-2555)', () => {
     fs.mkdirSync(scenesDir, { recursive: true });
     fs.writeFileSync(path.join(vaultRoot, 'entities', 'characters', 'ch1.md'), original, 'utf-8');
 
-    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-03' });
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: '4a1b0c2d-e3f4-4123-8abc-1234567890c3' });
     upsertSuggestion(sug);
     const now = new Date().toISOString();
 
@@ -821,7 +822,7 @@ describe('Vault write round-trip (§8 — SKY-2555)', () => {
     fs.mkdirSync(scenesDir, { recursive: true });
     fs.writeFileSync(path.join(vaultRoot, 'entities', 'characters', 'ch1.md'), 'original', 'utf-8');
 
-    const sug = makeVaultWriteSuggestion(vaultRoot, { id: 'tc-ipc-05' });
+    const sug = makeVaultWriteSuggestion(vaultRoot, { id: '4a1b0c2d-e3f4-4123-8abc-1234567890c5' });
     upsertSuggestion(sug);
     const now = new Date().toISOString();
     const auditId = `audit-tc05-${++_seq}`;
@@ -829,14 +830,14 @@ describe('Vault write round-trip (§8 — SKY-2555)', () => {
     const applied = applyVaultWrite(sug, vaultRoot, now);
     if (!applied.ok) throw new Error(applied.reason);
     const { finalStatus, snapshotPath } = applied;
-    updateSuggestionStatus('tc-ipc-05', finalStatus, now, 'run-test');
-    insertAuditLog({ id: auditId, suggestion_id: 'tc-ipc-05', action: 'apply', snapshot_path: snapshotPath, actor: 'user', created_at: now });
+    updateSuggestionStatus('4a1b0c2d-e3f4-4123-8abc-1234567890c5', finalStatus, now, 'run-test');
+    insertAuditLog({ id: auditId, suggestion_id: '4a1b0c2d-e3f4-4123-8abc-1234567890c5', action: 'apply', snapshot_path: snapshotPath, actor: 'user', created_at: now });
 
-    const fetched = getSuggestion('tc-ipc-05')!;
+    const fetched = getSuggestion('4a1b0c2d-e3f4-4123-8abc-1234567890c5')!;
     expect(fetched.status).toBe('applied');
     expect(fetched.applied_run_id).toBe('run-test');
 
-    const logs = listAuditLog('tc-ipc-05');
+    const logs = listAuditLog('4a1b0c2d-e3f4-4123-8abc-1234567890c5');
     expect(logs).toHaveLength(1);
     expect(logs[0].action).toBe('apply');
     expect(logs[0].snapshot_path).toBe(snapshotPath);
