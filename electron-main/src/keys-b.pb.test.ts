@@ -4,9 +4,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'node:module';
 import JSZip from 'jszip';
 import type { AppSettings } from './ipc.js';
 import {
@@ -44,6 +44,23 @@ import {
   type KeyFieldPath,
 } from './settings-masking.js';
 
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
+
+afterEach((ctx) => {
+  const failed = ctx.task.result?.state === 'fail';
+  try {
+    cleanupTestTmp();
+  } catch (err) {
+    if (!failed) throw err;
+  }
+});
+
 const K = 'sk-ant-KeysB-PinValue00000000000000000000000000001';
 
 function makeSafeStorage(available = true): SafeStorageLike {
@@ -59,7 +76,7 @@ function makeSafeStorage(available = true): SafeStorageLike {
 }
 
 function mkDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-keys-b-'));
+  const dir = makeTestTmp('mythos-keys-b-');
   const settingsPath = path.join(dir, 'app-settings.json');
   const secretsPath = path.join(dir, 'secrets.json');
   return { dir, settingsPath, secretsPath };
@@ -971,9 +988,9 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
   });
 
   it('PB9b(a): restore IPC path — backup without slice2 flag leaves secrets byte-identical', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-a-ud-'));
-    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-a-sv-'));
-    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-a-nv-'));
+    const userData = makeTestTmp('mythos-pb9b-a-ud-');
+    const storyVault = makeTestTmp('mythos-pb9b-a-sv-');
+    const notesVault = makeTestTmp('mythos-pb9b-a-nv-');
     const settingsPath = path.join(userData, 'app-settings.json');
     const secretsPath = path.join(userData, 'secrets.json');
     const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
@@ -1004,7 +1021,7 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
     };
     delete preSlice2.slice2AutonomyOffMigrated;
     // Hand-build zip via backupAppData from a staging dir that has the old file.
-    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-a-stg-'));
+    const staging = makeTestTmp('mythos-pb9b-a-stg-');
     fs.writeFileSync(path.join(staging, 'app-settings.json'), JSON.stringify(preSlice2), 'utf-8');
     await backupAppData({
       userDataPath: staging,
@@ -1045,9 +1062,9 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
   });
 
   it('PB9b(b): restore keeps alphaReader / storylineConsultant / lineEditor in store', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-b-ud-'));
-    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-b-sv-'));
-    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-b-nv-'));
+    const userData = makeTestTmp('mythos-pb9b-b-ud-');
+    const storyVault = makeTestTmp('mythos-pb9b-b-sv-');
+    const notesVault = makeTestTmp('mythos-pb9b-b-nv-');
     const settingsPath = path.join(userData, 'app-settings.json');
     const secretsPath = path.join(userData, 'secrets.json');
     const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
@@ -1102,9 +1119,9 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
   });
 
   it('PB9b(c): restore of current-build backup keeps all 12 keys', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-c-ud-'));
-    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-c-sv-'));
-    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-c-nv-'));
+    const userData = makeTestTmp('mythos-pb9b-c-ud-');
+    const storyVault = makeTestTmp('mythos-pb9b-c-sv-');
+    const notesVault = makeTestTmp('mythos-pb9b-c-nv-');
     const settingsPath = path.join(userData, 'app-settings.json');
     const secretsPath = path.join(userData, 'secrets.json');
     const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
@@ -1181,9 +1198,9 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
   });
 
   it('PB9b(d): throwing restore still runs afterExtract; error propagates', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-d-ud-'));
-    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-d-sv-'));
-    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-d-nv-'));
+    const userData = makeTestTmp('mythos-pb9b-d-ud-');
+    const storyVault = makeTestTmp('mythos-pb9b-d-sv-');
+    const notesVault = makeTestTmp('mythos-pb9b-d-nv-');
     const secretsPath = path.join(userData, 'secrets.json');
     const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
 
@@ -1467,10 +1484,10 @@ describe('P1 / T2 — M29 SETTINGS_GET marker is JSON-only', () => {
 describe('P2 / T3 — restore app-settings.json lands at 0600', () => {
   it('restore with no prior app-settings.json → mode 600', async () => {
     if (process.platform === 'win32') return;
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-ud-'));
-    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-sv-'));
-    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-nv-'));
-    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-stg-'));
+    const userData = makeTestTmp('mythos-p2-ud-');
+    const storyVault = makeTestTmp('mythos-p2-sv-');
+    const notesVault = makeTestTmp('mythos-p2-nv-');
+    const staging = makeTestTmp('mythos-p2-stg-');
     fs.writeFileSync(
       path.join(staging, 'app-settings.json'),
       JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true }),
@@ -1851,9 +1868,9 @@ describe('P4 / T10 — SecretsStore set/delete no-ops when unchanged', () => {
 
 describe('T12 — PB2(b) through real restoreAppData with plaintext archive', () => {
   it('hand-built plaintext archive → restore → next migrate moves all 12', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-t12-ud-'));
-    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-t12-sv-'));
-    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-t12-nv-'));
+    const userData = makeTestTmp('mythos-t12-ud-');
+    const storyVault = makeTestTmp('mythos-t12-sv-');
+    const notesVault = makeTestTmp('mythos-t12-nv-');
     const settingsPath = path.join(userData, 'app-settings.json');
     const secretsPath = path.join(userData, 'secrets.json');
 
