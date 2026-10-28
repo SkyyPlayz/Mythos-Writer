@@ -19,7 +19,6 @@ import './BlockEditor.css';
 
 export interface BlockEditorApi {
   jumpToText: (text: string) => void;
-  insertWikiLink: (link: string, anchorText: string) => void;
   /** Return the editor's current Markdown without waiting for the debounced scene state sync. */
   getMarkdown: () => string;
   /** Apply all current auto-linker suggestions as a single undoable transaction. */
@@ -266,23 +265,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         if (range) {
           editor.commands.setTextSelection(range);
           editor.commands.scrollIntoView();
-        }
-      },
-      insertWikiLink: (link: string, anchorText: string) => {
-        // Extract target from [[target]] and create a proper WikiLink node so
-        // tiptap-markdown serialises it as [[target]] (not as escaped \[\[target\]\]).
-        // insertContent(string) inserts plain text which tiptap-markdown escapes.
-        const target = link.replace(/^\[\[|\]\]$/g, '');
-        const wikiNode = editor.schema.nodes['wikiLink']?.create({ target });
-        if (!wikiNode) return;
-        const range = findTextRange(anchorText);
-        if (range) {
-          editor.view.dispatch(editor.state.tr.replaceWith(range.from, range.to, wikiNode));
-        } else {
-          editor.chain().focus().command(({ tr, dispatch }) => {
-            if (dispatch) dispatch(tr.insert(tr.selection.from, wikiNode));
-            return true;
-          }).run();
         }
       },
       getMarkdown: () => getEditorMarkdown(editor),

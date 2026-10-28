@@ -43,7 +43,7 @@ function makeVaultSuggestion(overrides: Partial<DbSuggestion> = {}): DbSuggestio
     confidence: 0.9,
     rationale: 'test rationale',
     target_kind: 'vault',
-    target_path: `scenes/target-${id}.md`,
+    target_path: `entities/characters/target-${id}.md`,
     target_anchor: null,
     payload_json: JSON.stringify({ content: `# New content for ${id}\n` }),
     status: 'proposed',
@@ -85,7 +85,7 @@ beforeEach(() => {
   // Write a minimal manifest so vault read operations don't throw.
   fs.writeFileSync(
     path.join(vaultDir, 'manifest.json'),
-    JSON.stringify({ schemaVersion: 1, stories: [], entities: {} }),
+    JSON.stringify({ schemaVersion: 1, stories: [], scenes: [], entities: [] }),
     'utf-8',
   );
   openDb(tmpDir);
@@ -111,6 +111,7 @@ describe('§1 applyVaultWrite — standard vault-content suggestion', () => {
 
     const now = new Date().toISOString();
     const result = applyVaultWrite(s, vaultDir, now);
+    if (!result.ok) throw new Error(result.reason);
 
     expect(result.finalStatus).toBe('applied');
     expect(result.snapshotPath).not.toBeNull();
@@ -130,6 +131,7 @@ describe('§1 applyVaultWrite — standard vault-content suggestion', () => {
 
     const now = new Date().toISOString();
     const result = applyVaultWrite(s, vaultDir, now);
+    if (!result.ok) throw new Error(result.reason);
 
     expect(result.snapshotPath).not.toBeNull();
     const fullSnapshotPath = path.join(vaultDir, result.snapshotPath!);
@@ -152,7 +154,9 @@ describe('§1 applyVaultWrite — standard vault-content suggestion', () => {
     fs.writeFileSync(targetFullPath, 'original\n', 'utf-8');
 
     const now = new Date().toISOString();
-    const { finalStatus, snapshotPath } = applyVaultWrite(s, vaultDir, now);
+    const applied = applyVaultWrite(s, vaultDir, now);
+    if (!applied.ok) throw new Error(applied.reason);
+    const { finalStatus, snapshotPath } = applied;
 
     updateSuggestionStatus(s.id, finalStatus, now, 'run-test');
     insertAuditLog({
@@ -227,7 +231,9 @@ describe('§3 rollbackVaultWrite — restores file from snapshot', () => {
     fs.writeFileSync(targetFullPath, originalContent, 'utf-8');
 
     const now = new Date().toISOString();
-    const { finalStatus, snapshotPath } = applyVaultWrite(s, vaultDir, now);
+    const applied = applyVaultWrite(s, vaultDir, now);
+    if (!applied.ok) throw new Error(applied.reason);
+    const { finalStatus, snapshotPath } = applied;
     expect(finalStatus).toBe('applied');
 
     updateSuggestionStatus(s.id, 'applied', now);
@@ -261,7 +267,9 @@ describe('§3 rollbackVaultWrite — restores file from snapshot', () => {
     fs.writeFileSync(targetFullPath, 'ORIGINAL\n', 'utf-8');
 
     const now = new Date().toISOString();
-    const { finalStatus, snapshotPath } = applyVaultWrite(s, vaultDir, now);
+    const applied = applyVaultWrite(s, vaultDir, now);
+    if (!applied.ok) throw new Error(applied.reason);
+    const { finalStatus, snapshotPath } = applied;
 
     updateSuggestionStatus(s.id, finalStatus, now);
     insertAuditLog({ id: 'audit-rb2-apply', suggestion_id: s.id, action: 'apply', snapshot_path: snapshotPath, actor: 'user', created_at: now });
@@ -294,6 +302,8 @@ describe('§4 non-vault suggestion — applyVaultWrite is a no-op', () => {
     const now = new Date().toISOString();
     const result = applyVaultWrite(s, vaultDir, now);
 
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.finalStatus).toBe('accepted');
     expect(result.snapshotPath).toBeNull();
   });
@@ -303,12 +313,13 @@ describe('§4 non-vault suggestion — applyVaultWrite is a no-op', () => {
 
 describe('§5 apply to new vault file — originalContent is empty string', () => {
   it('creates the file and snapshot with empty originalContent', () => {
-    const s = makeVaultSuggestion({ id: 'new-1', target_path: 'new-dir/brand-new.md' });
+    const s = makeVaultSuggestion({ id: 'new-1', target_path: 'entities/characters/brand-new.md' });
     upsertSuggestion(s);
 
     // Do NOT create the target file — it does not exist yet.
     const now = new Date().toISOString();
     const result = applyVaultWrite(s, vaultDir, now);
+    if (!result.ok) throw new Error(result.reason);
 
     expect(result.finalStatus).toBe('applied');
     expect(result.snapshotPath).not.toBeNull();
@@ -319,9 +330,9 @@ describe('§5 apply to new vault file — originalContent is empty string', () =
       path: string;
     };
     expect(snap.originalContent).toBe('');
-    expect(snap.path).toBe('new-dir/brand-new.md');
+    expect(snap.path).toBe('entities/characters/brand-new.md');
 
     // Vault file must now exist.
-    expect(fs.existsSync(path.join(vaultDir, 'new-dir/brand-new.md'))).toBe(true);
+    expect(fs.existsSync(path.join(vaultDir, 'entities/characters/brand-new.md'))).toBe(true);
   });
 });

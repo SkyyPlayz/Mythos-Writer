@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./types/suggestion": "./types/suggestion.ts",
     "./ideaNotes": "./ideaNotes.ts",
     "./vaultNameSanitizer": "./vaultNameSanitizer.ts",
     "./wikiLinkRename": "./wikiLinkRename.ts",
-    "./aiSuggestOnly": "./aiSuggestOnly.ts"
+    "./aiSuggestOnly": "./aiSuggestOnly.ts",
+    "./openRouterPolicy": "./openRouterPolicy.ts"
   }
 }

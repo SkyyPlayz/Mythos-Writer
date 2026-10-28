@@ -1623,7 +1623,7 @@ interface Window {
       ok?: boolean;
       auditId?: string;
       newSuggestionId?: string;
-      reason?: 'suggest_only';
+      reason?: 'suggest_only' | 'note_not_found' | 'excerpt_not_found' | 'manuscript_target' | 'not_allowlisted' | 'resolve_failed' | 'unresolved_relation' | 'unknown_kind' | 'no_manifest';
       error?: string;
     }>;
     archiveIgnoreList: () => Promise<unknown>;
@@ -2076,7 +2076,7 @@ interface Window {
     // M12.B3 (SKY-10738): checkType selects Check 1 (story_internal) vs
     // Check 2 (story_vault, default) — the panel's "Continuity pass ▾".
     archiveScanContinuity: (sceneId: string, text: string, scope?: string, checkType?: string) => Promise<void>;
-    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only' }>;
+    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only' | 'manuscript_target' | 'not_allowlisted' | 'resolve_failed' | 'unresolved_relation' | 'unknown_kind' | 'no_manifest' }>;
     archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
         id: string;
