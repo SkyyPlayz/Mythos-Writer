@@ -1861,14 +1861,6 @@ describe('PR A symlink writes', () => {
   });
 
   it('measures the added save cost', () => {
-    // MUTATION-PROOF: synchronous >=2ms delay on guarded save path only (test-local).
-    const writeVaultFileAtomicGuarded = (vaultRoot: string, rel: string, data: Buffer | string): void => {
-      const spinUntil = performance.now() + 2.5;
-      while (performance.now() < spinUntil) {
-        /* busy wait */
-      }
-      writeVaultFileAtomic(vaultRoot, rel, data);
-    };
       const time = (run: () => void): number => {
         const start = performance.now();
         run();
@@ -1895,7 +1887,7 @@ describe('PR A symlink writes', () => {
       const newSaveSamples: number[] = [];
       for (let i = 0; i < saveWarmup + saveN; i++) {
         const oldMs = time(() => prePrWriteFileAtomic(oldFile, payload));
-        const newMs = time(() => writeVaultFileAtomicGuarded(root, 'new-save.md', payload));
+        const newMs = time(() => writeVaultFileAtomic(root, 'new-save.md', payload));
         if (i >= saveWarmup) {
           oldSaveSamples.push(oldMs);
           newSaveSamples.push(newMs);
@@ -1922,7 +1914,7 @@ describe('PR A symlink writes', () => {
 
       const profileN = 20;
       const oldProfile = profileFsCalls(profileN, () => prePrWriteFileAtomic(oldFile, payload));
-      const newProfile = profileFsCalls(profileN, () => writeVaultFileAtomicGuarded(root, 'new-save.md', payload));
+      const newProfile = profileFsCalls(profileN, () => writeVaultFileAtomic(root, 'new-save.md', payload));
       const bucketLine = (label: string, buckets: Map<string, ProfileBucket>): string => {
         const rows = [...buckets.entries()].sort((a, b) => b[1].ms - a[1].ms);
         return rows
