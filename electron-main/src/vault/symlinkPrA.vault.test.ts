@@ -688,6 +688,78 @@ describe('PR A symlink writes', () => {
     }
   });
 
+  it('refuses a symlink swapped onto the temp file after open when the file index is skipped', () => {
+    // FAT skips identity and does not run the network post-write link check,
+    // so only the post-open lstat of the temp file can refuse this swap.
+    const outside = path.join(tmp, 'post-open-outside.txt');
+    fs.writeFileSync(outside, 'KEEP');
+    const dest = path.join(root, 'post-open-swap.md');
+    setNoFollowHooksForTests({
+      afterOpen(opened) {
+        fs.unlinkSync(opened);
+        fs.symlinkSync(outside, opened);
+      },
+      beforeRename() {},
+    });
+    let refused: unknown;
+    try {
+      writeNoFollowAtomic(dest, 'payload-bytes', {
+        durable: false,
+        deps: withProbe('fat'),
+        rel: 'post-open-swap.md',
+      });
+    } catch (err) {
+      refused = err;
+    } finally {
+      resetNoFollowHooksForTests();
+    }
+    expect(refused).toBeInstanceOf(VaultWriteRefusedError);
+    expect((refused as VaultWriteRefusedError).code).toBe('LEAF_LINK');
+    expect(fs.readFileSync(outside, 'utf8')).toBe('KEEP');
+    expect(fs.existsSync(dest)).toBe(false);
+  });
+
+  it('refuses a same-size symlink swapped onto the temp file before a network rename', () => {
+    // Payload length equals the symlink lstat size, so the network size
+    // compare does not refuse. Only the post-write link check does.
+    const outside = path.join(tmp, 'net-same-outside.txt');
+    fs.writeFileSync(outside, 'KEEP');
+    const probe = path.join(root, 'net-same-probe');
+    fs.symlinkSync(outside, probe);
+    const linkSize = fs.lstatSync(probe).size;
+    fs.unlinkSync(probe);
+    const payload = Buffer.alloc(linkSize, 0x61);
+    expect(payload.length).toBe(linkSize);
+    const dest = path.join(root, 'net-same.md');
+    setNoFollowHooksForTests({
+      afterOpen() {},
+      beforeRename(absPath) {
+        const dir = path.dirname(absPath);
+        const tmpName = fs.readdirSync(dir).find((name) => name.startsWith(`${path.basename(absPath)}.`) && name.endsWith('.tmp'));
+        expect(tmpName).toBeTruthy();
+        const full = path.join(dir, tmpName as string);
+        fs.unlinkSync(full);
+        fs.symlinkSync(outside, full);
+      },
+    });
+    let refused: unknown;
+    try {
+      writeNoFollowAtomic(dest, payload, {
+        durable: false,
+        deps: withProbe('network'),
+        rel: 'net-same.md',
+      });
+    } catch (err) {
+      refused = err;
+    } finally {
+      resetNoFollowHooksForTests();
+    }
+    expect(refused).toBeInstanceOf(VaultWriteRefusedError);
+    expect((refused as VaultWriteRefusedError).code).toBe('LEAF_LINK');
+    expect(fs.readFileSync(outside, 'utf8')).toBe('KEEP');
+    expect(fs.existsSync(dest)).toBe(false);
+  });
+
   it('rechecks a same-size temp swap made in beforeRename', () => {
     const payload = 'payload-bytes';
     const target = path.join(root, 'late-swap.md');
