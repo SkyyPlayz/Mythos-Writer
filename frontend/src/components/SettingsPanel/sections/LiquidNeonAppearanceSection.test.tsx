@@ -5,7 +5,20 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import LiquidNeonAppearanceSection from './LiquidNeonAppearanceSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
-import { matchWallpaperList, matchWallpaperIndex, normalizeLiquidNeonV2, resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../theme/liquidNeonEngine';
+import { applyLiquidNeonV2Tokens, matchWallpaperList, matchWallpaperIndex, normalizeLiquidNeonV2, resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../theme/liquidNeonEngine';
+import { configureAxe } from 'vitest-axe';
+import * as axeMatchers from 'vitest-axe/matchers';
+import type { AxeMatchers } from 'vitest-axe/matchers';
+
+// vitest-axe@0.1.0's legacy matcher typing — same registration as accessibility.test.tsx.
+declare module 'vitest' {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  interface Assertion<T = any> extends AxeMatchers {}
+  interface AsymmetricMatchersContaining extends AxeMatchers {}
+}
+expect.extend(axeMatchers);
+// colour-contrast needs computed styles jsdom doesn't have.
+const axe = configureAxe({ rules: { 'color-contrast': { enabled: false } } });
 
 async function setup(liquidNeonV2: Partial<LiquidNeonV2Settings> | undefined = undefined) {
   const onChange = vi.fn();
@@ -18,6 +31,7 @@ async function setup(liquidNeonV2: Partial<LiquidNeonV2Settings> | undefined = u
 
 afterEach(() => {
   resetLiquidNeonV2Tokens();
+  vi.unstubAllGlobals();
   // showLnToast appends directly to <body>, outside the render container.
   document.querySelectorAll('[data-testid="ln-toast"]').forEach((n) => n.remove());
 });
@@ -166,6 +180,12 @@ describe('LiquidNeonAppearanceSection', () => {
     expect(screen.queryByText('Neon Classic')).not.toBeInTheDocument();
   });
 
+  it('#1774: reset restores Accent breathe on', async () => {
+    const { onChange } = await setup({ accentBreathe: false });
+    fireEvent.click(screen.getByTestId('lnas-reset'));
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).accentBreathe).toBe(true);
+  });
+
   it('reset restores the Neon Nebula defaults', async () => {
     const { onChange } = await setup({ setKey: 'ember', intensity: 90, wp: 'deep' });
     fireEvent.click(screen.getByTestId('lnas-reset'));
@@ -231,7 +251,7 @@ describe('LiquidNeonAppearanceSection', () => {
 // ═══ Beta 4 M1 ═══════════════════════════════════════════════════════════════
 
 describe('Beta 4 M1 — Appearance card order (§3)', () => {
-  it('renders exactly the seven spec cards in §3 order (M28 moved the manuscript cards to the Editor page)', async () => {
+  it('renders exactly the eight spec cards in §3 order (M28 moved the manuscript cards to the Editor page; #1774 adds Motion)', async () => {
     await setup();
     const titles = Array.from(document.querySelectorAll('.lnas-card > div:first-child'))
       .map((el) => el.textContent);
@@ -242,6 +262,7 @@ describe('Beta 4 M1 — Appearance card order (§3)', () => {
       'Background',
       'Background animation',
       'Neon animation',
+      'Motion',
       'Interface',
     ]);
   });
@@ -318,6 +339,200 @@ describe('Beta 4 M1 — preset export/import UI', () => {
       expect(el).toHaveAttribute('role', 'button');
       expect(el).toHaveAttribute('tabIndex', '0');
     }
+  });
+});
+
+// ═══ #1774 Accent breathe ════════════════════════════════════════════════════
+
+describe('#1774 — Motion card: Accent breathe', () => {
+  /** A matchMedia that matches nothing, so the breathe driver is allowed to run. */
+  const stubMatchMediaNoMatch = () => vi.stubGlobal('matchMedia', vi.fn((media: string) => ({
+    matches: false, media, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  })));
+
+  it('Accent breathe is on by default and is a switch', async () => {
+    await setup();
+    const toggle = screen.getByTestId('lnas-accentbreathe');
+    expect(toggle).toHaveAttribute('role', 'switch');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle).toHaveAttribute('aria-label', 'Accent breathe');
+    expect(toggle).toHaveAttribute('tabIndex', '0');
+  });
+
+  it('clicking turns it off live', async () => {
+    stubMatchMediaNoMatch();
+    applyLiquidNeonV2Tokens(undefined, '/assets/cosmic-bg.webp'); // boot apply (DesktopShell)
+    const { onChange } = await setup();
+    expect(document.documentElement.getAttribute('data-ln-breathe')).toBe('running');
+    fireEvent.click(screen.getByTestId('lnas-accentbreathe'));
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).accentBreathe).toBe(false);
+    expect(document.documentElement.getAttribute('data-ln-breathe')).toBe('off');
+    expect(screen.getByTestId('ln-toast').textContent).toContain('Accent breathe off');
+  });
+
+  it('Space key turns it on from off', async () => {
+    const { onChange } = await setup({ accentBreathe: false });
+    const toggle = screen.getByTestId('lnas-accentbreathe');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.keyDown(toggle, { key: ' ' });
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).accentBreathe).toBe(true);
+    expect(screen.getByTestId('ln-toast').textContent).toContain('Accent breathe on');
+  });
+
+  it('export omits Accent breathe', async () => {
+    const { writeText } = stubClipboard();
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    await setup({ setKey: 'cyber', slots: [...LIQUID_NEON_PRESETS.cyber.c], wp: 'deep', ambMode: 'snow', frameAnim: 'cycle', accentBreathe: false });
+    fireEvent.click(screen.getByTestId('lnas-export'));
+    anchorClick.mockRestore();
+    const obj = JSON.parse(writeText.mock.calls[0][0] as string);
+    expect(obj).toEqual({
+      slots: [...LIQUID_NEON_PRESETS.cyber.c], setKey: 'cyber', wp: 'deep', ambMode: 'snow', frameAnim: 'cycle',
+    });
+  });
+
+  it('import keeps the personal Accent breathe', async () => {
+    stubClipboard();
+    const { onChange } = await setup({ accentBreathe: false });
+    const text = JSON.stringify({
+      slots: [...LIQUID_NEON_PRESETS.ember.c], setKey: 'ember', wp: 'deep', ambMode: 'rise', frameAnim: 'sparkle', accentBreathe: true,
+    });
+    const file = new File([text], 'preset.json', { type: 'application/json' });
+    fireEvent.change(screen.getByTestId('lnas-import-file'), { target: { files: [file] } });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
+    expect(next.setKey).toBe('ember');
+    expect(next.accentBreathe).toBe(false);
+  });
+
+  describe('forced-off hint', () => {
+    const REDUCE = '(prefers-reduced-motion: reduce)';
+    const CONTRAST = '(prefers-contrast: more)';
+    const FORCED = '(forced-colors: active)';
+
+    /** Per-query MQL objects with real listeners, so a test can flip a query live. */
+    function stubMatchMedia(state: Record<string, boolean> = {}) {
+      const lists = new Map<string, { matches: boolean; media: string; listeners: Set<() => void> }>();
+      const get = (query: string) => {
+        let m = lists.get(query);
+        if (!m) {
+          m = { matches: state[query] === true, media: query, listeners: new Set() };
+          lists.set(query, m);
+        }
+        return m;
+      };
+      vi.stubGlobal('matchMedia', vi.fn((q: string) => {
+        const m = get(q);
+        return {
+          get matches() { return m.matches; },
+          media: q,
+          addEventListener: (_t: string, l: () => void) => { m.listeners.add(l); },
+          removeEventListener: (_t: string, l: () => void) => { m.listeners.delete(l); },
+        };
+      }));
+      return {
+        fire(query: string, matches: boolean) {
+          const m = get(query);
+          m.matches = matches;
+          act(() => { for (const l of [...m.listeners]) l(); });
+        },
+      };
+    }
+
+    // Still mounted here: the section's MutationObserver sees the removal, so flush it inside act.
+    afterEach(async () => {
+      await act(async () => { document.documentElement.removeAttribute('data-contrast'); });
+    });
+
+    const hint = () => screen.queryByTestId('lnas-accentbreathe-hint');
+    const expectDescribed = (text: string) => {
+      const toggle = screen.getByTestId('lnas-accentbreathe');
+      const h = hint();
+      expect(h).not.toBeNull();
+      expect(h).toHaveTextContent(text);
+      expect(toggle).toHaveAttribute('aria-describedby', h!.id);
+      expect(toggle).toHaveAttribute('aria-checked', 'true'); // still the saved setting
+    };
+
+    it('in-app Reduce motion: hint names it and the switch points at it', async () => {
+      stubMatchMedia();
+      await setup({ reduceMotion: true });
+      expectDescribed('Off while Reduce motion is on');
+    });
+
+    it('OS reduced motion: hint names the system setting', async () => {
+      stubMatchMedia({ [REDUCE]: true });
+      await setup();
+      expectDescribed("Off while your system's reduced-motion setting is on");
+    });
+
+    it.each([
+      ['prefers-contrast: more', CONTRAST],
+      ['forced-colors', FORCED],
+    ])('%s: hint names high contrast', async (_n, query) => {
+      stubMatchMedia({ [query]: true });
+      await setup();
+      expectDescribed('Off while high contrast is on');
+    });
+
+    it('the app high-contrast attribute: hint names high contrast', async () => {
+      stubMatchMedia();
+      document.documentElement.dataset.contrast = 'high';
+      await setup();
+      expectDescribed('Off while high contrast is on');
+    });
+
+    it('no hint and no aria-describedby when nothing forces it off', async () => {
+      stubMatchMedia();
+      await setup();
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('no hint while the setting itself is off, even under a system block', async () => {
+      stubMatchMedia({ [REDUCE]: true });
+      await setup({ accentBreathe: false });
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('the hint appears and disappears live as the system setting changes', async () => {
+      const mm = stubMatchMedia();
+      await setup();
+      expect(hint()).toBeNull();
+      mm.fire(REDUCE, true);
+      expectDescribed("Off while your system's reduced-motion setting is on");
+      mm.fire(REDUCE, false);
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('the hint follows the app high-contrast attribute live', async () => {
+      stubMatchMedia();
+      await setup();
+      expect(hint()).toBeNull();
+      await act(async () => { document.documentElement.dataset.contrast = 'high'; });
+      expectDescribed('Off while high contrast is on');
+      await act(async () => { document.documentElement.removeAttribute('data-contrast'); });
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('the Motion card has no axe violations with the hint visible', async () => {
+      stubMatchMedia({ [REDUCE]: true });
+      await setup();
+      expect(hint()).not.toBeNull();
+      const card = screen.getByTestId('lnas-accentbreathe').closest('.lnas-card') as HTMLElement;
+      expect(await axe(card)).toHaveNoViolations();
+    });
+  });
+
+  it('the Motion card has no axe violations', async () => {
+    await setup();
+    const card = screen.getByTestId('lnas-accentbreathe').closest('.lnas-card') as HTMLElement;
+    expect(card).not.toBeNull();
+    const results = await axe(card);
+    expect(results).toHaveNoViolations();
   });
 });
 

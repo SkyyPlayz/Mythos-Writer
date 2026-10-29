@@ -83,6 +83,8 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    // #1774: freeze accent breathe; --b1 colour asserted on .sc-sugg-card--on below (see e2e/accent-breathe.spec.ts)
+    liquidNeonV2: { accentBreathe: false },
   };
 
   const vaultSettings = {

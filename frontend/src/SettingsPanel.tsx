@@ -9,6 +9,7 @@ import {
 import {
   applyLiquidNeonV2Tokens,
   LIQUID_NEON_V2_DEFAULTS,
+  resolveVaultLiquidNeonV2,
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -308,7 +309,9 @@ export default function SettingsPanel({
         activeVaultRoot ? s.vaultAppearance?.[activeVaultRoot] : undefined;
 
       const effectiveTheme = vaultApp?.theme ?? s.theme;
-      const effectiveLiquidNeonV2 = vaultApp?.liquidNeonV2 ?? s.liquidNeonV2;
+      // #1774: a pre-#1774 snapshot has no accentBreathe — show the global
+      // (personal) value, the same one DesktopShell applies.
+      const effectiveLiquidNeonV2 = resolveVaultLiquidNeonV2(vaultApp?.liquidNeonV2, s.liquidNeonV2);
       const effectiveLiquidNeon = vaultApp?.liquidNeon ?? s.liquidNeon;
 
       const applyAppearanceOverlay = () => {
