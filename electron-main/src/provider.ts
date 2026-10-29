@@ -127,10 +127,11 @@ export function isLocalReserveEligible(kind: ProviderKind, baseUrl: string | und
  *
  * Eligible local runtimes (see isLocalReserveEligible) get
  * `answerBudget + REASONING_TOKEN_RESERVE` so thinking tokens don't consume the
- * answer budget (SKY-11276). `applyReserve=false` opts out entirely — used by
- * liveness probes (the connection test) that deliberately request a 1-token
- * budget and abort on the first token, where the reserve would turn a quick
- * ping into a multi-thousand-token thinking session.
+ * answer budget (SKY-11276). `applyReserve=false` opts out entirely — for a
+ * liveness probe that deliberately requests a 1-token budget and aborts on the
+ * first token, where the reserve would turn a quick ping into a
+ * multi-thousand-token thinking session. (Settings "Test connection" no longer
+ * streams; it is a GET /models probe, PLAN-AI-MODES M-1.)
  */
 export function effectiveMaxTokens(
   kind: ProviderKind,
@@ -223,14 +224,30 @@ export interface ListModelsPayload {
 
 export type ListModelsResult =
   | { ok: true; models: string[] }
-  | { ok: false; error: string };
+  /** `status` is set when the endpoint answered with a non-2xx HTTP status. */
+  | { ok: false; error: string; status?: number };
+
+/** REST base for Anthropic's GET /models when ANTHROPIC_BASE_URL is unset. */
+export const ANTHROPIC_REST_BASE_URL = 'https://api.anthropic.com/v1';
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+/**
+ * The host the Anthropic SDK chat path talks to, as a REST base: the SDK reads
+ * ANTHROPIC_BASE_URL (blank = unset) and never a configured baseUrl
+ * (runAnthropicStream), so the model list does the same.
+ */
+export function anthropicRestBaseUrl(): string {
+  const env = process.env.ANTHROPIC_BASE_URL?.trim();
+  return env ? `${env.replace(/\/+$/, '')}/v1` : ANTHROPIC_REST_BASE_URL;
+}
 
 /**
  * Fetch the model list from a provider endpoint.
  *
  * Routing:
- *   - ollama  → GET {origin}/api/tags   → models[].name
- *   - others  → GET {baseUrl}/models    → data[].id
+ *   - ollama    → GET {origin}/api/tags   → models[].name
+ *   - anthropic → GET {SDK host}/v1/models → data[].id (x-api-key + anthropic-version; baseUrl ignored)
+ *   - others    → GET {baseUrl}/models    → data[].id
  *
  * The timeout is enforced via AbortController — local runtimes get a longer
  * budget because a cold LM Studio / Ollama / llama.cpp can take several seconds
@@ -251,6 +268,11 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
     } catch {
       return { ok: false, error: 'Invalid Ollama base URL.' };
     }
+  } else if (kind === 'anthropic') {
+    // DEFAULT_BASE_URLS.anthropic stays undefined (the SDK resolves its own),
+    // so the REST model list resolves the SDK's host itself (PLAN-AI-MODES M-1).
+    // A caller baseUrl is ignored: the key only ever goes where chat sends it.
+    resolvedBase = anthropicRestBaseUrl();
   } else {
     const fallback = DEFAULT_BASE_URLS[kind];
     resolvedBase = (baseUrl ?? fallback ?? '').replace(/\/$/, '');
@@ -279,7 +301,11 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
       : `${resolvedBase}/models`;
 
     const headers: Record<string, string> = {};
-    if (apiKey) {
+    if (kind === 'anthropic') {
+      // Anthropic authenticates with x-api-key plus a pinned API version, not Bearer.
+      headers['anthropic-version'] = ANTHROPIC_API_VERSION;
+      if (apiKey) headers['x-api-key'] = apiKey;
+    } else if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
@@ -288,6 +314,7 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
       return {
         ok: false,
         error: `${PROVIDER_LABELS[kind]} at ${resolvedBase} returned HTTP ${res.status}. Check the endpoint and try again.`,
+        status: res.status,
       };
     }
 
@@ -353,9 +380,9 @@ export interface StreamRequest {
   thinking?: 'adaptive';
   /**
    * When `false`, suppress the local reasoning-token reserve (SKY-11276) so the
-   * server receives exactly `maxTokens`. Used by liveness probes (the Settings
-   * connection test) that send a 1-token budget and abort on the first token —
-   * there the reserve would turn a quick ping into a long thinking session.
+   * server receives exactly `maxTokens`. For liveness probes that send a
+   * 1-token budget and abort on the first token — there the reserve would turn
+   * a quick ping into a long thinking session.
    * Defaults to applying the reserve for eligible local runtimes.
    */
   reserveThinkingTokens?: boolean;
@@ -470,8 +497,8 @@ export const ANTHROPIC_THINKING_ON_BY_DEFAULT_MODELS = new Set(['claude-sonnet-5
 
 /**
  * Build the `thinking` request fragment for an Anthropic Messages call.
- * Shared by the streaming path and the non-streaming extraction side-call so
- * both apply the same model gating.
+ * Used by the streaming path; exported so any non-streaming Anthropic call
+ * applies the same model gating.
  */
 export function anthropicThinkingParam(
   model: string,

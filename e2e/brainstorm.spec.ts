@@ -12,6 +12,8 @@
  *   TC-M20-02  Persistence    — dragged card positions persist to the vault board file
  *   TC-M20-03  Board toggle   — chat page stacks the canvas under the chat
  *   TC-M20-04  Sessions       — chat exchanges persist to the shared session store
+ *   TC-BST-09  Script extract — a reply naming a new entity queues a proposal with
+ *                               no API key (no-AI extract, PLAN-AI-MODES M-1)
  *
  * The real Anthropic SDK is bypassed by replacing the stream:start IPC handler in the
  * main process (via app.evaluate) with a mock that emits a fixed token sequence.
@@ -68,9 +70,9 @@ const SEEDED_NOTE_REL_PATH = path.join('Universes', 'My First Universe', 'Locati
  * boots directly into DesktopShell with the Brainstorm agent enabled.
  * The API key value does not need to be real because we mock the stream:start handler.
  */
-function seedUserData(userData: string, vaultDir: string): void {
+function seedUserData(userData: string, vaultDir: string, { withApiKey = true } = {}): void {
   const appSettings = {
-    apiKey: 'sk-ant-test-key-for-e2e',
+    ...(withApiKey ? { apiKey: 'sk-ant-test-key-for-e2e' } : {}),
     onboardingComplete: true,
     agents: {
       writingAssistant: {
@@ -123,7 +125,7 @@ function seedUserData(userData: string, vaultDir: string): void {
   );
 }
 
-async function launchApp(userData: string): Promise<ElectronApplication> {
+async function launchApp(userData: string, env?: Record<string, string>): Promise<ElectronApplication> {
   // On macOS, Electron uses Quartz natively — headless is not needed and
   // prevents Playwright from detecting the Chrome DevTools endpoint (Electron 42 /
   // Chrome 130+ new headless mode suppresses "DevTools listening on ws://…").
@@ -135,6 +137,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
   return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
     timeout: 60_000,
+    ...(env ? { env: { ...process.env, ...env } as Record<string, string> } : {}),
   });
 }
 
@@ -170,12 +173,12 @@ async function waitUntil(
   return false;
 }
 
-async function openBrainstormPanel(): Promise<void> {
+async function openBrainstormPanel(target: Page = page): Promise<void> {
   // SKY-3737/SKY-3218: Brainstorm is still a top-level panel, but the v0.3
   // nav rail can show only Story/Notes. Use the supported Ctrl+3 shortcut
   // instead of requiring a visible Brainstorm nav item.
-  await page.keyboard.press('Control+3');
-  const panel = page.locator('#app-tabpanel-brainstorm');
+  await target.keyboard.press('Control+3');
+  const panel = target.locator('#app-tabpanel-brainstorm');
   await expect(panel).toBeVisible({ timeout: 6_000 });
   await expect(panel.getByRole('button', { name: 'New session' })).toBeVisible();
 }
@@ -764,4 +767,99 @@ test('TC-M20-04: chat exchanges persist to the shared session store', async () =
     }
   }, 10_000);
   expect(persisted).toBe(true);
+});
+
+// ─── TC-BST-09: no-AI Brainstorm extract (PLAN-AI-MODES M-1, rule 66) ────────
+//
+// The proposal extract is a dictionary/regex script now, not a Haiku side-call,
+// so it needs no API key. A separate app is launched with no key anywhere (not
+// in settings, not in the environment); only the chat stream is mocked. The
+// brainstorm:extractProposals handler and the proposal queue run for real: the
+// reply names a new character, the script proposes it, and the user confirms
+// the card by clicking, which files the note in the vault. A second reply that
+// names the filed character again proposes only the new name.
+
+const NEW_ENTITY_NAME = 'Captain Mira Sol';
+const NEW_ENTITY_TOKENS = [
+  'Picture a rival for her. ',
+  `Your rival could be ${NEW_ENTITY_NAME}, `,
+  'who smuggles relics through the harbour.',
+];
+const SECOND_ENTITY_NAME = 'Brother Oren';
+const SECOND_TURN_TOKENS = [
+  `Next, ${NEW_ENTITY_NAME} could hire `,
+  `${SECOND_ENTITY_NAME} as her fence.`,
+];
+
+test('TC-BST-09: a reply naming a new character queues a proposal with no API key', async () => {
+  const keylessUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-nokey-'));
+  const keylessVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-nokey-vault-'));
+  seedUserData(keylessUserData, keylessVault, { withApiKey: false });
+  let keylessApp: ElectronApplication | undefined;
+  try {
+    keylessApp = await launchApp(keylessUserData, { ANTHROPIC_API_KEY: '' });
+    const keylessPage = await firstWindow(keylessApp);
+    await keylessPage.setViewportSize({ width: 1440, height: 900 });
+    await expect(keylessPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+    // Same stream:start mock as beforeAll; nothing else in main is replaced.
+    const mockReply = (tokens: string[]) => keylessApp!.evaluate(
+      async ({ ipcMain }, tokens: string[]) => {
+        ipcMain.removeHandler('stream:start');
+        ipcMain.handle('stream:start', async (event) => {
+          const streamId = `mock-stream-${Date.now()}`;
+          void (async () => {
+            for (const token of tokens) {
+              await new Promise<void>((r) => setTimeout(r, 40));
+              if (!event.sender.isDestroyed()) {
+                event.sender.send('stream:token', { streamId, token });
+              }
+            }
+            await new Promise<void>((r) => setTimeout(r, 40));
+            if (!event.sender.isDestroyed()) {
+              event.sender.send('stream:end', { streamId });
+            }
+          })();
+          return { streamId };
+        });
+      },
+      tokens,
+    );
+    await mockReply(NEW_ENTITY_TOKENS);
+
+    await openBrainstormPanel(keylessPage);
+    await keylessPage.locator('.brainstorm-input').fill('Who could stand against her?');
+    await keylessPage.locator('.brainstorm-send-btn').click();
+    await expect(keylessPage.locator('.bs-assistant-bubble').last())
+      .toContainText(NEW_ENTITY_NAME, { timeout: 10_000 });
+
+    // The script's proposal reaches the card queue via brainstorm:proposalQueued.
+    const region = keylessPage.getByRole('region', { name: 'Proposed notes' });
+    await expect(region).toBeVisible({ timeout: 10_000 });
+    await expect(region.locator('.pc-title')).toHaveText(NEW_ENTITY_NAME);
+    await expect(region.getByRole('img', { name: 'Character note proposal' })).toBeVisible();
+    await expect(region.locator('.pc-path')).toHaveText('characters/captain-mira-sol.md');
+
+    // Confirming by click files the note (default layout → My First Universe).
+    await region.getByRole('button', { name: `Confirm proposal: ${NEW_ENTITY_NAME}` }).click();
+    await expect(region).toHaveCount(0);
+    const notePath = path.join(keylessVault, 'Universes', 'My First Universe', 'Characters', `${NEW_ENTITY_NAME}.md`);
+    expect(await waitUntil(() => fs.existsSync(notePath), 10_000), `No note at ${notePath}`).toBe(true);
+    const note = fs.readFileSync(notePath, 'utf-8');
+    expect(note).toContain(`name: ${NEW_ENTITY_NAME}`);
+    expect(note).toContain('smuggles relics through the harbour');
+
+    // A later reply that names the filed character again plus a new one queues
+    // only the new one: the vault's note names count as known.
+    await mockReply(SECOND_TURN_TOKENS);
+    await keylessPage.locator('.brainstorm-input').fill('Who helps her?');
+    await keylessPage.locator('.brainstorm-send-btn').click();
+    await expect(keylessPage.locator('.bs-assistant-bubble').last())
+      .toContainText(SECOND_ENTITY_NAME, { timeout: 10_000 });
+    await expect(region).toBeVisible({ timeout: 10_000 });
+    await expect(region.locator('.pc-title')).toHaveText([SECOND_ENTITY_NAME]);
+  } finally {
+    await closeElectronApp(keylessApp);
+    removeTempDirs(keylessUserData, keylessVault);
+  }
 });

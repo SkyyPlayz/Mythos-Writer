@@ -1464,6 +1464,96 @@ describe('listModels (§6)', () => {
     const [url] = mockFetch.mock.calls[0] as [string];
     expect(url).toContain('127.0.0.1:11434');
   });
+
+  // PLAN-AI-MODES M-1: Test connection probes Anthropic through listModels.
+  // ANTHROPIC_BASE_URL is cleared so a developer's gateway env can't move the host.
+  describe('anthropic', () => {
+    beforeEach(() => {
+      vi.stubEnv('ANTHROPIC_BASE_URL', '');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('lists Anthropic models at api.anthropic.com/v1/models when no baseUrl given', async () => {
+      mockFetch.mockReturnValue(
+        makeJsonResponse({ data: [{ id: 'claude-sonnet-4-6' }, { id: 'claude-opus-4-8' }] }),
+      );
+      const result = await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      expect(result).toEqual({ ok: true, models: ['claude-sonnet-4-6', 'claude-opus-4-8'] });
+      const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.anthropic.com/v1/models');
+      expect(opts.method ?? 'GET').toBe('GET');
+      expect(DEFAULT_BASE_URLS.anthropic).toBeUndefined();
+    });
+
+    it('sends Anthropic x-api-key + anthropic-version headers, not Bearer', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [] }));
+      await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = opts.headers as Record<string, string>;
+      expect(headers['x-api-key']).toBe('sk-ant-api03-test');
+      expect(headers['anthropic-version']).toBe('2023-06-01');
+      expect(headers['Authorization']).toBeUndefined();
+    });
+
+    it('keeps Anthropic headers off other kinds', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [] }));
+      await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' });
+      const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = opts.headers as Record<string, string>;
+      expect(headers['x-api-key']).toBeUndefined();
+      expect(headers['anthropic-version']).toBeUndefined();
+    });
+
+    it('sends an Anthropic key only to the SDK host, never to a caller baseUrl', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [{ id: 'claude-sonnet-4-6' }] }));
+      await listModels({ kind: 'anthropic', baseUrl: 'https://attacker.example/v1', apiKey: 'sk-ant-api03-test' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe('https://api.anthropic.com/v1/models');
+    });
+
+    it('follows ANTHROPIC_BASE_URL like the SDK, through the SSRF guard', async () => {
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'https://gateway.example.com/');
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [{ id: 'claude-sonnet-4-6' }] }));
+      await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe('https://gateway.example.com/v1/models');
+
+      mockFetch.mockClear();
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'http://169.254.169.254');
+      const blocked = await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      expect(blocked.ok).toBe(false);
+      expect((blocked as { ok: false; error: string }).error).toMatch(/link-local/);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('reports the HTTP status of a non-2xx answer', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({}, 401));
+      const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-bad' });
+      expect(result).toMatchObject({ ok: false, status: 401 });
+    });
+
+    it('gives Anthropic the 5 s cloud timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        mockFetch.mockImplementation((_url: string, init: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+          }),
+        );
+        const pending = listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+        await vi.advanceTimersByTimeAsync(5_000);
+        const result = await pending;
+        expect(result.ok).toBe(false);
+        expect((result as { ok: false; error: string }).error).toMatch(/Anthropic at https:\/\/api\.anthropic\.com\/v1 did not respond within 5 seconds/);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
 
 // ─── validateBaseUrl (§5) ─────────────────────────────────────────────────────
