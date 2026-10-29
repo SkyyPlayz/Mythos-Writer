@@ -7,6 +7,30 @@ import { decodeEntities, dropBodyWideAlignment, htmlToBlocks, isGoogleDocsHtml }
 const blocksOf = (html: string) => htmlToBlocks(html).blocks;
 const proseOf = (html: string) => blocksToProse(blocksOf(html));
 
+/**
+ * Linear-time check that holds on a slow or busy CI runner: parsing 4× the
+ * input must take under 8× as long (a quadratic scan takes ~16×), with a
+ * 500 ms floor so timer noise on fast runs can't fail it. `n` is a quarter of
+ * the pathological input size; up to three attempts absorb a stray GC pause.
+ * Only the parse is timed, never building the input.
+ */
+async function expectLinearTime<T>(prepare: (k: number) => T | Promise<T>, run: (input: T) => unknown, n: number): Promise<void> {
+  const time = async (input: T) => {
+    const start = performance.now();
+    await run(input);
+    return performance.now() - start;
+  };
+  const small = await prepare(n);
+  const big = await prepare(4 * n);
+  await time(small); // warm up
+  let last = { small: 0, big: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    last = { small: await time(small), big: await time(big) };
+    if (last.big < Math.max(8 * last.small, 500)) return;
+  }
+  expect(last.big, `4× input took ${Math.round(last.big)} ms vs ${Math.round(last.small)} ms`).toBeLessThan(Math.max(8 * last.small, 500));
+}
+
 describe('htmlToBlocks — mammoth-shaped HTML', () => {
   it('keeps marks and splits paragraphs (no newlines between blocks)', () => {
     expect(proseOf('<p>Plain <strong>bold</strong> and <em>ital</em>.</p><p>Second <u>u</u> <s>s</s> <b>b</b> <i>i</i> <del>d</del> <strike>k</strike>.</p>'))
@@ -128,22 +152,17 @@ describe('htmlToBlocks — mammoth-shaped HTML', () => {
     expect(proseOf('<p class="a>one</p><p>two</p>')).toBe('one\n\ntwo');
   });
 
-  it('hostile input parses in linear time (no backtracking scans of untrusted text)', () => {
-    const timed = (fn: () => unknown) => {
-      const start = performance.now();
-      fn();
-      return performance.now() - start;
-    };
-    // Each of these took seconds to hours with backtracking regexes.
-    expect(timed(() => expect(proseOf(`<style>${'a'.repeat(1_000_000)}</style><p>x</p>`)).toBe('x'))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks(`<style>${'/*'.repeat(300_000)}</style>`))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks(`<style>${'@import'.repeat(150_000)}</style>`))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks(`<style>.c1{font-weight:${' '.repeat(500_000)}x}</style>`))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks(`<p style="color:${' '.repeat(500_000)}x">y</p>`))).toBeLessThan(1000);
-    expect(timed(() => isGoogleDocsHtml('<meta'.repeat(40_000)))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks('<style></style>'.repeat(60_000)))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks(`${'<a "x>'.repeat(100_000)}<p>end</p>`))).toBeLessThan(1000);
-    expect(timed(() => htmlToBlocks(`${'<hr>'.repeat(100_000)}</hr>`))).toBeLessThan(1000);
+  it('hostile input parses in linear time (no backtracking scans of untrusted text)', async () => {
+    // Each of these took seconds to hours with backtracking regexes (sizes: the last argument × 4).
+    await expectLinearTime((k) => `<style>${'a'.repeat(k)}</style><p>x</p>`, (html) => expect(proseOf(html)).toBe('x'), 250_000);
+    await expectLinearTime((k) => `<style>${'/*'.repeat(k)}</style>`, htmlToBlocks, 75_000);
+    await expectLinearTime((k) => `<style>${'@import'.repeat(k)}</style>`, htmlToBlocks, 37_500);
+    await expectLinearTime((k) => `<style>.c1{font-weight:${' '.repeat(k)}x}</style>`, htmlToBlocks, 125_000);
+    await expectLinearTime((k) => `<p style="color:${' '.repeat(k)}x">y</p>`, htmlToBlocks, 125_000);
+    await expectLinearTime((k) => '<meta'.repeat(k), isGoogleDocsHtml, 10_000);
+    await expectLinearTime((k) => '<style></style>'.repeat(k), htmlToBlocks, 15_000);
+    await expectLinearTime((k) => `${'<a "x>'.repeat(k)}<p>end</p>`, htmlToBlocks, 25_000);
+    await expectLinearTime((k) => `${'<hr>'.repeat(k)}</hr>`, htmlToBlocks, 25_000);
   });
 
   it('a "<" that is not a tag stays text', () => {

@@ -650,7 +650,156 @@ describe('ImportSection (#1765)', () => {
     expect(screen.getByTestId('import-unavailable')).toBeInTheDocument();
   });
 
+  // Review finding: Settings is an aria-modal dialog whose Tab trap only
+  // listens inside .settings-panel — focus dropped on <body> escapes it.
+  describe('focus never falls to <body> when the pressed control unmounts', () => {
+    function press(el: HTMLElement) {
+      el.focus();
+      fireEvent.click(el);
+    }
+
+    it('Cancel moves focus to "Choose a file…"', async () => {
+      await setup();
+      await showPreview();
+      await act(async () => { press(screen.getByTestId('import-cancel')); });
+      expect(screen.queryByTestId('import-preview')).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByTestId('import-pick-file'));
+    });
+
+    it('"Import something else" moves focus to "Choose a file…"', async () => {
+      mockCommit.mockResolvedValue(OK_COMMIT);
+      await setup();
+      await showPreview();
+      await act(async () => { press(screen.getByTestId('import-confirm')); });
+      await screen.findByTestId('import-done');
+      await act(async () => { press(screen.getByTestId('import-again')); });
+      expect(screen.queryByTestId('import-done')).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByTestId('import-pick-file'));
+    });
+
+    it('a spent-preview commit error moves focus to "Choose a file…"', async () => {
+      mockCommit.mockResolvedValue({ ok: false, error: SPENT_PREVIEW_ERRORS[0] });
+      await setup();
+      await showPreview();
+      await act(async () => { press(screen.getByTestId('import-confirm')); });
+      await screen.findByTestId('import-error');
+      expect(screen.queryByTestId('import-confirm')).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByTestId('import-pick-file'));
+    });
+
+    it('a retryable commit error moves focus to the error message, next to the re-enabled Import', async () => {
+      mockCommit.mockResolvedValue({ ok: false, error: 'Mythos couldn\'t write the chapters. Nothing was changed.' });
+      await setup();
+      await showPreview();
+      await act(async () => { press(screen.getByTestId('import-confirm')); });
+      const alert = await screen.findByTestId('import-commit-error');
+      expect(alert).toHaveAttribute('tabindex', '-1');
+      expect(document.activeElement).toBe(alert);
+      expect(screen.getByTestId('import-confirm')).toBeEnabled();
+    });
+  });
+
+  it('an ePub split by book sections says so, not "page breaks"', async () => {
+    await setup();
+    const base = makePreview();
+    await showPreview({
+      ...base,
+      source: { kind: 'epub', label: 'ePub book', name: 'The Last City.epub' },
+      story: { ...base.story!, structure: 'pagebreaks' },
+    });
+    expect(screen.getByTestId('import-structure')).toHaveTextContent('One chapter per book section');
+    expect(screen.getByTestId('import-structure')).not.toHaveTextContent('page breaks');
+  });
+
+  it('a commit that finishes after the section unmounted (Settings closed) still toasts the outcome', async () => {
+    const ok = deferred<ImportCommitResult>();
+    mockCommit.mockReturnValueOnce(ok.promise);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const first = await setup();
+    await showPreview();
+    await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+    first.unmount();
+    await act(async () => { ok.resolve(OK_COMMIT); });
+    expect(document.querySelector('[data-testid="ln-toast"]')).toHaveTextContent('Imported “The Last City”');
+    document.querySelectorAll('[data-testid="ln-toast"]').forEach((n) => n.remove());
+
+    // A failure the writer can no longer see on the section is toasted too.
+    const bad = deferred<ImportCommitResult>();
+    mockCommit.mockReturnValueOnce(bad.promise);
+    const second = await setup();
+    await showPreview();
+    await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+    second.unmount();
+    await act(async () => { bad.resolve({ ok: false, error: 'Mythos couldn\'t write the chapters. Nothing was changed.' }); });
+    expect(document.querySelector('[data-testid="ln-toast"]')).toHaveTextContent(
+      'Import didn\'t finish — Mythos couldn\'t write the chapters. Nothing was changed.',
+    );
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it('a mounted retryable failure is shown once, in the section (no duplicate toast)', async () => {
+    mockCommit.mockResolvedValue({ ok: false, error: 'Mythos couldn\'t write the chapters. Nothing was changed.' });
+    await setup();
+    await showPreview();
+    await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+    expect(await screen.findByTestId('import-commit-error')).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="ln-toast"]')).not.toBeInTheDocument();
+  });
+
+  it('a huge plan renders at most 200 chapters and 200 scenes per chapter, then "and N more"', async () => {
+    const base = makePreview();
+    const manyScenes = Array.from({ length: 250 }, (_, i) => ({ title: `Scene ${i + 1}`, words: 10 }));
+    const chapters = Array.from({ length: 300 }, (_, i) => ({
+      title: `Chapter ${i + 1}`,
+      words: 100,
+      scenes: i === 0 ? manyScenes : [{ title: `Only scene ${i + 1}`, words: 100 }],
+    }));
+    await setup();
+    await showPreview({ ...base, story: { ...base.story!, chapters } });
+    const list = screen.getByTestId('import-chapters');
+    const rows = Array.from(list.querySelectorAll(':scope > li.import-chapter'));
+    expect(rows).toHaveLength(200);
+    expect(within(list).getByText('Chapter 200')).toBeInTheDocument();
+    expect(within(list).queryByText('Chapter 201')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-chapters-more')).toHaveTextContent('and 100 more chapters');
+    // Totals still count everything.
+    expect(screen.getByTestId('import-totals')).toHaveTextContent('300 chapters · 549 scenes');
+
+    const firstScenes = rows[0].querySelectorAll('ul.import-scenes > li');
+    expect(firstScenes).toHaveLength(200);
+    expect(within(rows[0] as HTMLElement).getByText('Scene 200')).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).queryByText('Scene 201')).not.toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText('and 50 more scenes')).toBeInTheDocument();
+    // The summary still gives the chapter's full scene count.
+    expect(rows[0].querySelector('summary')).toHaveTextContent('250 scenes');
+    // Small chapters get no "more" line.
+    expect(rows[1]).not.toHaveTextContent('more scenes');
+  });
+
   describe('axe', () => {
+    it('retryable commit error (focused message) has no violations', async () => {
+      mockCommit.mockResolvedValue({ ok: false, error: 'Mythos couldn\'t write the chapters. Nothing was changed.' });
+      const { container } = await setup();
+      await showPreview();
+      await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+      await screen.findByTestId('import-commit-error');
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('capped chapter and scene lists have no violations', async () => {
+      const base = makePreview();
+      const chapters = Array.from({ length: 205 }, (_, i) => ({
+        title: `Chapter ${i + 1}`,
+        words: 100,
+        scenes: Array.from({ length: i === 0 ? 203 : 1 }, (_, s) => ({ title: `Scene ${s + 1}`, words: 10 })),
+      }));
+      const { container } = await setup();
+      await showPreview({ ...base, story: { ...base.story!, chapters } });
+      fireEvent.click(container.querySelector('summary') as HTMLElement);
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
     it('idle state has no violations', async () => {
       const { container } = await setup();
       expect(await axe(container)).toHaveNoViolations();

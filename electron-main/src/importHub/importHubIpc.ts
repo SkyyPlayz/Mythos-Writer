@@ -26,7 +26,7 @@ import {
   releaseImportSession,
   scrubAbsolutePaths,
 } from './importPreview.js';
-import { commitImportPlan, type ImportCommitDeps } from './importCommit.js';
+import { commitImportPlan, importPlanTooLargeError, type ImportCommitDeps } from './importCommit.js';
 import { ImportUserError } from './importErrors.js';
 
 export interface ImportHubDeps extends ImportCommitDeps {
@@ -103,6 +103,9 @@ export async function previewImportPath(
       name: assessed.name,
     };
   }
+  // A plan commit would refuse is refused now, before it holds a session.
+  const tooLarge = importPlanTooLargeError({ story: plan.story ?? null, notes: plan.notes ?? [] });
+  if (tooLarge) return { ok: false, refused: false, error: tooLarge, name: assessed.name };
   // The plan carries only the basename, whatever the importer put there.
   const safePlan: ImportPlan = {
     ...plan,

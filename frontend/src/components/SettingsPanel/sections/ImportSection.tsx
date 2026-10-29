@@ -48,6 +48,15 @@ const STRUCTURE_TEXT: Record<StructureSource, string> = {
   none: 'No chapters found — it will come in as one chapter you can split later',
 };
 
+/**
+ * An ePub's chapters are its book sections (spine documents), which main
+ * reports as 'pagebreaks' — explain them as what they are.
+ */
+function structureText(kind: ImportPreview['source']['kind'], structure: StructureSource): string {
+  if (kind === 'epub' && structure === 'pagebreaks') return 'One chapter per book section';
+  return STRUCTURE_TEXT[structure];
+}
+
 const ENTITY_ORDER: readonly ImportEntityType[] = ['character', 'location', 'faction', 'item', 'event', 'concept'];
 const ENTITY_LABEL: Record<ImportEntityType, string> = {
   character: 'Characters',
@@ -60,6 +69,9 @@ const ENTITY_LABEL: Record<ImportEntityType, string> = {
 
 const NOTE_TITLES_SHOWN = 8;
 const ENTITY_TITLES_SHOWN = 6;
+/** The preview lists at most this many chapters, and this many scenes per chapter (a huge plan would freeze the renderer). */
+export const CHAPTERS_SHOWN = 200;
+export const SCENES_SHOWN = 200;
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -422,6 +434,7 @@ function PreviewView({
   setIncludeStory,
   setIncludeNotes,
   commitError,
+  commitErrorRef,
   onConfirm,
   onCancel,
   headingRef,
@@ -436,6 +449,7 @@ function PreviewView({
   setIncludeStory: (v: boolean) => void;
   setIncludeNotes: (v: boolean) => void;
   commitError: string | null;
+  commitErrorRef: RefObject<HTMLParagraphElement>;
   onConfirm: () => void;
   onCancel: () => void;
   headingRef: RefObject<HTMLHeadingElement>;
@@ -480,14 +494,14 @@ function PreviewView({
         <div className="import-block" data-testid="import-preview-story">
           <h5 className="import-block__title">Story</h5>
           <p className="import-story-title" data-testid="import-story-title">{story.title}</p>
-          <p className="settings-hint" data-testid="import-structure">{STRUCTURE_TEXT[story.structure]}</p>
+          <p className="settings-hint" data-testid="import-structure">{structureText(preview.source.kind, story.structure)}</p>
           <p className="import-totals" data-testid="import-totals">
             {plural(story.chapters.length, 'chapter')} · {plural(sceneCount, 'scene')} · {plural(story.words, 'word')}
             {story.partCount > 0 ? ` · ${plural(story.partCount, 'part')}` : ''}
           </p>
           {story.chapters.length > 0 && (
             <ol className="import-chapters" data-testid="import-chapters">
-              {story.chapters.map((c, ci) => (
+              {story.chapters.slice(0, CHAPTERS_SHOWN).map((c, ci) => (
                 <li key={ci} className="import-chapter">
                   <details>
                     <summary>
@@ -497,17 +511,27 @@ function PreviewView({
                       </span>
                     </summary>
                     <ul className="import-scenes">
-                      {c.scenes.map((s, si) => (
+                      {c.scenes.slice(0, SCENES_SHOWN).map((s, si) => (
                         <li key={si}>
                           <span className="import-scene__title">{s.title}</span>
                           <span className="import-chapter__meta">{plural(s.words, 'word')}</span>
                         </li>
                       ))}
                     </ul>
+                    {c.scenes.length > SCENES_SHOWN && (
+                      <p className="settings-hint import-more import-more--scenes">
+                        and {plural(c.scenes.length - SCENES_SHOWN, 'more scene', 'more scenes')}
+                      </p>
+                    )}
                   </details>
                 </li>
               ))}
             </ol>
+          )}
+          {story.chapters.length > CHAPTERS_SHOWN && (
+            <p className="settings-hint import-more" data-testid="import-chapters-more">
+              and {plural(story.chapters.length - CHAPTERS_SHOWN, 'more chapter', 'more chapters')}
+            </p>
           )}
           {story.excerpt && <Excerpt excerpt={story.excerpt} />}
         </div>
@@ -576,7 +600,15 @@ function PreviewView({
       )}
 
       {commitError && (
-        <p className="settings-error-msg" role="alert" data-testid="import-commit-error">{commitError}</p>
+        <p
+          className="settings-error-msg import-commit-error"
+          role="alert"
+          data-testid="import-commit-error"
+          ref={commitErrorRef}
+          tabIndex={-1}
+        >
+          {commitError}
+        </p>
       )}
 
       {blocked && preview.commitBlockedReason && (
@@ -629,6 +661,12 @@ export default function ImportSection({ activeVaultRoot, activeVaultName }: Impo
   vaultRootRef.current = activeVaultRoot ?? '';
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
   const doneHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pickFileRef = useRef<HTMLButtonElement>(null);
+  const commitErrorRef = useRef<HTMLParagraphElement>(null);
+  // Where focus goes after the next render, when the control just pressed is
+  // about to unmount. Settings is an aria-modal dialog whose Tab trap only
+  // listens inside the panel, so focus dropped on <body> would escape it.
+  const pendingFocusRef = useRef<'pick' | 'commit-error' | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -636,14 +674,22 @@ export default function ImportSection({ activeVaultRoot, activeVaultName }: Impo
   }, []);
 
   // Focus follows the flow: the preview heading when a preview appears, the
-  // success heading when the import is done.
-  const previewToken = phase.kind === 'preview' ? phase.preview.token : null;
+  // success heading when the import is done. (A commit keeps the same
+  // preview on screen, so committing → preview doesn't re-focus the heading.)
+  const previewToken = phase.kind === 'preview' || phase.kind === 'committing' ? phase.preview.token : null;
   useEffect(() => {
     if (previewToken) previewHeadingRef.current?.focus();
   }, [previewToken]);
   useEffect(() => {
     if (phase.kind === 'done') doneHeadingRef.current?.focus();
   }, [phase.kind]);
+  // Runs after every render: consumes a focus request once its target exists.
+  useEffect(() => {
+    const target = pendingFocusRef.current;
+    if (!target) return;
+    pendingFocusRef.current = null;
+    (target === 'pick' ? pickFileRef : commitErrorRef).current?.focus();
+  });
 
   const hub = getImportHub();
   const busy = phase.kind === 'busy';
@@ -760,27 +806,41 @@ export default function ImportSection({ activeVaultRoot, activeVaultName }: Impo
     } catch (err) {
       result = { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
-    if (!mountedRef.current || id !== reqIdRef.current) return;
+    // The outcome always reaches the writer: if Settings was closed (or the
+    // category switched) mid-commit, the toast is the only sign it finished —
+    // without it they may import again and get a duplicate "(2)" book. While
+    // the section is up, a failure is already announced by its role="alert".
+    const visible = mountedRef.current && id === reqIdRef.current;
     if (!result.ok) {
       const message = result.error || 'The import did not finish.';
+      if (!visible) {
+        showLnToast(`Import didn't finish — ${message}`);
+        return;
+      }
       if (SPENT_PREVIEW_ERRORS.includes(message)) {
         // Main has forgotten this preview: a retry can't work, so start over.
+        pendingFocusRef.current = 'pick';
         setPhase({ kind: 'idle' });
         setAlert({ kind: 'error', message });
         return;
       }
       // Nothing was written and main kept the preview: the writer can retry.
+      pendingFocusRef.current = 'commit-error';
       setPhase({ kind: 'preview', preview, vaultAtPreview });
       setAlert({ kind: 'commit-error', message });
       return;
     }
+    showLnToast(result.storyTitle ? `Imported “${result.storyTitle}”` : 'Import finished');
+    if (!visible) return;
     const entityTypes = options.notes ? preview.entities.map((e) => e.type) : [];
     setPhase({ kind: 'done', result, entityTypes });
-    showLnToast(result.storyTitle ? `Imported “${result.storyTitle}”` : 'Import finished');
   }, [includeStory, includeNotes]);
 
+  // User-initiated (Cancel / "Import something else"): the pressed button
+  // unmounts, so focus moves to "Choose a file…".
   const reset = useCallback(() => {
     reqIdRef.current += 1;
+    pendingFocusRef.current = 'pick';
     setAlert(null);
     setMultiHint(false);
     setPhase({ kind: 'idle' });
@@ -831,6 +891,7 @@ export default function ImportSection({ activeVaultRoot, activeVaultName }: Impo
             type="button"
             className="m24-btn m24-btn--primary"
             data-testid="import-pick-file"
+            ref={pickFileRef}
             disabled={!hub || busy || committing}
             onClick={() => onPick('file')}
           >
@@ -881,6 +942,7 @@ export default function ImportSection({ activeVaultRoot, activeVaultName }: Impo
           setIncludeStory={setIncludeStory}
           setIncludeNotes={setIncludeNotes}
           commitError={alert?.kind === 'commit-error' ? alert.message : null}
+          commitErrorRef={commitErrorRef}
           onConfirm={() => { void onConfirm(); }}
           onCancel={reset}
           headingRef={previewHeadingRef}

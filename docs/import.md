@@ -39,7 +39,12 @@ line.
 
 A short title page or dedication before the first chapter (250 words or
 less) is kept as a **Front Matter** chapter instead of being dropped. If the
-book has no Title-style line, that page's first line names the book.
+book has no Title-style line (or a lone title heading), that page's first
+title-like line names the book — even when the chapters are named headings
+("The Gate", "The Road"). When chapters come from page breaks, a short first
+page (under 150 words, not starting with a "Chapter …" / "Prologue" line) is
+Front Matter too and the chapters are numbered from Chapter 1. An ePub's own
+title is never replaced.
 
 ### Where it goes
 
@@ -50,6 +55,12 @@ book has no Title-style line, that page's first line names the book.
   places, factions and items go to `Characters/`, `Locations/`, `Factions/`
   and `Items/`. Existing notes are never overwritten.
 - A **Story Plan** note listing every chapter and scene goes to `Plans/`.
+- A story, chapter or scene title longer than 500 characters is shortened
+  (ending "…"). A shortened chapter or scene title's full text is kept as the
+  first paragraph of its scene, so no words are lost.
+- One import holds at most 2,000 scenes and 5,000 notes. A bigger source is
+  refused at preview time, before anything is saved — split it into smaller
+  files.
 
 ## Safety
 

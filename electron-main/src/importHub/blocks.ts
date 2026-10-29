@@ -271,8 +271,8 @@ function resolveMarkForms(segs: Seg[], groupCount: number): void {
       const oneSided = ch !== '*' || leftFlanking !== rightFlanking;
       const openers = run.filter((r) => r.open);
       const closers = run.filter((r) => !r.open);
-      if (openers.length && (closers.length || !leftFlanking || !oneSided)) bad.push(...openers.map((r) => r.span));
-      if (closers.length && (!rightFlanking || !oneSided)) bad.push(...closers.map((r) => r.span));
+      if (openers.length && (closers.length || !leftFlanking || !oneSided)) for (const r of openers) bad.push(r.span);
+      if (closers.length && (!rightFlanking || !oneSided)) for (const r of closers) bad.push(r.span);
       k = end + 1;
     }
     return bad;
@@ -696,7 +696,20 @@ export function segmentBlocks(
   const items = resolveEmpties(rawItems);
   const fallbackTitle = opts.fallbackTitle.trim() || 'Untitled';
   let storyTitle = opts.titleIsAuthoritative ? fallbackTitle : (titleText ?? fallbackTitle);
+  // Where storyTitle came from. A title page's first line beats only a guess
+  // (the file name, or the first chapter heading standing in for a title).
+  type TitleSource = 'fallback' | 'titleBlock' | 'titleHeading' | 'firstChapterHeading' | 'authoritative';
+  let titleSource: TitleSource = opts.titleIsAuthoritative ? 'authoritative' : titleText !== undefined ? 'titleBlock' : 'fallback';
   const canTakeHeadingTitle = !opts.titleIsAuthoritative && titleText === undefined;
+  /** The first text of a title page, when it reads like a book title and only a guess names the book. */
+  const titlePageTitle = (texts: Iterable<string>): string | undefined => {
+    if (titleSource !== 'fallback' && titleSource !== 'firstChapterHeading') return undefined;
+    for (const t of texts) {
+      if (!t.trim()) continue;
+      return isTitleLikeLine(t) ? tidyTitle(t) : undefined;
+    }
+    return undefined;
+  };
   const implicitTitle = titleText && !opts.titleIsAuthoritative ? titleText : fallbackTitle;
 
   // ── 1. Heading styles ──
@@ -767,7 +780,10 @@ export function segmentBlocks(
     && !(markerChapters >= 2 && (headingChapters <= 1 || markerChapters > headingChapters));
   if (useHeadings) {
     structure = 'headings';
-    if (titleHeading && canTakeHeadingTitle) storyTitle = titleHeading.text;
+    if (titleHeading && canTakeHeadingTitle) {
+      storyTitle = titleHeading.text;
+      titleSource = 'titleHeading';
+    }
     let titleTaken = false;
     for (const it of items) {
       if (it === titleHeading) continue;
@@ -775,7 +791,10 @@ export function segmentBlocks(
         const r = roleOf(it);
         if (r === 'chapter' && firstChapterIsTitle && canTakeHeadingTitle && !titleTaken) {
           // "Chapter One" / "Prologue" is never the book's name: keep the file name.
-          if (!matchChapterMarker(it.text)) storyTitle = it.text;
+          if (!matchChapterMarker(it.text)) {
+            storyTitle = it.text;
+            titleSource = 'firstChapterHeading';
+          }
           titleTaken = true;
         }
         structs.push({ t: r, title: it.text });
@@ -808,6 +827,7 @@ export function segmentBlocks(
         } else if (i < firstMarker && it === structural[0] && canTakeHeadingTitle) {
           // The first heading, above every marker, is the book title.
           storyTitle = it.text;
+          titleSource = 'titleHeading';
         } else {
           structs.push({ t: 'content', block: it.block });
         }
@@ -831,8 +851,26 @@ export function segmentBlocks(
       : filled.length >= 3 && substantial >= 2 && substantial * 2 >= filled.length;
     if (pagesAreChapters) {
       structure = 'pagebreaks';
+      // A short first page before real chapters is a title page / dedication
+      // (unless it opens with a "Chapter …" / "Prologue" line). Short means
+      // within FRONT_MATTER_MAX_WORDS and too short to count as a chapter
+      // page itself (PAGE_CHUNK_MIN_WORDS): a 200-word first page of prose
+      // stays Chapter 1.
+      const chunkTexts = (c: Item[]) => c.flatMap((it) => (it.t === 'heading' || it.t === 'content' ? [it.text] : []));
+      const firstTexts = chunkTexts(filled[0]);
+      const firstWords = firstTexts.reduce((n, t) => n + countWords(t), 0);
+      const frontPage = filled.length >= 2
+        && firstWords <= FRONT_MATTER_MAX_WORDS
+        && firstWords < PAGE_CHUNK_MIN_WORDS
+        && filled.slice(1).some((c) => proseWords(c) >= PAGE_CHUNK_MIN_WORDS)
+        && !(firstTexts.length > 0 && matchChapterMarker(firstTexts[0]));
+      if (frontPage) {
+        const named = titlePageTitle(firstTexts);
+        if (named) { storyTitle = named; titleSource = 'titleBlock'; }
+      }
       filled.forEach((chunk, ci) => {
-        structs.push({ t: 'chapter', title: `Chapter ${ci + 1}` });
+        const n = frontPage ? ci : ci + 1;
+        structs.push({ t: 'chapter', title: n === 0 ? FRONT_MATTER_TITLE : `Chapter ${n}` });
         for (const it of chunk) {
           if (it.t === 'heading' || it.t === 'content') structs.push({ t: 'content', block: it.block });
           else if (it.t === 'scene') structs.push({ t: 'break' });
@@ -859,10 +897,11 @@ export function segmentBlocks(
     const frontWords = frontBlocks.reduce((n, b) => n + countWords(blockText(b)), 0);
     if (frontWords <= FRONT_MATTER_MAX_WORDS) {
       front.title = FRONT_MATTER_TITLE;
-      if (canTakeHeadingTitle && storyTitle === fallbackTitle) {
-        const first = frontBlocks.map(blockText).find((t) => t.trim() !== '');
-        if (first && isTitleLikeLine(first)) storyTitle = tidyTitle(first);
-      }
+      // A title-like first line beats the file name or a first chapter
+      // heading standing in for the title — never a Title block, a lone
+      // title heading or an authoritative title.
+      const named = titlePageTitle(frontBlocks.map(blockText));
+      if (named) { storyTitle = named; titleSource = 'titleBlock'; }
     }
   }
 

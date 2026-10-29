@@ -44,6 +44,8 @@ import {
   statusToDraftState,
   storyFolderName,
 } from '../mythosFormat/sceneFiles.js';
+import { assertValidManifest } from '../manifestValidate.js';
+import { inlinesToMarkdown } from './blocks.js';
 import { countWords, SOURCE_LABELS } from './importPreview.js';
 import type {
   ImportChapter,
@@ -74,6 +76,33 @@ export interface ImportCommitDeps {
 export const IMPORT_MAX_NOTES = 5000;
 export const IMPORT_MAX_SCENES = 2000;
 
+/**
+ * Longest story/chapter/scene title kept, in code points (≤ 1000 UTF-16 units,
+ * well under the manifest validator's LIMITS.stringFieldMaxLen). A longer one
+ * is cut with "…"; a cut chapter/scene title's full text opens the scene's prose.
+ */
+export const MAX_IMPORT_TITLE_CHARS = 500;
+
+const TITLES_SHORTENED_WARNING =
+  'Some headings were too long to use as titles, so they were shortened. The full text is kept at the start of the scene.';
+const STORY_TITLE_SHORTENED_WARNING = 'The book\'s title was too long, so it was shortened.';
+const TOO_LARGE_ERROR = 'Part of this import is too large to save. Split the source into smaller files.';
+
+/**
+ * Why `plan` is too large to import, in plain words — or null. Checked at
+ * preview time (importHubIpc) and again at commit.
+ */
+export function importPlanTooLargeError(plan: Pick<ImportPlan, 'story' | 'notes'>): string | null {
+  if (plan.notes.length > IMPORT_MAX_NOTES) {
+    return `This import has more than ${IMPORT_MAX_NOTES.toLocaleString('en-US')} notes. Import the folder in smaller parts.`;
+  }
+  const sceneTotal = (plan.story?.chapters ?? []).reduce((n, ch) => n + ch.scenes.length, 0);
+  if (sceneTotal > IMPORT_MAX_SCENES) {
+    return `This manuscript has more than ${IMPORT_MAX_SCENES.toLocaleString('en-US')} scenes. Split it into smaller files.`;
+  }
+  return null;
+}
+
 /** Top-level Notes Vault folder per entity type (v2 seed skeleton names). */
 export const ENTITY_NOTE_FOLDERS: Readonly<Record<ImportEntityType, string>> = Object.freeze({
   character: 'Characters',
@@ -99,6 +128,17 @@ const MAX_FOLDER_DEPTH = 8;
 
 function oneLine(s: string): string {
   return s.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** `s` cut to MAX_IMPORT_TITLE_CHARS code points (at a code-point boundary, ending "…"). */
+export function capTitle(s: string): { title: string; cut: boolean } {
+  // Code units ≥ code points, so a short string needs no split.
+  if (s.length <= MAX_IMPORT_TITLE_CHARS) return { title: s, cut: false };
+  // Only the head is split into code points (a title can be megabytes long).
+  // Over 2× the cap in code units is always over the cap in code points.
+  const head = Array.from(s.slice(0, MAX_IMPORT_TITLE_CHARS * 2));
+  if (s.length <= MAX_IMPORT_TITLE_CHARS * 2 && head.length <= MAX_IMPORT_TITLE_CHARS) return { title: s, cut: false };
+  return { title: `${head.slice(0, MAX_IMPORT_TITLE_CHARS - 1).join('').trimEnd()}…`, cut: true };
 }
 
 function byOrder<T extends { order: number }>(items: T[]): T[] {
@@ -232,19 +272,37 @@ interface NormalizedChapter {
   scenes: Array<{ title: string; prose: string; synopsis?: string }>;
 }
 
-function normalizeChapters(chapters: ImportChapter[]): NormalizedChapter[] {
-  return byOrder(chapters).map((ch, ci) => {
-    const scenes = byOrder(ch.scenes).map((sc: ImportScene, si) => ({
-      title: frontmatterSafeTitle(sc.title, `Scene ${si + 1}`),
-      prose: sc.prose ?? '',
-      ...(sc.synopsis && oneLine(sc.synopsis) ? { synopsis: oneLine(sc.synopsis) } : {}),
-    }));
+function normalizeChapters(chapters: ImportChapter[]): { chapters: NormalizedChapter[]; titlesCut: boolean } {
+  let titlesCut = false;
+  const out = byOrder(chapters).map((ch, ci) => {
+    const chapterFull = oneLine(ch.title);
+    const chapterTitle = capTitle(chapterFull);
+    if (chapterTitle.cut) titlesCut = true;
+    const scenes = byOrder(ch.scenes).map((sc: ImportScene, si) => {
+      const sceneFull = oneLine(sc.title);
+      const sceneTitle = capTitle(sceneFull);
+      if (sceneTitle.cut) titlesCut = true;
+      // A cut title's words open the scene, so none are lost: the chapter's
+      // in its first scene, then the scene's own (once, when they match).
+      const kept: string[] = [];
+      if (si === 0 && chapterTitle.cut) kept.push(chapterFull);
+      if (sceneTitle.cut && !kept.includes(sceneFull)) kept.push(sceneFull);
+      const prose = sc.prose ?? '';
+      const keptMd = kept.map((t) => inlinesToMarkdown([{ text: t }])).join('\n\n');
+      return {
+        title: frontmatterSafeTitle(sceneTitle.title, `Scene ${si + 1}`),
+        prose: keptMd ? (prose.trim() ? `${keptMd}\n\n${prose}` : keptMd) : prose,
+        ...(sc.synopsis && oneLine(sc.synopsis) ? { synopsis: oneLine(sc.synopsis) } : {}),
+      };
+    });
+    const keptChapter = chapterTitle.cut && scenes.length === 0 ? inlinesToMarkdown([{ text: chapterFull }]) : '';
     return {
-      title: oneLine(ch.title) || `Chapter ${ci + 1}`,
+      title: chapterTitle.title || `Chapter ${ci + 1}`,
       // An empty chapter still needs a scene file, or the scan can't see its folder.
-      scenes: scenes.length > 0 ? scenes : [{ title: 'Scene 1', prose: '' }],
+      scenes: scenes.length > 0 ? scenes : [{ title: 'Scene 1', prose: keptChapter }],
     };
   });
+  return { chapters: out, titlesCut };
 }
 
 function uniqueV2Folder(storyVaultRoot: string, manifest: Manifest, title: string): string {
@@ -499,7 +557,7 @@ function buildPlanNote(
 
 function plainError(err: unknown): string {
   const msg = err instanceof Error ? err.message : '';
-  if (/too large/i.test(msg)) return 'Part of this import is too large to save. Split the source into smaller files.';
+  if (/too large/i.test(msg)) return TOO_LARGE_ERROR;
   if (/symlink|refus/i.test(msg)) return 'Mythos won\'t write through a linked folder inside your vault. Remove the link and try again.';
   if (/EACCES|EPERM|read-only|EROFS/i.test(msg)) return 'Mythos isn\'t allowed to write to your vault folder. Check its permissions.';
   if (/ENOSPC/i.test(msg)) return 'Your disk is full. Free some space and try again.';
@@ -515,13 +573,8 @@ export async function commitImportPlan(
   deps: ImportCommitDeps,
   options: ImportCommitOptions = {},
 ): Promise<ImportCommitResult> {
-  const sceneTotal = (plan.story?.chapters ?? []).reduce((n, ch) => n + ch.scenes.length, 0);
-  if (plan.notes.length > IMPORT_MAX_NOTES) {
-    return { ok: false, error: `This import has more than ${IMPORT_MAX_NOTES.toLocaleString('en-US')} notes. Import the folder in smaller parts.` };
-  }
-  if (sceneTotal > IMPORT_MAX_SCENES) {
-    return { ok: false, error: `This manuscript has more than ${IMPORT_MAX_SCENES.toLocaleString('en-US')} scenes. Split it into smaller files.` };
-  }
+  const tooLarge = importPlanTooLargeError(plan);
+  if (tooLarge) return { ok: false, error: tooLarge };
   const wantStory = options.story !== false && plan.story !== null;
   const wantNotes = options.notes !== false && plan.notes.length > 0;
   if (!wantStory && !wantNotes) return { ok: false, error: 'There is nothing selected to import.' };
@@ -540,8 +593,12 @@ export async function commitImportPlan(
   if (wantStory && plan.story) {
     const storyVaultRoot = deps.getStoryVaultRoot();
     if (!storyVaultRoot) return { ok: false, error: NO_VAULT_ERROR };
-    const title = oneLine(plan.story.title) || sourceStem(plan.source.name) || 'Untitled Story';
-    normalized = normalizeChapters(plan.story.chapters);
+    const storyTitle = capTitle(oneLine(plan.story.title) || sourceStem(plan.source.name) || 'Untitled Story');
+    const title = storyTitle.title;
+    const norm = normalizeChapters(plan.story.chapters);
+    normalized = norm.chapters;
+    if (storyTitle.cut) warnings.push(STORY_TITLE_SHORTENED_WARNING);
+    if (norm.titlesCut) warnings.push(TITLES_SHORTENED_WARNING);
     try {
       const manifestPath = deps.getManifestPath();
       const manifest = deps.readManifest(manifestPath);
@@ -551,6 +608,13 @@ export async function commitImportPlan(
         : writeLegacyStory(storyVaultRoot, title, normalized, nowIso);
       manifest.stories = [...(manifest.stories ?? []), entry];
       try {
+        // Every later renderer save validates the whole manifest: never write
+        // one that would fail it (an over-long field would block all saves).
+        try {
+          assertValidManifest(manifest);
+        } catch {
+          throw new Error(TOO_LARGE_ERROR);
+        }
         deps.writeManifest(manifestPath, manifest);
       } catch (err) {
         rollback(storyVaultRoot, written.createdRel);

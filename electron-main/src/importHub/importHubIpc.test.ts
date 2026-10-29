@@ -29,7 +29,8 @@ import {
   registerImportHubIpc,
   type ImportHubDeps,
 } from './importHubIpc.js';
-import { _clearImportSessionsForTest } from './importPreview.js';
+import { _clearImportSessionsForTest, _importSessionCountForTest } from './importPreview.js';
+import { IMPORT_MAX_NOTES, IMPORT_MAX_SCENES } from './importCommit.js';
 import type { ImportPlan, ImportPreviewResult } from './types.js';
 import { ImportUserError } from './importErrors.js';
 
@@ -166,7 +167,7 @@ describe('import:preview', () => {
   it('hides importer exceptions (no stack, no path)', async () => {
     const { deps } = harness();
     deps.buildPlan = vi.fn(async () => {
-      throw new Error(`ENOENT: no such file ${tmp}/x\n    at Object.openSync (node:fs:1)`);
+      throw new Error(`ENOENT: no such file ${path.join(tmp, 'x')}\n    at Object.openSync (node:fs:1)`);
     });
     const r = await previewImportPath(source(), deps);
     expect(r.ok).toBe(false);
@@ -178,13 +179,48 @@ describe('import:preview', () => {
   it('shows an importer\'s writer-facing message (ImportUserError), scrubbed of paths', async () => {
     const { deps } = harness();
     deps.buildPlan = vi.fn(async () => {
-      throw new ImportUserError(`This ePub has no readable chapters. (${tmp}/book.epub)`);
+      throw new ImportUserError(`This ePub has no readable chapters. (${path.join(tmp, 'book.epub')})`);
     });
     const r = await previewImportPath(source(), deps);
     expect(r).toMatchObject({ ok: false, refused: false });
     const error = (r as { error: string }).error;
     expect(error).toContain('This ePub has no readable chapters.');
     expect(error).not.toContain(tmp);
+  });
+
+  it('refuses a plan with too many scenes or notes before creating a preview session', async () => {
+    const { deps } = harness();
+    const scenes = planFor('Tale.md');
+    scenes.story!.chapters = [{
+      title: 'Huge',
+      order: 0,
+      scenes: Array.from({ length: IMPORT_MAX_SCENES + 1 }, (_, i) => ({ title: `S${i}`, order: i, prose: 'x' })),
+    }];
+    deps.buildPlan = vi.fn(async () => scenes);
+    expect(await previewImportPath(source(), deps)).toEqual({
+      ok: false,
+      refused: false,
+      error: 'This manuscript has more than 2,000 scenes. Split it into smaller files.',
+      name: 'Tale.md',
+    });
+    expect(_importSessionCountForTest()).toBe(0);
+
+    const notes = planFor('Tale.md');
+    notes.notes = Array.from({ length: IMPORT_MAX_NOTES + 1 }, (_, i) => ({ title: `N${i}`, folder: '', body: '' }));
+    deps.buildPlan = vi.fn(async () => notes);
+    expect(await previewImportPath(source(), deps)).toEqual({
+      ok: false,
+      refused: false,
+      error: 'This import has more than 5,000 notes. Import the folder in smaller parts.',
+      name: 'Tale.md',
+    });
+    expect(_importSessionCountForTest()).toBe(0);
+
+    // At the caps exactly, the preview is made.
+    scenes.story!.chapters[0].scenes.pop();
+    deps.buildPlan = vi.fn(async () => scenes);
+    expect((await previewImportPath(source(), deps)).ok).toBe(true);
+    expect(_importSessionCountForTest()).toBe(1);
   });
 
   it('marks the preview not committable when no vault is open', async () => {

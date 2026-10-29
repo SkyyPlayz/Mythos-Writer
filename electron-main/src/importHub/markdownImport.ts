@@ -806,7 +806,7 @@ function fileScenes(doc: ParsedMarkdown, fallbackTitle: string): { title: string
   let leadTitle: string | undefined;
   const structural = blocks.filter(isStructural);
   if (structural.length > 0) {
-    const top = Math.min(...structural.map((h) => h.level));
+    const top = structural.reduce((min, h) => Math.min(min, h.level), Infinity);
     const atTop = structural.filter((h) => h.level === top);
     if (atTop.length === 1 && blocks[0] === atTop[0]) {
       leadTitle = atTop[0].inlines.map((r) => r.text).join('').trim() || undefined;
@@ -815,7 +815,7 @@ function fileScenes(doc: ParsedMarkdown, fallbackTitle: string): { title: string
   }
   const title = fmString(doc.frontmatter, 'title') || leadTitle || fallbackTitle;
   const remaining = blocks.filter(isStructural);
-  const sceneLevel = remaining.length > 0 ? Math.min(...remaining.map((h) => h.level)) : 0;
+  const sceneLevel = remaining.length > 0 ? remaining.reduce((min, h) => Math.min(min, h.level), Infinity) : 0;
   const lowered = blocks.map((b): RichBlock => {
     // Inside one file a "Chapter Two" line is just a line: the file is the chapter.
     if (b.kind === 'paragraph') return { kind: 'markdown', text: inlinesToMarkdown(b.inlines) };
@@ -873,7 +873,7 @@ function buildManuscript(
     used.add(file);
     droppedImages += doc.droppedImages;
     const { title, scenes, warnings: w } = fileScenes(doc, chapterTitleFromName(stripExtension(file.name)));
-    warnings.push(...w);
+    for (const x of w) warnings.push(x);
     chapters.push({ title: prefix ? `${prefix} · ${title}` : title, order: 0, scenes });
   };
   // A chapter folder: each file under it is a scene (a file with its own scene breaks gives several).
@@ -885,7 +885,7 @@ function buildManuscript(
       used.add(file);
       droppedImages += doc.droppedImages;
       const r = fileScenes(doc, chapterTitleFromName(stripExtension(file.name)));
-      warnings.push(...r.warnings);
+      for (const x of r.warnings) warnings.push(x);
       for (const s of r.scenes) {
         const title = r.scenes.length === 1 || s.title === r.title ? r.title : `${r.title} · ${s.title}`;
         scenes.push({ ...s, title, order: scenes.length });
@@ -1035,7 +1035,7 @@ export async function markdownFolderToPlan(absDir: string, name: string): Promis
     const built = buildManuscript(found, cleanSegment(name).trim() || 'Imported Story', cache);
     story = built.story;
     used = built.used;
-    warnings.push(...imagesWarning(built.droppedImages), ...built.warnings);
+    for (const x of [...imagesWarning(built.droppedImages), ...built.warnings]) warnings.push(x);
   }
 
   const notes: ImportNote[] = [];

@@ -418,6 +418,23 @@ describe('segmentBlocks — heading styles', () => {
     expect(outline(blocks, 'Dc Title', true).title).toBe('Dc Title');
   });
 
+  it('a Normal-style title page names the book over the first named Heading 1 chapter', () => {
+    const blocks = [p('The Lantern Road'), p('by Skyy'), h(1, 'The Gate'), p('x'), h(1, 'The Road'), p('y')];
+    const o = outline(blocks, 'draft-v3');
+    expect(o.title).toBe('The Lantern Road');
+    expect(o.chapters.map((c) => c.title)).toEqual(['Front Matter', 'The Gate', 'The Road']);
+    // Same with Heading 1 chapters over Heading 2 scenes.
+    expect(outline([p('The Lantern Road'), h(1, 'The Gate'), h(2, 'Dawn'), p('x'), h(1, 'The Road'), h(2, 'Dusk'), p('y')], 'draft').title)
+      .toBe('The Lantern Road');
+    // No title-like line on the title page: the first chapter heading still names the book.
+    expect(outline([p('by Skyy'), h(1, 'The Gate'), p('x'), h(1, 'The Road'), p('y')], 'draft').title).toBe('The Gate');
+    // A Title block, a lone title heading and an authoritative title still win.
+    expect(outline([title('Real Name'), ...blocks]).title).toBe('Real Name');
+    expect(outline(blocks, 'Dc Title', true).title).toBe('Dc Title');
+    expect(outline([p('Working Title'), h(1, 'My Book'), h(2, 'One'), h(3, 'a'), p('x'), h(2, 'Two'), h(3, 'b'), p('y')], 'draft').title)
+      .toBe('My Book');
+  });
+
   it('a long unlabelled opening (> 250 words) is a real chapter, not Front Matter', () => {
     const long = p(Array.from({ length: 260 }, (_, i) => `w${i}`).join(' '));
     const o = outline([long, h(1, 'Chapter One'), p('x'), h(1, 'Chapter Two'), p('y')], 'Book');
@@ -593,6 +610,47 @@ describe('segmentBlocks — page breaks and no structure', () => {
     const o = outline([p(words(200, 'a')), page, p(words(200, 'b')), page, p(words(180, 'c'))]);
     expect(o.structure).toBe('pagebreaks');
     expect(o.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
+  });
+
+  it('a short first page (title page) is Front Matter and names the book; chapters count from 1', () => {
+    const chapters = [page, p(words(200, 'a')), page, p(words(200, 'b')), page, p(words(180, 'c'))];
+    const o = outline([p('THE LANTERN ROAD'), p('by Skyy'), ...chapters], 'draft');
+    expect(o.structure).toBe('pagebreaks');
+    expect(o.title).toBe('The Lantern Road');
+    expect(o.chapters.map((c) => c.title)).toEqual(['Front Matter', 'Chapter 1', 'Chapter 2', 'Chapter 3']);
+    const { story } = segmentBlocks([p('THE LANTERN ROAD'), p('by Skyy'), ...chapters], { fallbackTitle: 'draft' });
+    expect(story.chapters[0].scenes.map((sc) => sc.prose).join('\n')).toBe('THE LANTERN ROAD\n\nby Skyy');
+    // A byline-only title page keeps the file name; a Title block is never replaced.
+    expect(outline([p('by Skyy'), ...chapters], 'draft')).toMatchObject({ title: 'draft' });
+    expect(outline([p('by Skyy'), ...chapters], 'draft').chapters[0].title).toBe('Front Matter');
+    expect(outline([title('Real Name'), p('The Lantern Road'), ...chapters]).title).toBe('Real Name');
+    // A short opening that starts with a chapter marker is a chapter, not Front Matter.
+    expect(outline([p('Prologue'), p('Short.'), ...chapters]).chapters[0].title).not.toBe('Front Matter');
+  });
+
+  it('pageBreaksAreChapters (ePub): a short first page is Front Matter, but the authoritative title stays', () => {
+    const { story } = segmentBlocks([p('The Lantern Road'), page, p(words(200, 'a')), page, p(words(200, 'b'))], {
+      fallbackTitle: 'Dc Title', titleIsAuthoritative: true, pageBreaksAreChapters: true,
+    });
+    expect(story.structure).toBe('pagebreaks');
+    expect(story.title).toBe('Dc Title');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Front Matter', 'Chapter 1', 'Chapter 2']);
+    expect(story.chapters[0].scenes[0].prose).toBe('The Lantern Road');
+  });
+
+  it('a very large document (200k paragraphs) segments without overflowing the call stack', () => {
+    const many: RichBlock[] = Array.from({ length: 200_000 }, (_, i) => p(`Paragraph ${i}.`));
+    const flat = segmentBlocks(many, { fallbackTitle: 'Big' }).story;
+    expect(flat.chapters).toHaveLength(1);
+    expect(flat.chapters[0].scenes[0].prose.endsWith('Paragraph 199999.')).toBe(true);
+    // Front matter (a title page) before 200k paragraphs of headed chapters.
+    const headed: RichBlock[] = [p('The Long Book')];
+    for (let i = 0; i < 200_000; i++) {
+      if (i % 50_000 === 0) headed.push(h(1, `Chapter ${i / 50_000 + 1}`));
+      headed.push(p(`Paragraph ${i}.`));
+    }
+    const story = segmentBlocks(headed, { fallbackTitle: 'Big' }).story;
+    expect(story.chapters.map((c) => c.title)).toEqual(['Front Matter', 'Chapter 1', 'Chapter 2', 'Chapter 3', 'Chapter 4']);
   });
 
   it('short pages stay one chapter, each page a scene', () => {

@@ -18,10 +18,12 @@ import {
   writeManifest as writeManifestRaw,
 } from '../vault.js';
 import type { Manifest, StoryEntry } from '../ipc.js';
+import { assertValidManifest, LIMITS } from '../manifestValidate.js';
 import type { ImportPlan } from './types.js';
 import {
   commitImportPlan,
   IMPORT_MAX_SCENES,
+  MAX_IMPORT_TITLE_CHARS,
   MAX_SEGMENT_BYTES,
   safeSegment,
   truncateUtf8,
@@ -314,7 +316,8 @@ describe('commitImportPlan — v2 vault', () => {
     const v = makeV2Vault();
     const outside = path.join(tmp, 'outside');
     fs.mkdirSync(outside);
-    fs.symlinkSync(outside, path.join(v.notesRoot, 'Locations'), 'dir');
+    // 'junction' lets Windows create a directory link without admin rights; ignored elsewhere.
+    fs.symlinkSync(outside, path.join(v.notesRoot, 'Locations'), 'junction');
     const deps = v2Deps(v);
     const result = await commitImportPlan(storyPlan({ story: null, notes: NOTES }), deps);
     expect(result.ok).toBe(true);
@@ -419,6 +422,88 @@ describe('commitImportPlan — long non-Latin names', () => {
       for (const seg of rel.split('/')) expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(255);
       expect(fs.existsSync(path.join(v.notesRoot, ...rel.split('/')))).toBe(true);
     }
+  });
+});
+
+describe('commitImportPlan — over-long titles', () => {
+  // A 5000-character heading: longer than the manifest validator's string cap
+  // (LIMITS.stringFieldMaxLen), so an uncapped title would make every later
+  // renderer manifest save fail.
+  const HUGE = `${'word '.repeat(999)}end.`;
+
+  it('caps story/chapter/scene titles and keeps the full heading text as the first paragraph', async () => {
+    expect(HUGE.length).toBeGreaterThan(LIMITS.stringFieldMaxLen);
+    const v = makeV2Vault();
+    const deps = v2Deps(v);
+    const plan = storyPlan({
+      story: {
+        title: HUGE,
+        partCount: 0,
+        structure: 'headings',
+        chapters: [
+          // One scene that took its chapter's (huge) title, the way blocks.ts names it.
+          { title: HUGE, order: 0, scenes: [{ title: HUGE, order: 0, prose: 'She *ran*.' }] },
+          { title: 'Two', order: 1, scenes: [{ title: `#${HUGE}`, order: 0, prose: 'Second.' }] },
+        ],
+      },
+    });
+    const result = await commitImportPlan(plan, deps);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect([...result.storyTitle!].length).toBeLessThanOrEqual(MAX_IMPORT_TITLE_CHARS);
+    expect(result.warnings).toEqual([
+      'The book\'s title was too long, so it was shortened.',
+      'Some headings were too long to use as titles, so they were shortened. The full text is kept at the start of the scene.',
+    ]);
+
+    const cache = readManifest(v.cachePath);
+    // Every later renderer save validates the whole manifest: it must still pass.
+    expect(() => assertValidManifest(cache)).not.toThrow();
+    const story = cache.stories[0];
+    const titles = [story.title, ...story.chapters.flatMap((c) => [c.title, ...c.scenes.map((s) => s.title)])];
+    for (const t of titles) {
+      expect([...t].length).toBeLessThanOrEqual(MAX_IMPORT_TITLE_CHARS);
+      expect(t.length).toBeLessThanOrEqual(LIMITS.stringFieldMaxLen);
+    }
+    expect(story.title.endsWith('…')).toBe(true);
+    expect(story.chapters[0].title).toBe(story.chapters[0].scenes[0].title);
+    expect(HUGE.startsWith(story.chapters[0].title.slice(0, -1).trimEnd())).toBe(true);
+
+    // No words lost: the full heading opens the scene's prose — once, even
+    // though both the chapter and its scene carried it.
+    const s1 = parseV2SceneFile(fs.readFileSync(path.join(v.storyRoot, story.path, 'Part 1', 'Chapter 01', 'Scene 01.md'), 'utf-8'));
+    expect(s1.prose).toBe(`${HUGE}\n\nShe *ran*.`);
+    // The kept text is escaped as editor Markdown (a leading # is not a heading).
+    const s2 = parseV2SceneFile(fs.readFileSync(path.join(v.storyRoot, story.path, 'Part 1', 'Chapter 02', 'Scene 01.md'), 'utf-8'));
+    expect(s2.prose).toBe(`\\#${HUGE}\n\nSecond.`);
+    expect(story.chapters[1].title).toBe('Two');
+
+    // A rescan derives the same (capped) titles from the files.
+    expect(shape(storyByPath(scanMythosStoryVault(v.mythosRoot), story.path)[0])).toEqual(shape(story));
+  });
+
+  it('rolls back and refuses when the updated manifest would not pass validation', async () => {
+    const v = makeV2Vault();
+    const deps = v2Deps(v);
+    const writeManifest = vi.fn(deps.writeManifest);
+    deps.writeManifest = writeManifest;
+    // One scene bigger than the manifest's per-block cap (5 MB).
+    const plan = storyPlan({
+      story: {
+        title: 'Too Big',
+        partCount: 0,
+        structure: 'none',
+        chapters: [{ title: 'Only', order: 0, scenes: [{ title: 'Only', order: 0, prose: 'x'.repeat(5 * 1024 * 1024 + 1) }] }],
+      },
+      notes: NOTES,
+    });
+    const result = await commitImportPlan(plan, deps);
+    expect(result).toEqual({ ok: false, error: 'Part of this import is too large to save. Split the source into smaller files.' });
+    expect(writeManifest).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(v.storyRoot, 'Too Big'))).toBe(false);
+    expect(fs.existsSync(path.join(v.notesRoot, 'Characters'))).toBe(false);
+    expect(readManifest(v.cachePath).stories).toHaveLength(0);
+    expect(deps.notifyStoriesChanged).not.toHaveBeenCalled();
   });
 });
 

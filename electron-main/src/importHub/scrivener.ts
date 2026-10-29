@@ -452,7 +452,7 @@ function counterWarnings(c: Counters): string[] {
   if (c.invalidId) w.push(`${plural(c.invalidId, 'binder item has', 'binder items have')} an unreadable ID and ${c.invalidId === 1 ? 'was' : 'were'} imported empty.`);
   if (c.notCompiled) w.push(`${plural(c.notCompiled, 'document is', 'documents are')} set not to compile in Scrivener — imported anyway.`);
   if (c.media) w.push(`${plural(c.media, 'research file', 'research files')} (PDFs/images/web pages) ${c.media === 1 ? 'was' : 'were'} not imported.`);
-  w.push(...rtfDropWarnings({ droppedFootnotes: c.footnotes, droppedAnnotations: c.annotations, droppedImages: c.images }));
+  for (const x of rtfDropWarnings({ droppedFootnotes: c.footnotes, droppedAnnotations: c.annotations, droppedImages: c.images })) w.push(x);
   return w;
 }
 

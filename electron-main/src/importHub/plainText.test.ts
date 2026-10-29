@@ -4,6 +4,30 @@ import { describe, it, expect } from 'vitest';
 import { blocksToProse, segmentBlocks } from './blocks.js';
 import { plainTextToBlocks } from './plainText.js';
 
+/**
+ * Linear-time check that holds on a slow or busy CI runner: parsing 4× the
+ * input must take under 8× as long (a quadratic scan takes ~16×), with a
+ * 500 ms floor so timer noise on fast runs can't fail it. `n` is a quarter of
+ * the pathological input size; up to three attempts absorb a stray GC pause.
+ * Only the parse is timed, never building the input.
+ */
+async function expectLinearTime<T>(prepare: (k: number) => T | Promise<T>, run: (input: T) => unknown, n: number): Promise<void> {
+  const time = async (input: T) => {
+    const start = performance.now();
+    await run(input);
+    return performance.now() - start;
+  };
+  const small = await prepare(n);
+  const big = await prepare(4 * n);
+  await time(small); // warm up
+  let last = { small: 0, big: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    last = { small: await time(small), big: await time(big) };
+    if (last.big < Math.max(8 * last.small, 500)) return;
+  }
+  expect(last.big, `4× input took ${Math.round(last.big)} ms vs ${Math.round(last.small)} ms`).toBeLessThan(Math.max(8 * last.small, 500));
+}
+
 describe('plainTextToBlocks', () => {
   it('blank lines separate paragraphs; hard-wrapped lines inside one are joined', () => {
     expect(plainTextToBlocks('One line\nwrapped here.\n\nSecond paragraph.')).toEqual([
@@ -81,10 +105,19 @@ describe('plainTextToBlocks', () => {
       .toEqual(['paragraph', 'paragraph', 'empty', 'paragraph', 'paragraph', 'paragraph', 'paragraph']);
   });
 
-  it('a long run of whitespace inside a line is handled in linear time', () => {
-    const start = performance.now();
-    plainTextToBlocks(`x${' '.repeat(200_000)}y\n${'\t'.repeat(200_000)}z  \n`);
-    expect(performance.now() - start).toBeLessThan(1000);
+  it('a long run of whitespace inside a line is handled in linear time', async () => {
+    // The pathological size is 200k (4 × 50k).
+    await expectLinearTime((k) => `x${' '.repeat(k)}y\n${'\t'.repeat(k)}z  \n`, plainTextToBlocks, 50_000);
+    expect(plainTextToBlocks(`x${' '.repeat(200_000)}y\n${'\t'.repeat(200_000)}z  \n`).length).toBeGreaterThan(0);
+  });
+
+  it('a very large file (200k paragraphs) does not overflow the call stack', () => {
+    const text = Array.from({ length: 200_000 }, (_, i) => `Line ${i} of the book.`).join('\n');
+    const blocks = plainTextToBlocks(text);
+    expect(blocks).toHaveLength(200_000);
+    expect(blocks[199_999]).toEqual({ kind: 'paragraph', inlines: [{ text: 'Line 199999 of the book.' }] });
+    const { story } = segmentBlocks(blocks, { fallbackTitle: 'Big' });
+    expect(story.chapters[0].scenes[0].prose.endsWith('Line 199999 of the book.')).toBe(true);
   });
 
   it('empty input → no blocks', () => {

@@ -108,7 +108,8 @@ export function plainTextToBlocks(text: string): RichBlock[] {
   const out: RichBlock[] = [];
   normalized.split('\f').forEach((page, i) => {
     if (i > 0) out.push({ kind: 'pageBreak' });
-    out.push(...pageToBlocks(page, blankLineMode));
+    // A loop, not push(...spread): a spread of 125k+ blocks overflows the call stack.
+    for (const b of pageToBlocks(page, blankLineMode)) out.push(b);
   });
   return out;
 }

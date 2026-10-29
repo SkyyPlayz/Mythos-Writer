@@ -4,6 +4,30 @@ import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import { EPUB_MAX_ENTRIES, EPUB_MAX_INFLATED_BYTES, epubToBlocks, parseEpubStory } from './epub.js';
 
+/**
+ * Linear-time check that holds on a slow or busy CI runner: parsing 4× the
+ * input must take under 8× as long (a quadratic scan takes ~16×), with a
+ * 500 ms floor so timer noise on fast runs can't fail it. `n` is a quarter of
+ * the pathological input size; up to three attempts absorb a stray GC pause.
+ * Only the parse is timed, never building the input.
+ */
+async function expectLinearTime<T>(prepare: (k: number) => T | Promise<T>, run: (input: T) => unknown, n: number): Promise<void> {
+  const time = async (input: T) => {
+    const start = performance.now();
+    await run(input);
+    return performance.now() - start;
+  };
+  const small = await prepare(n);
+  const big = await prepare(4 * n);
+  await time(small); // warm up
+  let last = { small: 0, big: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    last = { small: await time(small), big: await time(big) };
+    if (last.big < Math.max(8 * last.small, 500)) return;
+  }
+  expect(last.big, `4× input took ${Math.round(last.big)} ms vs ${Math.round(last.small)} ms`).toBeLessThan(Math.max(8 * last.small, 500));
+}
+
 interface EpubDoc {
   id: string;
   href: string;
@@ -74,6 +98,27 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(story.chapters.map((c) => [c.title, c.scenes[0].prose])).toEqual([['Chapter 1', 'One.'], ['Chapter 2', 'Two.'], ['Chapter 3', 'Three.']]);
   });
 
+  it('a short title-page document before the chapters is Front Matter; dc:title stays the title', async () => {
+    const prose = (seed: string) => `<p>${seed} ${'and the road ran on '.repeat(40).trim()}.</p>`;
+    const buf = await makeEpub([
+      { id: 't', href: 't.xhtml', body: '<p>The Lantern Road</p><p>by Skyy</p>' },
+      { id: 'a', href: 'a.xhtml', body: prose('A') },
+      { id: 'b', href: 'b.xhtml', body: prose('B') },
+    ], { title: 'Dc Title' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.structure).toBe('pagebreaks');
+    expect(story.title).toBe('Dc Title');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Front Matter', 'Chapter 1', 'Chapter 2']);
+    expect(story.chapters[0].scenes[0].prose).toBe('The Lantern Road\n\nby Skyy');
+  });
+
+  it('a spine document with 200k paragraphs does not overflow the call stack', async () => {
+    const body = Array.from({ length: 200_000 }, (_, i) => `<p>P${i}</p>`).join('');
+    const { blocks } = await epubToBlocks(await makeEpub([{ id: 'a', href: 'a.xhtml', body }], { title: 'Big' }));
+    expect(blocks.length).toBeGreaterThanOrEqual(200_000);
+    expect(blocks[blocks.length - 1]).toEqual({ kind: 'paragraph', inlines: [{ text: 'P199999' }] });
+  });
+
   it('without dc:title the fallback title is used', async () => {
     const { story } = await parseEpubStory(await makeEpub(THREE_CHAPTERS), 'From File');
     expect(story.title).toBe('From File');
@@ -104,18 +149,16 @@ describe('epubToBlocks — damaged files and zip bombs', () => {
   });
 
   it('a package document full of unclosed tags is read in linear time', async () => {
-    const timed = async (buf: Buffer) => {
-      const start = performance.now();
-      const result = await parseEpubStory(buf, 'Fallback');
-      return { result, ms: performance.now() - start };
-    };
-    const noTitle = await timed(await makeEpub(THREE_CHAPTERS, { opfTail: '<dc:title>'.repeat(200_000) }));
-    expect(noTitle.ms).toBeLessThan(2000);
-    expect(noTitle.result.story.title).toBe('Fallback');
-    const junkTags = await timed(await makeEpub(THREE_CHAPTERS, { title: 'Book', opfTail: `${'<item'.repeat(200_000)}${'<itemref'.repeat(200_000)}` }));
-    expect(junkTags.ms).toBeLessThan(2000);
-    expect(junkTags.result.story.title).toBe('Book');
-    expect(junkTags.result.story.chapters).toHaveLength(3);
+    const noTitle = (k: number) => makeEpub(THREE_CHAPTERS, { opfTail: '<dc:title>'.repeat(k) });
+    const junkTags = (k: number) => makeEpub(THREE_CHAPTERS, { title: 'Book', opfTail: `${'<item'.repeat(k)}${'<itemref'.repeat(k)}` });
+    // The pathological sizes are 200k repeats (4 × 50k).
+    await expectLinearTime(noTitle, (buf) => parseEpubStory(buf, 'Fallback'), 50_000);
+    await expectLinearTime(junkTags, (buf) => parseEpubStory(buf, 'Fallback'), 50_000);
+    const a = await parseEpubStory(await noTitle(200_000), 'Fallback');
+    expect(a.story.title).toBe('Fallback');
+    const b = await parseEpubStory(await junkTags(200_000), 'Fallback');
+    expect(b.story.title).toBe('Book');
+    expect(b.story.chapters).toHaveLength(3);
   });
 
   it('stops inflating once the byte budget is spent', async () => {

@@ -645,7 +645,7 @@ export function htmlToBlocks(html: string): { blocks: RichBlock[]; title?: strin
         })());
         if (cellRuns.length === 0) continue;
         if (row.length) row.push({ text: ' | ' });
-        row.push(...cellRuns);
+        for (const r of cellRuns) row.push(r);
       }
       if (row.length) {
         frames.push({ kind: { kind: 'paragraph' }, countsAsParagraph: false, emitted: false });

@@ -199,12 +199,13 @@ export async function epubToBlocks(
     const parsed = htmlToBlocks(await reader.text(entry));
     if (!parsed.blocks.some((b) => b.kind !== 'empty')) continue;
     if (docs > 0) blocks.push({ kind: 'pageBreak' });
-    blocks.push(...parsed.blocks);
+    // A loop, not push(...spread): a spread of 125k+ blocks overflows the call stack.
+    for (const b of parsed.blocks) blocks.push(b);
     docs++;
     for (const w of parsed.warnings) docWarnings.set(w, (docWarnings.get(w) ?? 0) + 1);
   }
   if (docs === 0) throw new ImportUserError('This ePub has no readable chapters.');
-  warnings.push(...summarizeDocWarnings(docWarnings));
+  for (const w of summarizeDocWarnings(docWarnings)) warnings.push(w);
   return { blocks, ...(title ? { title } : {}), warnings };
 }
 

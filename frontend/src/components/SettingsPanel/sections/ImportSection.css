@@ -109,6 +109,27 @@
   outline: none;
 }
 
+/* A retryable commit failure takes focus (tabIndex -1) so it stays inside the dialog. */
+.import-commit-error:focus-visible {
+  outline: 2px solid var(--focus-ring, rgba(0, 240, 255, .7));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.import-commit-error:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* "and N more chapters / scenes" under a capped list. */
+.import-more {
+  margin: 4px 0 0;
+}
+
+.import-more--scenes {
+  margin: 0;
+  padding: 0 10px 8px 26px;
+}
+
 .import-preview__source {
   margin: 0;
   font-size: var(--text-xs, 12px);

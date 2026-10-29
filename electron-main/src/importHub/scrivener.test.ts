@@ -10,6 +10,30 @@ import { scrivToStoryMarkdown } from '../storyImport.js';
 import { ImportUserError } from './rtf.js';
 import type { ImportPlan } from './types.js';
 
+/**
+ * Linear-time check that holds on a slow or busy CI runner: parsing 4× the
+ * input must take under 8× as long (a quadratic scan takes ~16×), with a
+ * 500 ms floor so timer noise on fast runs can't fail it. `n` is a quarter of
+ * the pathological input size; up to three attempts absorb a stray GC pause.
+ * Only the parse is timed, never building the input.
+ */
+async function expectLinearTime<T>(prepare: (k: number) => T | Promise<T>, run: (input: T) => unknown, n: number): Promise<void> {
+  const time = async (input: T) => {
+    const start = performance.now();
+    await run(input);
+    return performance.now() - start;
+  };
+  const small = await prepare(n);
+  const big = await prepare(4 * n);
+  await time(small); // warm up
+  let last = { small: 0, big: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    last = { small: await time(small), big: await time(big) };
+    if (last.big < Math.max(8 * last.small, 500)) return;
+  }
+  expect(last.big, `4× input took ${Math.round(last.big)} ms vs ${Math.round(last.small)} ms`).toBeLessThan(Math.max(8 * last.small, 500));
+}
+
 interface Node {
   id: string;
   type: string;
@@ -406,12 +430,12 @@ describe('parseScrivenerBinder', () => {
     expect(() => parseScrivenerBinder(`<Binder>${many}</Binder>`)).toThrow(ImportUserError);
   });
 
-  it('unclosed tags take linear time, not quadratic', () => {
-    const started = Date.now();
+  it('unclosed tags take linear time, not quadratic', async () => {
     expect(parseScrivenerBinder(`<Binder><BinderItem UUID="A" Type="Text">${'<Title>'.repeat(100_000)}</BinderItem></Binder>`))
       .toEqual([{ id: 'A', type: 'Text', title: '', includeInCompile: true, children: [] }]);
-    parseScrivenerBinder(`<Binder>${'<IncludeInCompile>'.repeat(100_000)}${'<BinderItem UUID="x"'.repeat(50_000)}</Binder>`);
-    // The quadratic scan took tens of seconds on this input.
-    expect(Date.now() - started).toBeLessThan(2000);
+    // The quadratic scan took tens of seconds at 4 × these sizes.
+    await expectLinearTime((k) => `<Binder><BinderItem UUID="A" Type="Text">${'<Title>'.repeat(k)}</BinderItem></Binder>`, parseScrivenerBinder, 25_000);
+    await expectLinearTime((k) => `<Binder>${'<IncludeInCompile>'.repeat(k)}${'<BinderItem UUID="x"'.repeat(k / 2)}</Binder>`, parseScrivenerBinder, 25_000);
   });
+
 });
