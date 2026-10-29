@@ -1886,15 +1886,9 @@ describe('PR A symlink writes', () => {
         const oldSaveSamples: number[] = [];
         const newSaveSamples: number[] = [];
         const pairedSaveDiffs: number[] = [];
-        const guardedSaveWithDelay = (vaultRoot: string, rel: string, data: Buffer | string) => {
-          writeVaultFileAtomic(vaultRoot, rel, data);
-          // temporary mutation: add a fixed >=2.5ms after the guarded save
-          const t0 = performance.now();
-          while (performance.now() - t0 < 2.5) { /* spin */ }
-        };
         for (let i = 0; i < saveWarmup + saveN; i++) {
           const oldMs = time(() => prePrWriteFileAtomic(oldFile, payload));
-          const newMs = time(() => guardedSaveWithDelay(root, 'new-save.md', payload));
+          const newMs = time(() => writeVaultFileAtomic(root, 'new-save.md', payload));
           if (i >= saveWarmup) {
             oldSaveSamples.push(oldMs);
             newSaveSamples.push(newMs);
