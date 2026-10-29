@@ -22,7 +22,7 @@
   align-items: flex-start;
   gap: 8px;
   color: var(--text-body, #dbe4f5);
-  font-size: 12.5px;
+  font-size: var(--text-xs);
 }
 
 .wp-memory-list__label input {
@@ -55,7 +55,7 @@
   justify-content: center;
   background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
   color: #0b0d17;
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .wp-identity__field {
@@ -65,7 +65,7 @@
 
 .wp-label {
   display: block;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: #7686a2;
@@ -89,7 +89,7 @@
   color: #aebad0;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--text-xs);
   padding: 0;
 }
 
@@ -151,7 +151,7 @@
 .wp-trait-label {
   flex: 0 1 150px;
   min-width: 90px;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: #aebad0;
 }
 
@@ -167,7 +167,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.03);
   color: #c3cee2;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -179,7 +179,7 @@
 }
 
 .wp-chip-tag {
-  font-size: 8px;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.12em;
   color: var(--n1, #00f0ff);
@@ -207,7 +207,7 @@
 }
 
 .wp-behavior__label {
-  font-size: 8.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.13em;
   color: #7686a2;
@@ -219,7 +219,7 @@
   gap: 7px;
   flex-wrap: wrap;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #eef2fb;
 }
@@ -234,14 +234,14 @@
 }
 
 .wp-behavior__copy {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #9cabc4;
   line-height: 1.5;
   margin-top: 3px;
 }
 
 .wp-behavior__beh-label {
-  font-size: 8.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.13em;
   color: #7686a2;
@@ -249,7 +249,7 @@
 }
 
 .wp-behavior__beh {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: #aebad0;
   line-height: 1.5;
   margin: 0 0 4px;
@@ -278,7 +278,7 @@
 }
 
 .wp-toggle-title {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: #dbe4f5;
 }
 
@@ -288,7 +288,7 @@
   border-radius: 11px;
   background: rgba(255, 95, 143, 0.06);
   border: 1px solid rgba(255, 95, 143, 0.35);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: #f3c6d2;
   line-height: 1.55;
 }
@@ -323,20 +323,20 @@
 }
 
 .wp-hand-card__name {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #eef2fb;
 }
 
 .wp-hand-card__desc {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: #aebad0;
   line-height: 1.5;
   margin: 0;
 }
 
 .wp-hand-card__limit {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: #ff9db4;
   line-height: 1.5;
   margin: 6px 0 0;
@@ -354,11 +354,11 @@
   flex: 1 1 84px;
   min-width: 0;
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .wp-adv-tag {
-  font-size: 8px;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.1em;
   color: #ffb27a;
@@ -369,7 +369,7 @@
 }
 
 .wp-soon-tag {
-  font-size: 8px;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.1em;
   color: #8e9db8;
@@ -390,7 +390,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: #4ade80;
   margin-left: auto;
 }
@@ -423,7 +423,7 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #eef2fb;
 }
@@ -445,7 +445,7 @@
 }
 
 .wp-custom-empty__title {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #aebad0;
   font-weight: 600;
 }
@@ -466,7 +466,7 @@
 .wp-tools-path code {
   flex: 1 1 130px;
   min-width: 0;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: #aebad0;
   white-space: nowrap;
   overflow: hidden;
@@ -510,7 +510,7 @@
 }
 
 .wp-hb-row__title {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #e6ecf9;
 }

@@ -9,7 +9,7 @@
 }
 
 .refinement-chips-label {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--text-faint);
   flex-shrink: 0;
   padding-right: 2px;
@@ -27,7 +27,7 @@
   border-radius: 999px;
   background: var(--bg-inset, rgba(255, 255, 255, 0.04));
   color: var(--text-dim);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s, color 0.12s, transform 0.08s;
 }

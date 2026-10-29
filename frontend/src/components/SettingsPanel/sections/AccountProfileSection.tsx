@@ -53,7 +53,7 @@ export default function AccountProfileSection({ settings, setSettings, setSavedO
               width: 52, height: 52, borderRadius: '50%', flex: 'none',
               background: 'var(--grad,linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff))',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 19, fontWeight: 800, color: '#0b0d17',
+              fontSize: 'var(--text-xl)', fontWeight: 800, color: '#0b0d17',
               boxShadow: '0 0 var(--gr,26px) -6px var(--g2,rgba(155,95,255,.4))',
             }}
           >
@@ -74,10 +74,10 @@ export default function AccountProfileSection({ settings, setSettings, setSavedO
               style={{
                 height: 28, background: 'rgba(255,255,255,.05)',
                 border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.4))', borderRadius: 9,
-                color: '#eef2fb', fontSize: 13, fontWeight: 600, padding: '0 10px', width: 200, maxWidth: '100%',
+                color: '#eef2fb', fontSize: 'var(--text-sm)', fontWeight: 600, padding: '0 10px', width: 200, maxWidth: '100%',
               }}
             />
-            <div style={{ fontSize: 10.5, color: 'var(--n2,#9b5fff)', marginTop: 4 }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--n2,#9b5fff)', marginTop: 4 }}>
               Beta plan · local-first · all agents included
             </div>
           </div>
@@ -85,7 +85,7 @@ export default function AccountProfileSection({ settings, setSettings, setSavedO
         {rows.map(([k, v]) => (
           <div
             key={k}
-            style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6.5px 0', borderBottom: '1px solid rgba(255,255,255,.045)', fontSize: 11.5 }}
+            style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '6.5px 0', borderBottom: '1px solid rgba(255,255,255,.045)', fontSize: 'var(--text-xs)' }}
           >
             <span style={{ color: '#8e9db8' }}>{k}</span>
             <span style={{ color: '#dbe4f5' }}>{v}</span>
@@ -104,12 +104,12 @@ export default function AccountProfileSection({ settings, setSettings, setSavedO
             <path d="M8 20h8" />
           </svg>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11.5, color: '#dbe4f5' }} data-testid="account-this-device">
+            <div style={{ fontSize: 'var(--text-xs)', color: '#dbe4f5' }} data-testid="account-this-device">
               This PC{appInfo ? ` — ${PLATFORM_LABELS[appInfo.platform] ?? appInfo.platform}` : ''}
             </div>
-            <div style={{ fontSize: 10, color: '#7686a2' }}>Active now</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2' }}>Active now</div>
           </div>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#4ade80' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--text-xs)', color: '#4ade80' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px rgba(74,222,128,.6)' }} aria-hidden="true" />
             This device
           </span>

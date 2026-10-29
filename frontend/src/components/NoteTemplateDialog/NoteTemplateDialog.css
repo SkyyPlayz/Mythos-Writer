@@ -30,7 +30,7 @@
 }
 
 .ntd-title {
-  font-size: 1.05rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text, #e6eaf0);
   margin: 0;
@@ -42,7 +42,7 @@
   border: none;
   color: var(--color-text-muted, #8a95a8);
   cursor: pointer;
-  font-size: 1.4rem;
+  font-size: var(--text-2xl);
   line-height: 1;
   padding: 0 0.25rem;
   transition: color 0.15s;
@@ -65,7 +65,7 @@
 }
 
 .ntd-label {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--color-text-muted, #8a95a8);
   letter-spacing: 0.04em;
@@ -78,7 +78,7 @@
   border: 1px solid var(--color-border, rgba(0, 240, 255, 0.18));
   border-radius: 6px;
   color: var(--color-text, #e6eaf0);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   padding: 0.45rem 0.7rem;
   transition: border-color 0.15s, box-shadow 0.15s;
   width: 100%;
@@ -98,14 +98,14 @@
 }
 
 .ntd-description {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted, #8a95a8);
   margin: 0;
   line-height: 1.4;
 }
 
 .ntd-error {
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--color-danger, #ff4d6d);
   margin: 0;
 }
@@ -120,7 +120,7 @@
 .ntd-btn {
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   padding: 0.45rem 1rem;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;

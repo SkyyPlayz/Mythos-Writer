@@ -714,16 +714,16 @@ export default function MythosVaultsSection({
           aria-live="polite"
           style={{ padding: 12, borderRadius: 12, background: 'var(--gs1,rgba(0,240,255,.06))', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))', display: 'flex', flexDirection: 'column', gap: 8 }}
         >
-          <div style={{ fontSize: 11.5, color: '#dbe4f5' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: '#dbe4f5' }}>
             Vault <span style={{ fontWeight: 600 }}>{createdVault.name}</span> created — switch to it now?
           </div>
-          <div style={{ fontSize: 10.5, color: '#8e9db8', fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8', fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {createdVault.mythosVaultRoot}
           </div>
           {createdVault.importWarnings && createdVault.importWarnings.length > 0 && (
             <ul
               data-testid="mvs-create-import-warnings"
-              style={{ margin: 0, padding: '0 0 0 16px', fontSize: 10.5, color: '#f2c94c', lineHeight: 1.5 }}
+              style={{ margin: 0, padding: '0 0 0 16px', fontSize: 'var(--text-xs)', color: '#f2c94c', lineHeight: 1.5 }}
             >
               {createdVault.importWarnings.map((w, i) => (
                 <li key={i}>{w}</li>
@@ -821,7 +821,7 @@ export default function MythosVaultsSection({
                     aria-label={`Rename vault ${displayName}`}
                     data-testid={`mvs-rename-input-${v.vaultRoot}`}
                     value={renameValue}
-                    style={{ fontSize: 12, height: 24, padding: '0 6px' }}
+                    style={{ fontSize: 'var(--text-xs)', height: 24, padding: '0 6px' }}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onBlur={() => commitRename(v)}
@@ -832,16 +832,16 @@ export default function MythosVaultsSection({
                     }}
                   />
                 ) : (
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{displayName}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: '#e6ecf9' }}>{displayName}</div>
                 )}
                 {stats && (
-                  <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 2 }}>
                     {pluralize(stats.notesVaultCount, 'notes vault')} · {pluralize(stats.storyVaultCount, 'story vault')}
                   </div>
                 )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 'none', alignItems: 'flex-end' }}>
-                <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '.1em', color: '#586a88' }}>VAULT THEME</span>
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '.1em', color: '#586a88' }}>VAULT THEME</span>
                 <select
                   value={themeKey}
                   data-testid={`mvs-theme-${v.vaultRoot}`}
@@ -850,7 +850,7 @@ export default function MythosVaultsSection({
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                   onChange={(e) => { e.stopPropagation(); if (e.target.value) onThemeChange(v, e.target.value); }}
-                  style={{ height: 26, background: 'rgba(255,255,255,.05)', border: 'var(--bw,1px) solid var(--b2,rgba(155,95,255,.4))', borderRadius: 8, color: '#dbe4f5', fontSize: 10.5, padding: '0 7px', cursor: 'pointer' }}
+                  style={{ height: 26, background: 'rgba(255,255,255,.05)', border: 'var(--bw,1px) solid var(--b2,rgba(155,95,255,.4))', borderRadius: 8, color: '#dbe4f5', fontSize: 'var(--text-xs)', padding: '0 7px', cursor: 'pointer' }}
                 >
                   <option value="">No default</option>
                   {(Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[]).map((k) => (
@@ -859,12 +859,12 @@ export default function MythosVaultsSection({
                 </select>
               </div>
               {current ? (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 600, color: 'var(--n1,#00f0ff)', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))', borderRadius: 8, padding: '4px 10px', flex: 'none' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--n1,#00f0ff)', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))', borderRadius: 8, padding: '4px 10px', flex: 'none' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--n1,#00f0ff)', boxShadow: '0 0 7px var(--g1,rgba(0,240,255,.4))' }} />
                   Current
                 </span>
               ) : (
-                <span style={{ fontSize: 10.5, color: '#7686a2', flex: 'none' }}>Click to switch ›</span>
+                <span style={{ fontSize: 'var(--text-xs)', color: '#7686a2', flex: 'none' }}>Click to switch ›</span>
               )}
               {/* SKY-11882: no resolved Mythos root (a too-new mythos.json main
                   refuses to read) means no path is safe to Hide or Delete — the
@@ -889,7 +889,7 @@ export default function MythosVaultsSection({
                 className="m24-path settings-vault-path-display"
                 data-testid={current ? 'settings-active-mythos-path' : `mvs-mythos-path-${mythosRoot}`}
                 title={displayMythosRoot}
-                style={{ flex: 1, minWidth: 0, fontSize: 10.5, display: 'block' }}
+                style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-xs)', display: 'block' }}
               >
                 {displayMythosRoot}
               </span>
@@ -922,7 +922,7 @@ export default function MythosVaultsSection({
               key={`hidden-${v.vaultRoot}`}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}
             >
-              <span style={{ flex: 1, fontSize: 11.5, color: '#8e9db8' }}>{displayNameFor(v)}</span>
+              <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#8e9db8' }}>{displayNameFor(v)}</span>
               <button
                 type="button"
                 className="m24-btn"
