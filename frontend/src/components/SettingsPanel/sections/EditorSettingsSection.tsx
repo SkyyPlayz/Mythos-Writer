@@ -84,7 +84,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
       <h3 className="settings-section-title" id="section-editor">Editor</h3>
 
       <M24Card title="Manuscript defaults">
-        <div style={{ fontSize: 10.5, color: '#7686a2', marginBottom: 12 }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginBottom: 12 }}>
           Page width now lives in the editor toolbar — change it on the fly, no settings trip needed.
         </div>
         <M24Slider
@@ -101,7 +101,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
       <M24Card title="Behavior">
         {BEHAVIOR_TOGGLE_ROWS.map(({ key, label }) => (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0' }}>
-            <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{label}</span>
+            <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>{label}</span>
             <M24Toggle
               on={prefs[key]}
               label={label}
@@ -116,7 +116,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
       </M24Card>
 
       <M24Card title="Default views">
-        <div style={{ fontSize: 10.5, color: '#7686a2', marginBottom: 12 }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginBottom: 12 }}>
           Rich is the default note view. Choosing Markdown or Source also shows that mode in the note gear.
           Sticky per-note modes stay stored. Changes apply immediately.
         </div>

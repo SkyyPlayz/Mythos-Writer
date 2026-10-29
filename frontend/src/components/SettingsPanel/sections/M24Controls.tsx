@@ -40,8 +40,8 @@ export function M24Slider({ label, value, min, max, unit, onChange, testId }: {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-        <span style={{ fontSize: 11.5, color: '#aebad0' }}>{label}</span>
-        <span style={{ fontSize: 11.5, color: 'var(--n1,#00f0ff)', fontWeight: 600 }}>{value}{unit}</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: '#aebad0' }}>{label}</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--n1,#00f0ff)', fontWeight: 600 }}>{value}{unit}</span>
       </div>
       <input
         type="range" min={min} max={max} value={value} data-testid={testId}
@@ -73,7 +73,7 @@ export function M24Seg<K extends string>({ options, current, onPick, ariaLabel, 
           data-testid={testIdPrefix ? `${testIdPrefix}-${k}` : undefined}
           className={current === k ? undefined : 'm24-seg-idle'}
           style={{
-            padding: '4px 13px', borderRadius: 8, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
+            padding: '4px 13px', borderRadius: 8, fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap',
             ...(current === k
               ? { background: 'var(--gs1,rgba(0,240,255,.12))', color: 'var(--n1,#00f0ff)', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.5))', fontWeight: 600, boxShadow: '0 0 10px -3px var(--g1,rgba(0,240,255,.4))' }
               : { background: 'none', color: '#94a3bd', border: '1px solid transparent' }),
@@ -92,8 +92,8 @@ export function M24Card({ title, sub, danger, children }: {
 }) {
   return (
     <div className={`m24-card${danger ? ' m24-card--danger' : ''}`}>
-      {title && <div style={{ fontSize: 12.5, fontWeight: 600, color: danger ? '#ff9db4' : '#eef2fb' }}>{title}</div>}
-      {sub && <div style={{ fontSize: 11, color: '#8e9db8', margin: '2px 0 12px' }}>{sub}</div>}
+      {title && <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: danger ? '#ff9db4' : '#eef2fb' }}>{title}</div>}
+      {sub && <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8', margin: '2px 0 12px' }}>{sub}</div>}
       {children}
     </div>
   );

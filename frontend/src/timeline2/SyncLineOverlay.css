@@ -50,7 +50,7 @@
   border-radius: 99px;
   background: var(--n1, #00f0ff);
   color: #0b0d17;
-  font-size: 8.5px;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.08em;
   cursor: ew-resize;
@@ -62,7 +62,7 @@
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   cursor: pointer;
   opacity: 0.75;
@@ -106,7 +106,7 @@
 
 .tl-sync-chip-label {
   display: block;
-  font-size: 8px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -120,7 +120,7 @@
 .tl-sync-chip-value {
   display: block;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #e6ecf9;
   margin-top: 1px;

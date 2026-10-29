@@ -43,19 +43,19 @@
   justify-content: center;
   background: rgba(138, 217, 255, 0.16);
   color: #8ad9ff;
-  font-size: 18px;
+  font-size: var(--text-lg);
   flex-shrink: 0;
 }
 
 .beta-reader-header__text h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-base);
   color: #f0f3fc;
 }
 
 .beta-reader-header__text p {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #8e9db8;
 }
 
@@ -72,7 +72,7 @@
   background: none;
   border: none;
   color: #8e9db8;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 6px 14px;
   border-radius: 999px;
@@ -88,7 +88,7 @@
   background: none;
   border: none;
   color: #8e9db8;
-  font-size: 16px;
+  font-size: var(--text-base);
   cursor: pointer;
   padding: 4px 8px;
 }
@@ -132,7 +132,7 @@
 .beta-reader-left h3,
 .beta-reader-right h3 {
   margin: 0 0 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.08em;
   color: #8e9db8;
   text-transform: uppercase;
@@ -140,7 +140,7 @@
 
 .beta-reader-muted {
   color: #667088;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* ── History list ───────────────────────────────────── */
@@ -178,12 +178,12 @@
 }
 
 .beta-reader-history-item__date {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #667088;
 }
 
 .beta-reader-history-item__scope {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #d5dcee;
 }
 
@@ -201,7 +201,7 @@
 }
 
 .beta-reader-empty__icon {
-  font-size: 32px;
+  font-size: var(--text-3xl);
 }
 
 .beta-reader-empty h3 {
@@ -212,14 +212,14 @@
 .beta-reader-empty p {
   margin: 0;
   max-width: 320px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* ── Score chips ─────────────────────────────────────── */
 
 .beta-reader-report-scope {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #8e9db8;
 }
 
@@ -236,14 +236,14 @@
   gap: 6px;
   padding: 5px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   border: 1px solid transparent;
 }
 
 .beta-score-chip--small {
   padding: 2px 7px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .beta-score-chip--strong {
@@ -266,14 +266,14 @@
 
 .beta-reader-overall-feedback {
   margin: 0 0 6px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: #c8d3e7;
   line-height: 1.5;
 }
 
 .beta-reader-reactions-heading {
   margin: 18px 0 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.08em;
   color: #8e9db8;
   text-transform: uppercase;
@@ -303,27 +303,27 @@
 }
 
 .beta-reaction-card__kind {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--beta-reaction-color, #8ad9ff);
 }
 
 .beta-reaction-card__where {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #667088;
 }
 
 .beta-reaction-card__quote {
   margin: 0 0 6px;
   font-style: italic;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: #d5dcee;
 }
 
 .beta-reaction-card__note {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #8e9db8;
 }
 
@@ -331,7 +331,7 @@
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: #c8d3e7;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 4px 9px;
   border-radius: 6px;
   cursor: pointer;
@@ -356,7 +356,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #8e9db8;
   margin-bottom: 10px;
 }
@@ -367,7 +367,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .beta-reader-focus-toggles {
@@ -380,7 +380,7 @@
 
 .beta-reader-focus-label {
   width: 100%;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #667088;
   margin-bottom: 2px;
 }
@@ -390,7 +390,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #8e9db8;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 5px 10px;
   cursor: pointer;
 }
@@ -407,7 +407,7 @@
   border: none;
   color: #0a0d16;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--text-sm);
   padding: 9px;
   border-radius: 8px;
   cursor: pointer;
@@ -429,20 +429,20 @@
 
 .beta-reader-how {
   margin: 8px 0 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #667088;
   text-align: center;
 }
 
 .beta-reader-reads-count {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #667088;
 }
 
 .beta-reader-feedback-text {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #c8d3e7;
   line-height: 1.5;
 }
@@ -451,12 +451,12 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   margin-bottom: 6px;
 }
 
 .beta-reader-feedback-group__label {
-  font-size: 10px;
+  font-size: var(--text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #667088;
@@ -496,7 +496,7 @@
   max-width: 72%;
   padding: 8px 12px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -515,7 +515,7 @@
 
 .beta-chat-error {
   color: #ff5f8f;
-  font-size: 12px;
+  font-size: var(--text-xs);
   margin: 0;
 }
 
@@ -530,7 +530,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #8e9db8;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 5px 10px;
   cursor: pointer;
 }
@@ -552,7 +552,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .beta-chat-input-row button {
@@ -562,7 +562,7 @@
   border-radius: 8px;
   padding: 9px 16px;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -586,9 +586,11 @@
 
 /* ── Production Team page (SKY-11411; chrome SKY-11458) ──────────── */
 /* Same tiles, labels, selects and gradient Run as the Reports page's
-   "Run a Beta Read" card, so the three tabs read as one surface. Literal
-   values on purpose — this sheet defines no custom properties, and an
-   undefined var() would silently freeze the tier off the theme (SKY-11449). */
+   "Run a Beta Read" card, so the three tabs read as one surface. Colour
+   values stay literal on purpose — this sheet defines no custom properties,
+   and an undefined var() would silently freeze the tier off the theme
+   (SKY-11449). Font sizes use the global --text-* tokens from tokens.css,
+   which are always defined (#1773). */
 
 /* The page hosts one panel, not the Reports three-column grid. */
 .beta-reader-columns--production {
@@ -607,7 +609,7 @@
 
 .beta-production-panel__intro {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: #c8d3e7;
 }
@@ -631,7 +633,7 @@
 }
 
 .beta-field__label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #8e9db8;
@@ -646,7 +648,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .beta-select:disabled {
@@ -660,7 +662,7 @@
   border: none;
   color: #0a0d16;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.2;
   padding: 7px 16px;
   border-radius: 8px;
@@ -696,7 +698,7 @@
   border-left: 3px solid rgba(138, 217, 255, 0.45);
   border-radius: 8px;
   background: rgba(138, 217, 255, 0.06);
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   color: #c8d3e7;
 }
@@ -710,7 +712,7 @@
 
 .beta-production-panel__result-title {
   margin: 0 0 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #8e9db8;
@@ -720,7 +722,7 @@
 .beta-production-panel__result-body {
   margin: 0;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.55;
   color: #d5dcee;
   white-space: pre-wrap;

@@ -13,7 +13,7 @@
   justify-content: center;
   height: 100%;
   color: var(--text-muted, #888);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .kanban-header {
@@ -23,7 +23,7 @@
 
 .kanban-title {
   margin: 0 0 6px 0;
-  font-size: 16px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary, #eee);
 }
@@ -32,7 +32,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .kanban-path-label {
@@ -46,7 +46,7 @@
 
 .kanban-path-input {
   font-family: monospace;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid var(--border, #444);
@@ -58,7 +58,7 @@
 .kanban-path-edit-btn,
 .kanban-path-save-btn,
 .kanban-path-cancel-btn {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 8px;
   border-radius: 4px;
   border: 1px solid var(--border, #444);
@@ -117,7 +117,7 @@
 
 .kanban-col-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary, #eee);
   cursor: default;
@@ -126,7 +126,7 @@
 
 .kanban-col-name-input {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   background: transparent;
   border: none;
@@ -142,7 +142,7 @@
 }
 
 .kanban-col-count {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #888);
   background: var(--bg-badge, rgba(255,255,255,0.08));
   border-radius: 10px;
@@ -155,7 +155,7 @@
   border: none;
   color: var(--text-muted, #888);
   cursor: pointer;
-  font-size: 16px;
+  font-size: var(--text-base);
   line-height: 1;
   /* Visual glyph stays small; padding+negative margin expand the WCAG 2.5.8
      hit area to ~24×24 without affecting header layout. */
@@ -210,7 +210,7 @@
 
 .kanban-card-link {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-link, #a5b4fc);
   font-family: monospace;
   overflow: hidden;
@@ -223,7 +223,7 @@
   border: none;
   color: var(--text-muted, #888);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1;
   padding: 0 2px;
   opacity: 0;
@@ -250,7 +250,7 @@
   background: transparent;
   color: var(--text-muted, #888);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
   white-space: nowrap;
   transition: border-color 0.15s, color 0.15s;
 }
@@ -275,7 +275,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -289,7 +289,7 @@
 }
 
 .kanban-entries-pool-arrow {
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .kanban-entries-pool-body {
@@ -302,7 +302,7 @@
 }
 
 .kanban-entries-pool-empty {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #888);
   padding: 4px 0;
   font-style: italic;
@@ -330,7 +330,7 @@
 
 .kanban-entry-title {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-primary, #ddd);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -340,7 +340,7 @@
 .kanban-entry-add-btn {
   flex-shrink: 0;
   padding: 2px 7px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   border: 1px solid var(--accent, #7c8cf8);
   border-radius: 3px;
   background: transparent;
@@ -368,7 +368,7 @@
   border-radius: 4px;
   background: var(--bg-bar, #1e1e2e);
   color: var(--text-secondary, #ccc);
-  font-size: 12px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -395,7 +395,7 @@
   border-radius: 4px;
   background: var(--bg-base, #181825);
   color: var(--text-primary, #eee);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-family: inherit;
   margin-bottom: 6px;
   outline: none;
@@ -408,7 +408,7 @@
 .kanban-entry-loading,
 .kanban-entry-empty {
   padding: 8px 4px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #888);
 }
 
@@ -427,7 +427,7 @@
   padding: 5px 6px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-secondary, #ccc);
   line-height: 1.4;
 }
@@ -443,7 +443,7 @@
 
 .kanban-entry-option-check {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--accent, #7c8cf8);
   min-width: 14px;
 }
@@ -458,7 +458,7 @@
 
 .kanban-entry-option-tags {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #888);
   max-width: 80px;
   overflow: hidden;
@@ -470,6 +470,6 @@
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--border-subtle, #333);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--accent, #7c8cf8);
 }

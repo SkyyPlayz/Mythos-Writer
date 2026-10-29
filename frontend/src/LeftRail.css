@@ -24,7 +24,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: var(--radius-xs);
@@ -83,7 +83,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: var(--radius-xs);
@@ -103,7 +103,7 @@
 
 .lr-panel-title {
   flex: 1;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
@@ -115,7 +115,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   padding: 2px 5px;
   border-radius: var(--radius-xs);
@@ -138,7 +138,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   padding: 6px 8px;
   margin: -4px -3px;
@@ -181,7 +181,7 @@
   border: 1px dashed var(--border-subtle);
   border-radius: var(--radius-xs);
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   text-align: center;
   transition: color var(--dur-hover-in) var(--ease-out), border-color var(--dur-hover-in) var(--ease-out), background var(--dur-hover-in) var(--ease-out);
@@ -223,7 +223,7 @@
   background: none;
   border: none;
   color: var(--text-body);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
   transition: background var(--dur-press) var(--ease-out), color var(--dur-press) var(--ease-out);
@@ -243,7 +243,7 @@
 .vault-loading {
   padding: 16px;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .vault-empty {
@@ -258,19 +258,19 @@
 }
 
 .vault-empty-icon {
-  font-size: 1.8rem;
+  font-size: var(--text-3xl);
   margin-bottom: 10px;
   opacity: 0.5;
 }
 
 .vault-empty p {
   margin: 0 0 6px;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .vault-empty-sub {
-  font-size: 0.78rem !important;
+  font-size: var(--text-xs) !important;
   color: var(--text-muted);
   opacity: 0.5;
 }
@@ -287,7 +287,7 @@
   padding-top: 3px;
   padding-bottom: 3px;
   padding-right: 8px;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   user-select: none;
   cursor: default;
   white-space: nowrap;
@@ -323,7 +323,7 @@
 }
 
 .vt-chevron {
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   width: 10px;
   flex-shrink: 0;
   color: var(--text-muted);
@@ -331,7 +331,7 @@
 }
 
 .vt-icon {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   flex-shrink: 0;
   width: 16px;
   text-align: center;
@@ -353,7 +353,7 @@
   border-radius: 9px;
   background: var(--color-error, #e05252);
   color: #fff;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 1;
   margin-left: 4px;
@@ -395,7 +395,7 @@
 }
 
 .lr-story-icon {
-  font-size: 1rem;
+  font-size: var(--text-base);
   color: var(--accent);
   flex-shrink: 0;
   margin-top: 2px;
@@ -407,7 +407,7 @@
 }
 
 .lr-story-title {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-body);
   margin: 0 0 2px;
@@ -417,7 +417,7 @@
 }
 
 .lr-story-meta {
-  font-size: 0.6875rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin: 0;
   white-space: nowrap;
@@ -430,7 +430,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   padding: 2px 4px;
   border-radius: var(--radius-xs);
   flex-shrink: 0;
@@ -485,7 +485,7 @@
 }
 
 .lr-nav-label {
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -499,7 +499,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   padding: 2px 5px;
   border-radius: var(--radius-xs);
   line-height: 1;
@@ -534,7 +534,7 @@
 
 /* Eyebrow matching .lr-nav-label (same size/tracking/weight pattern). */
 .lr-footer-label {
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -569,7 +569,7 @@
 }
 
 .lr-stat-val {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-body);
   line-height: 1.2;
@@ -588,7 +588,7 @@
 }
 
 .lr-stat-key {
-  font-size: 0.5625rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -601,7 +601,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   padding: 6px 4px;
   width: 100%;
   margin-top: 8px;

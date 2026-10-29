@@ -69,7 +69,7 @@
   background: color-mix(in srgb, var(--bsc-c) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--bsc-c) 50%, transparent);
   box-shadow: 0 0 14px -6px color-mix(in srgb, var(--bsc-c) 50%, transparent);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--bsc-c);
@@ -123,7 +123,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   color: #0b0d17;
 }
@@ -136,7 +136,7 @@
 }
 
 .bsb-card-title {
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #eef2fb;
   text-align: left;
@@ -153,7 +153,7 @@ button.bsb-card-title--note {
 }
 
 .bsb-card-desc {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #9cabc4;
   line-height: 1.5;
   margin-top: 3px;
@@ -167,7 +167,7 @@ button.bsb-card-title--note {
 }
 
 .bsb-chip {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   padding: 2.5px 9px;
   border-radius: 99px;
   background: color-mix(in srgb, var(--bsc-c) 10%, transparent);
@@ -189,7 +189,7 @@ button.bsb-card-title--note {
   border: 1px solid var(--b1, rgba(0, 240, 255, 0.5));
   border-radius: 7px;
   color: #eef2fb;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 0 8px;
   margin-bottom: 6px;
@@ -203,7 +203,7 @@ button.bsb-card-title--note {
   border: 1px solid var(--b1, rgba(0, 240, 255, 0.4));
   border-radius: 7px;
   color: #c8d3e7;
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   padding: 5px 8px;
 }
@@ -217,7 +217,7 @@ button.bsb-card-title--note {
   border: none;
   background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
   color: #0b0d17;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   cursor: pointer;
 }
@@ -226,7 +226,7 @@ button.bsb-card-title--note {
   position: absolute;
   left: 10px;
   bottom: 10px;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: #7686a2;
   background: rgba(8, 10, 18, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -294,7 +294,7 @@ button.bsb-card-title--note {
   justify-content: center;
   color: #aebad0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
   border: none;
   background: none;
 }
@@ -305,7 +305,7 @@ button.bsb-card-title--note {
 }
 
 .bsb-dock .bsc-zoom-pct {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #aebad0;
   padding: 0 3px;
   width: 36px;
@@ -320,7 +320,7 @@ button.bsb-card-title--note {
   gap: 14px;
   padding: 8px 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #8195b2;
   flex: none;
 }
@@ -347,7 +347,7 @@ button.bsb-card-title--note {
 }
 
 .bs-collections-title {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: #7686a2;
@@ -378,7 +378,7 @@ button.bsb-card-title--note {
   background: none;
   border: none;
   color: #dbe4f5;
-  font-size: 11px;
+  font-size: var(--text-xs);
   min-width: 0;
   outline: none;
 }
@@ -395,7 +395,7 @@ button.bsb-card-title--note {
   gap: 8px;
   padding: 7px 10px;
   border-radius: 9px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #aebad0;
   cursor: pointer;
   background: none;
@@ -431,7 +431,7 @@ button.bsb-card-title--note {
 }
 
 .bs-coll-count {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: #7686a2;
 }
 
@@ -464,7 +464,7 @@ button.bsb-card-title--note {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 1px;
   color: var(--n1, #00f0ff);
   border: 1px solid var(--b1, rgba(0, 240, 255, 0.4));
@@ -481,7 +481,7 @@ button.bsb-card-title--note {
 
 .bs-coll-idea-title {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #dbe4f5;
   white-space: nowrap;
   overflow: hidden;
@@ -491,7 +491,7 @@ button.bsb-card-title--note {
 .bs-coll-starter-chip {
   display: inline-block;
   margin-left: 6px;
-  font-size: 8px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
   padding: 1px 5px;
@@ -503,7 +503,7 @@ button.bsb-card-title--note {
 
 .bs-coll-idea-desc {
   display: block;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: #7686a2;
   white-space: nowrap;
   overflow: hidden;
@@ -511,7 +511,7 @@ button.bsb-card-title--note {
 }
 
 .bs-collections-foot {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: #586a88;
   padding: 6px 10px 0;
   line-height: 1.5;
@@ -569,7 +569,7 @@ button.bsb-card-title--note {
 }
 
 .bs-coll-filed {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-tertiary, #8e9db8);
   white-space: nowrap;
 }
@@ -584,7 +584,7 @@ button.bsb-card-title--note {
   border-radius: 6px;
   color: var(--text-secondary, #c8d3e7);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 3px 10px;
   white-space: nowrap;
 }

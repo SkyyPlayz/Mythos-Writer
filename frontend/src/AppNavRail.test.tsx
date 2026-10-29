@@ -726,3 +726,15 @@ describe('AccountModal', () => {
     expect(screen.getByRole('button', { name: 'Close dialog' })).toBeInTheDocument();
   });
 });
+
+describe('AppNavRail label CSS (#1773 T1)', () => {
+  it('sizes the item label on the type scale and breaks a long one-word name inside the item', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const css = readFileSync(resolve(process.cwd(), 'src/AppNavRail.css'), 'utf-8');
+    const label = css.match(/\.nav-rail__item-label \{([\s\S]*?)\n\}/)?.[1] ?? '';
+    expect(label).toContain('font-size: var(--text-xs)');
+    expect(label).toContain('max-width: 100%');
+    expect(label).toContain('overflow-wrap: anywhere');
+  });
+});

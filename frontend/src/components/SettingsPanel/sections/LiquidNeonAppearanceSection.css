@@ -99,7 +99,7 @@
   border-radius: 10px;
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .35));
   color: #c3cee2;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 

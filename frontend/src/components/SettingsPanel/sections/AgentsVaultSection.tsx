@@ -90,7 +90,7 @@ export default function AgentsVaultSection() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px 8px', flexWrap: 'wrap', minWidth: 0 }}>
           <span
             style={{
-              fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em', flex: '0 1 auto',
+              fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.09em', flex: '0 1 auto',
               borderRadius: 5, padding: '2px 7px', color: 'var(--n2,#9b5fff)',
               border: 'var(--bw,1px) solid var(--b2,rgba(155,95,255,.45))',
             }}
@@ -99,7 +99,7 @@ export default function AgentsVaultSection() {
             {stats?.scope ?? 'This vault'}
           </span>
         </div>
-        <div style={{ fontSize: 11, color: '#8e9db8', margin: '2px 0 8px', lineHeight: 1.55 }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8', margin: '2px 0 8px', lineHeight: 1.55 }}>
           Everything the agents write lives here instead of your Notes Vault — chat history, the continuity
           index, embeddings and pending suggestions. One per Mythos vault, so nothing leaks between worlds.
           Identity files: partner.md · writer.md · analyst.md · archivist.md.
@@ -110,8 +110,8 @@ export default function AgentsVaultSection() {
             border: 'var(--bw,1px) solid var(--b2,rgba(155,95,255,.35))',
           }}
         >
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: '#e6ecf9' }}>{stats?.name ?? 'Agent Vault'}</div>
-          <div style={{ fontSize: 9.5, color: '#7f8ea8', marginTop: 2 }} data-testid="agents-vault-stats">
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: '#e6ecf9' }}>{stats?.name ?? 'Agent Vault'}</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: '#7f8ea8', marginTop: 2 }} data-testid="agents-vault-stats">
             {stats ? `${stats.files} files` : '…'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
@@ -139,7 +139,7 @@ export default function AgentsVaultSection() {
               <span
                 key={c}
                 style={{
-                  fontSize: 9, fontWeight: 600, color: '#aebad0',
+                  fontSize: 'var(--text-xs)', fontWeight: 600, color: '#aebad0',
                   border: '1px solid rgba(255,255,255,.12)', borderRadius: 6, padding: '2px 6px',
                 }}
               >
@@ -161,7 +161,7 @@ export default function AgentsVaultSection() {
                 disabled={busy}
                 style={{
                   padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(255,107,138,.4)',
-                  color: '#ff6b8a', fontSize: 10, fontWeight: 600, cursor: 'pointer', background: 'transparent',
+                  color: '#ff6b8a', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', background: 'transparent',
                 }}
               >
                 Clear agent memory
@@ -175,7 +175,7 @@ export default function AgentsVaultSection() {
                   disabled={busy}
                   style={{
                     padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(255,107,138,.5)',
-                    color: '#ff9db4', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                    color: '#ff9db4', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
                     background: 'rgba(255,107,138,.1)',
                   }}
                 >
@@ -198,7 +198,7 @@ export default function AgentsVaultSection() {
               disabled={busy}
               style={{
                 padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,.13)',
-                color: '#8e9db8', fontSize: 10, cursor: 'pointer', background: 'transparent',
+                color: '#8e9db8', fontSize: 'var(--text-xs)', cursor: 'pointer', background: 'transparent',
               }}
             >
               Move…

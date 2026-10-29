@@ -22,7 +22,7 @@
   background: var(--accent, rgba(0,240,255,0.15));
   border: 1px solid var(--accent, rgba(0,240,255,0.3));
   border-radius: 12px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-body, #e8eaf6);
   white-space: nowrap;
 }
@@ -36,7 +36,7 @@
   margin: -5px;
   cursor: pointer;
   color: var(--text-muted, #8c8fa8);
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1;
 }
 
@@ -55,7 +55,7 @@
   border: none;
   outline: none;
   color: var(--text-body, #e8eaf6);
-  font-size: 13px;
+  font-size: var(--text-sm);
   padding: 2px 0;
 }
 
@@ -86,7 +86,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-body, #e8eaf6);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .tag-dropdown-item:hover,

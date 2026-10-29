@@ -19,7 +19,7 @@
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: 6px;
   padding: 0.45rem 0.7rem;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   pointer-events: auto;
   animation: ai-activity-indicator-in 0.2s ease-out;
@@ -71,7 +71,7 @@
   border-radius: 4px;
   color: inherit;
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   padding: 0.15rem 0.5rem;
 }
 
