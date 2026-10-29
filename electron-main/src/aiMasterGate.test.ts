@@ -8,7 +8,10 @@ vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(),
 }));
 
-vi.mock('undici', () => ({ fetch: vi.fn() }));
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: vi.fn(),
+}));
 
 import Anthropic from '@anthropic-ai/sdk';
 import { fetch as undici_fetch } from 'undici';

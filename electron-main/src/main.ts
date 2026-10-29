@@ -760,8 +760,8 @@ import {
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
 import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
-import { streamFromProvider, validateBaseUrl, listModels, setAiMasterGate, type ProviderConfig } from './provider.js';
-import { probeConnection, storedProviderKey } from './connectionProbe.js';
+import { streamFromProvider, validateBaseUrl, listModels, verifyOpenRouterKey, setAiMasterGate, type ProviderConfig } from './provider.js';
+import { probeConnection, resolveGlobalStoredApiKey, resolveStoredApiKey } from './connectionProbe.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -824,6 +824,7 @@ import {
 import { extractProposalsByScript } from './brainstormExtractScript.js';
 import {
   collectNotesVaultNoteNames,
+  collectNotesVaultNoteNamesAsync,
   findExplicitMentions,
   renderRelationshipsBlock,
   sanitizeWikilinks,
@@ -4590,18 +4591,22 @@ export const handlers: IpcHandlers = {
   [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => { setDailyGoal(payload.dailyGoal); return { ok: true as const }; },
   [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
-  // PLAN-AI-MODES M-1: a no-AI GET /models probe; a masked key preview is
-  // swapped for the stored key only when it was saved for the same provider.
+  // PLAN-AI-MODES M-1: a no-AI key/reachability probe (one GET, OpenRouter at
+  // its key endpoint). A masked or empty key resolves to the key global chat
+  // would send: the global provider's, same kind + host, with the legacy/env
+  // fallback for anthropic only when no provider block is saved.
   [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) =>
     probeConnection(payload.provider, {
       listModels,
-      storedKey: () => storedProviderKey(loadAppSettings()),
+      verifyOpenRouterKey,
+      storedKey: (kind, baseUrl) => resolveGlobalStoredApiKey(loadAppSettings(), kind, baseUrl),
     }),
 
-  // SKY-1501: list models from provider endpoint; uses stored API key to avoid masked-key leakage
+  // SKY-1501: list models from provider endpoint; the renderer never sends a key
+  // (masked-key leakage), and the stored key is sent only to the same kind and
+  // host it was saved for. No match lists keyless (OpenRouter's catalog is public).
   [IPC_CHANNELS.PROVIDER_LIST_MODELS]: async (payload: ProviderListModelsPayload) => {
-    const stored = loadAppSettings();
-    const apiKey = stored.provider?.apiKey ?? stored.apiKey;
+    const apiKey = resolveStoredApiKey(loadAppSettings(), payload.kind, payload.baseUrl);
     return listModels({ kind: payload.kind, apiKey, baseUrl: payload.baseUrl });
   },
 
@@ -9563,10 +9568,12 @@ function registerBrainstormExtractionHandlers(): void {
 
         // The vault's own note names join the renderer's list, so a name filed
         // in an earlier turn is not proposed again on every later mention.
-        const existingEntityNames = new Set<string>([
-          ...(payload.existingEntityNames ?? []),
-          ...collectNotesVaultNoteNames(getNotesVaultRoot()).values(),
-        ]);
+        const existingEntityNames = new Set<string>(payload.existingEntityNames ?? []);
+        try {
+          for (const name of (await collectNotesVaultNoteNamesAsync(getNotesVaultRoot())).values()) {
+            existingEntityNames.add(name);
+          }
+        } catch { /* vault unreadable — fall back to the renderer's names; proposals still run */ }
         const proposals = extractProposalsByScript(
           payload.turnText,
           existingEntityNames,

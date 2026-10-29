@@ -54,6 +54,80 @@ export function collectNotesVaultNoteNames(notesVaultRoot: string): KnownNoteNam
   return names;
 }
 
+// Same walk as collectNotesVaultNoteNames, on fs.promises so the main thread
+// keeps serving events. Depth-first in readdir order, so stem collisions
+// resolve to the same file. A missing or unreadable root yields an empty map.
+async function walkNotesVaultNoteNames(notesVaultRoot: string): Promise<KnownNoteNames> {
+  const names: KnownNoteNames = new Map();
+  async function walk(absDir: string, depth: number): Promise<void> {
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (depth === 0 && entry.isDirectory() && entry.name === SESSIONS_DIRNAME) continue;
+      if (entry.isDirectory()) {
+        await walk(path.join(absDir, entry.name), depth + 1);
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        const stem = entry.name.slice(0, -3);
+        names.set(stem.toLowerCase(), stem);
+      }
+    }
+  }
+  await walk(notesVaultRoot, 0);
+  return names;
+}
+
+interface NoteNameWalks {
+  running: Promise<KnownNoteNames> | null;
+  queued: Promise<KnownNoteNames> | null;
+}
+const noteNameWalks = new Map<string, NoteNameWalks>();
+
+/**
+ * Async, single-flight collectNotesVaultNoteNames. There is no cache: every
+ * result comes from a walk that started after the call, so a note filed a
+ * moment ago is always seen. A call made while a walk is running does not
+ * join it (that walk may have read the folder before the new note landed);
+ * it shares one follow-up walk with every other caller that arrived in the
+ * meantime. So N concurrent callers cost at most two walks. Never rejects.
+ */
+export function collectNotesVaultNoteNamesAsync(notesVaultRoot: string): Promise<KnownNoteNames> {
+  let slot = noteNameWalks.get(notesVaultRoot);
+  if (!slot) {
+    slot = { running: null, queued: null };
+    noteNameWalks.set(notesVaultRoot, slot);
+  }
+  const s = slot;
+  const settle = (p: Promise<KnownNoteNames>): void => {
+    const done = (): void => {
+      if (s.running === p) s.running = null;
+      if (!s.running && !s.queued && noteNameWalks.get(notesVaultRoot) === s) {
+        noteNameWalks.delete(notesVaultRoot);
+      }
+    };
+    p.then(done, done);
+  };
+  if (s.queued) return s.queued;
+  if (!s.running) {
+    const p = walkNotesVaultNoteNames(notesVaultRoot);
+    s.running = p;
+    settle(p);
+    return p;
+  }
+  const queued: Promise<KnownNoteNames> = s.running.then(() => {
+    s.queued = null;
+    s.running = queued;
+    return walkNotesVaultNoteNames(notesVaultRoot);
+  });
+  s.queued = queued;
+  settle(queued);
+  return queued;
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
