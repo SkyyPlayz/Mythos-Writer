@@ -2,7 +2,7 @@
  * Test-only copy of the production Electron build that reveals the hidden
  * timeline modes. The shipped `out/` tree is never modified, and the app
  * has no localStorage key, URL param, env var, or debug toggle that unhides
- * those views. Specs that must exercise Plotlines, Spreadsheet, Tension,
+ * those views. Specs that must exercise Spreadsheet, Tension,
  * Relationships, or Subway launch `revealedTimelineMainJs()`; product-chrome
  * specs keep launching `out/main/main.js`.
  */
