@@ -35,7 +35,7 @@ const SCENE_TITLE = 'Prism Seeded Scene';
 // "just" → crutch-words, "quickly" → adverbs, "was taken" → passive-voice,
 // "felt" → filter-words, the quoted line → dialogue tint.
 const SCENE_BODY = [
-  'Mara just stood at the rail and watched the storm roll in.',
+  'Mara just stood at the rail as the storm rolled in.',
   'She quickly climbed the ladder to the lamp room.',
   'The last reading was taken by the night keeper.',
   'She felt the tower sway under her boots.',
