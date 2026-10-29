@@ -1,0 +1,117 @@
+{
+  "_doc": "#1773 T0 type-scale allowlist. Font sizes that stay off the --text-* scale on purpose. Key = file + selector + property (no line numbers; selector is the CSS rule with its at-rules, or the TS scope chain). Every entry needs a reason. count is pinned at T0: typeScale.guard.test.ts fails when it grows, and when it falls without the count being lowered (or the entry deleted at zero).",
+  "entries": [
+    {
+      "file": "BlockEditor.css",
+      "selector": ".tiptap-content .ProseMirror",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: the manuscript body reads the user's page font size (--story-page-font-size, set by theme.ts from Settings > Editor). #1773 leaves story page fonts unchanged; this is not UI text."
+    },
+    {
+      "file": "story/ManuscriptView.tsx",
+      "selector": "ManuscriptView >> sheetWrapStyle",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: the manuscript sheet's size comes from the format toolbar's font-size step (fsize x 1.42). #1773 leaves story page fonts unchanged; this is not UI text."
+    },
+    {
+      "file": "story/pageMode.tsx",
+      "selector": "runeRowStyle",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page decoration: aria-hidden rune glyph bands drawn on the scroll-parchment page, sizes verbatim from the prototype (runeSt 4623). Not UI text; #1773 leaves the story page alone."
+    },
+    {
+      "file": "story/pageMode.tsx",
+      "selector": "runeColStyle",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page decoration: aria-hidden rune glyph columns drawn on the scroll-parchment page, sizes verbatim from the prototype (runeVSt 4818). Not UI text; #1773 leaves the story page alone."
+    },
+    {
+      "file": "story/pageMode.tsx",
+      "selector": "PageModeRunes >> <div style>",
+      "property": "font-size",
+      "count": 3,
+      "reason": "Story page decoration: per-band size overrides for the aria-hidden rune rows on the scroll-parchment page, verbatim from the prototype (855-859). Not UI text; #1773 leaves the story page alone."
+    },
+    {
+      "file": "BlockEditor.css",
+      "selector": ".block-editor--chromeless .tiptap-content .ProseMirror > p:first-child::first-letter",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: the scene editor's drop cap is em-relative to the manuscript body, which reads the user's page font size (--story-page-font-size). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-sheet-wrap",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: the manuscript sheet's stylesheet default. sheetWrapStyle overrides it inline with the user's page font size (allowlisted as ManuscriptView >> sheetWrapStyle), so this is the page font, not UI text; #1773 leaves story page fonts unchanged."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-h2-label",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the CHAPTER N kicker above a chapter title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-h2-title",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the chapter title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-h3-title",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the scene title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-para-text--dropcap::first-letter",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the drop cap on a scene's first paragraph."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-book-title-eyebrow",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the THE BOOK eyebrow above the manuscript title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-manuscript-title",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the manuscript (book) title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-part-heading-label",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the part kicker above a part title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-part-heading-title",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the part title."
+    },
+    {
+      "file": "story/ManuscriptView.css",
+      "selector": ".msv-epigraph",
+      "property": "font-size",
+      "count": 1,
+      "reason": "Story page font: em-relative typography on the manuscript sheet (.msv-sheet inside .msv-sheet-wrap), so it scales with the page font set by the format toolbar's size step (ManuscriptView >> sheetWrapStyle). Moving it to a fixed --text-* step would stop it following the page font; #1773 leaves story page fonts unchanged. Renders: the author's chapter or part epigraph."
+    }
+  ]
+}
