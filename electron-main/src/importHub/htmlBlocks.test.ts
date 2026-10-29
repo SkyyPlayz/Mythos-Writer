@@ -47,6 +47,21 @@ describe('htmlToBlocks — mammoth-shaped HTML', () => {
       .toEqual(['paragraph', 'sceneBreak', 'paragraph', 'sceneBreak', 'paragraph']);
   });
 
+  it('a plain <hr> stays void even when another <hr></hr> later in the file is closed', () => {
+    expect(blocksOf('<p>a</p><hr><p>b</p><hr></hr><p>c</p>')).toEqual([
+      { kind: 'paragraph', inlines: [{ text: 'a' }] },
+      { kind: 'sceneBreak' },
+      { kind: 'paragraph', inlines: [{ text: 'b' }] },
+      { kind: 'sceneBreak' },
+      { kind: 'paragraph', inlines: [{ text: 'c' }] },
+    ]);
+  });
+
+  it('real text inside an <hr>…</hr> is kept after the break', () => {
+    expect(blocksOf('<p>a</p><hr><p>b</p></hr><p>c</p>').map((b) => (b.kind === 'paragraph' ? b.inlines[0].text : b.kind)))
+      .toEqual(['a', 'sceneBreak', 'b', 'c']);
+  });
+
   it('keeps empty paragraphs as empty blocks', () => {
     expect(blocksOf('<p>a</p><p></p><p>  </p><p>b</p>').map((b) => b.kind)).toEqual(['paragraph', 'empty', 'empty', 'paragraph']);
   });
@@ -111,6 +126,24 @@ describe('htmlToBlocks — mammoth-shaped HTML', () => {
 
   it('an unbalanced quote in a tag does not swallow the rest of the document', () => {
     expect(proseOf('<p class="a>one</p><p>two</p>')).toBe('one\n\ntwo');
+  });
+
+  it('hostile input parses in linear time (no backtracking scans of untrusted text)', () => {
+    const timed = (fn: () => unknown) => {
+      const start = performance.now();
+      fn();
+      return performance.now() - start;
+    };
+    // Each of these took seconds to hours with backtracking regexes.
+    expect(timed(() => expect(proseOf(`<style>${'a'.repeat(1_000_000)}</style><p>x</p>`)).toBe('x'))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks(`<style>${'/*'.repeat(300_000)}</style>`))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks(`<style>${'@import'.repeat(150_000)}</style>`))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks(`<style>.c1{font-weight:${' '.repeat(500_000)}x}</style>`))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks(`<p style="color:${' '.repeat(500_000)}x">y</p>`))).toBeLessThan(1000);
+    expect(timed(() => isGoogleDocsHtml('<meta'.repeat(40_000)))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks('<style></style>'.repeat(60_000)))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks(`${'<a "x>'.repeat(100_000)}<p>end</p>`))).toBeLessThan(1000);
+    expect(timed(() => htmlToBlocks(`${'<hr>'.repeat(100_000)}</hr>`))).toBeLessThan(1000);
   });
 
   it('a "<" that is not a tag stays text', () => {
@@ -181,8 +214,8 @@ describe('htmlToBlocks — Google Docs "Web page" export', () => {
     const { story } = segmentBlocks(htmlToBlocks(GOOGLE_EXPORT).blocks, { fallbackTitle: 'export' });
     expect(story.title).toBe('The Lantern Road');
     expect(story.structure).toBe('headings');
-    // The subtitle before the first heading is front matter: a chapter named after the title.
-    expect(story.chapters.map((c) => c.title)).toEqual(['The Lantern Road', 'Chapter One', 'Chapter Two']);
+    // The subtitle before the first heading is the title page: kept as "Front Matter".
+    expect(story.chapters.map((c) => c.title)).toEqual(['Front Matter', 'Chapter One', 'Chapter Two']);
     expect(story.chapters[1].scenes[0].prose).toBe(
       'Mara reached the **iron gate** at *dusk*, ***really*** <u>truly</u> and ~~never~~.\n\nCentered line {.center}',
     );
@@ -200,8 +233,16 @@ describe('htmlToBlocks — Google Docs "Web page" export', () => {
     }]);
   });
 
+  it('reads the class table around @media blocks and malformed rules', () => {
+    const html = '<style>@media print{.c1{font-weight:700}}.c2{font-style:italic !important}x{y{.c4{}.c3{font-weight:bold}</style>'
+      + '<p><span class="c1">a</span> <span class="c2">b</span> <span class="c3">c</span></p>';
+    expect(proseOf(html)).toBe('a *b* **c**');
+  });
+
   it('isGoogleDocsHtml detects exports and copied HTML, not ordinary pages', () => {
     expect(isGoogleDocsHtml(GOOGLE_EXPORT)).toBe(true);
+    expect(isGoogleDocsHtml('<html><head><meta name="generator" content="Google-Docs"></head></html>')).toBe(true);
+    expect(isGoogleDocsHtml('<meta charset="utf-8"><meta name="x" content="y"><p>docs.google.com is a site</p>')).toBe(false);
     expect(isGoogleDocsHtml('<b id="docs-internal-guid-1">x</b>')).toBe(true);
     expect(isGoogleDocsHtml('<html><body><p>Hello</p></body></html>')).toBe(false);
   });

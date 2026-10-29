@@ -90,6 +90,9 @@ export const PLAN_NOTES_DIR = 'Plans';
 
 const NO_VAULT_ERROR = 'Open or create a Mythos vault first (Settings → Vault & Files → New vault…).';
 const MAX_SEGMENT_CHARS = 120;
+// Filesystems cap a name at 255 bytes (ext4, APFS) — a 120-character CJK or
+// emoji title is ~360. 200 leaves room for " (9999)" / " 9999" + ".md".
+export const MAX_SEGMENT_BYTES = 200;
 const MAX_FOLDER_DEPTH = 8;
 
 // ─── Small helpers ───────────────────────────────────────────────────────────
@@ -107,10 +110,25 @@ function byOrder<T extends { order: number }>(items: T[]): T[] {
 
 const RESERVED_WIN_NAME = /^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(\..*)?$/i;
 
+/** Cut `s` to at most `maxBytes` UTF-8 bytes, at a code-point boundary. */
+export function truncateUtf8(s: string, maxBytes: number): string {
+  if (Buffer.byteLength(s, 'utf8') <= maxBytes) return s;
+  let bytes = 0;
+  let out = '';
+  for (const cp of s) {
+    const n = Buffer.byteLength(cp, 'utf8');
+    if (bytes + n > maxBytes) break;
+    bytes += n;
+    out += cp;
+  }
+  return out;
+}
+
 /** One filesystem-safe path segment (no separators, reserved names, dots-only). */
 export function safeSegment(raw: string, fallback: string): string {
   let s = sanitizeVaultName(oneLine(raw), '').replace(/^[.\s]+/, '');
   if ([...s].length > MAX_SEGMENT_CHARS) s = [...s].slice(0, MAX_SEGMENT_CHARS).join('').trimEnd();
+  s = truncateUtf8(s, MAX_SEGMENT_BYTES);
   s = s.replace(/[.\s]+$/, '');
   if (!s) return fallback;
   const reserved = RESERVED_WIN_NAME.exec(s);
@@ -337,17 +355,18 @@ function writeLegacyStory(
 ): { entry: StoryEntry; written: WrittenStory } {
   // Collision-suffix the story folder too, so a second import of one title
   // doesn't merge into the first story's chapter folders.
-  const storyDir = resolveSlugCollision(vaultRoot, MANUSCRIPT_DIR, toSlug(title));
+  const storyDir = resolveSlugCollision(vaultRoot, MANUSCRIPT_DIR, toSlug(truncateUtf8(title, MAX_SEGMENT_BYTES)));
   const written: WrittenStory = { title, chapterCount: 0, sceneCount: 0, createdRel: storyDir };
   const storyId = crypto.randomUUID();
   const chapterEntries: ChapterEntry[] = [];
   try {
     chapters.forEach((ch, ci) => {
       const chapterId = crypto.randomUUID();
-      const chapterDir = resolveSlugCollision(vaultRoot, storyDir, toSlug(ch.title));
+      const chapterDir = resolveSlugCollision(vaultRoot, storyDir, toSlug(truncateUtf8(ch.title, MAX_SEGMENT_BYTES)));
       const scenes: SceneEntry[] = ch.scenes.map((sc, si) => {
         const sceneId = crypto.randomUUID();
-        const scenePath = sceneVaultPath(vaultRoot, chapterDir, sc.title);
+        // The slug (file name) comes from the title; the title itself is kept whole.
+        const scenePath = sceneVaultPath(vaultRoot, chapterDir, truncateUtf8(sc.title, MAX_SEGMENT_BYTES));
         if (!insideRoot(vaultRoot, scenePath)) throw new Error('Refusing to write outside the vault');
         writeSceneFile(vaultRoot, scenePath, {
           id: sceneId,
@@ -569,7 +588,7 @@ export async function commitImportPlan(
 
     if (story && plan.story) {
       try {
-        const rel = claims.claim(PLAN_NOTES_DIR, planNoteFileName(story.title).replace(/\.md$/, ''));
+        const rel = claims.claim(PLAN_NOTES_DIR, safeSegment(planNoteFileName(story.title).replace(/\.md$/, ''), 'Plan'));
         writeVaultFileAtomic(notesRoot, rel, buildPlanNote(plan, story.title, normalized, plan.story.partCount, nowIso));
         noteRels.push(rel);
         planNotePath = rel;

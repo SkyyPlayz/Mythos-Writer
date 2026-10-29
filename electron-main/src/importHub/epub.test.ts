@@ -12,7 +12,7 @@ interface EpubDoc {
   nav?: boolean;
 }
 
-async function makeEpub(docs: EpubDoc[], opts: { title?: string; opfPath?: string; extraFiles?: number } = {}): Promise<Buffer> {
+async function makeEpub(docs: EpubDoc[], opts: { title?: string; opfPath?: string; extraFiles?: number; opfTail?: string } = {}): Promise<Buffer> {
   const opfPath = opts.opfPath ?? 'OEBPS/content.opf';
   const opfDir = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
   const zip = new JSZip();
@@ -25,7 +25,7 @@ async function makeEpub(docs: EpubDoc[], opts: { title?: string; opfPath?: strin
   zip.file(opfPath,
     `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">`
     + (opts.title ? `<dc:title>${opts.title}</dc:title>` : '')
-    + `</metadata><manifest>${manifest}</manifest><spine>${spine}</spine></package>`);
+    + `</metadata><manifest>${manifest}</manifest><spine>${spine}</spine></package>${opts.opfTail ?? ''}`);
   for (const d of docs) {
     const entry = decodeURIComponent(`${opfDir}${d.href}`).replace(/[^/]+\/\.\.\//g, '');
     zip.file(entry, `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>x</title></head><body>${d.body}</body></html>`);
@@ -101,6 +101,21 @@ describe('epubToBlocks — damaged files and zip bombs', () => {
     expect(EPUB_MAX_ENTRIES).toBe(5000);
     const buf = await makeEpub(THREE_CHAPTERS, { extraFiles: 20 });
     await expect(epubToBlocks(buf, { maxEntries: 10 })).rejects.toThrow(/far more files than a book should/);
+  });
+
+  it('a package document full of unclosed tags is read in linear time', async () => {
+    const timed = async (buf: Buffer) => {
+      const start = performance.now();
+      const result = await parseEpubStory(buf, 'Fallback');
+      return { result, ms: performance.now() - start };
+    };
+    const noTitle = await timed(await makeEpub(THREE_CHAPTERS, { opfTail: '<dc:title>'.repeat(200_000) }));
+    expect(noTitle.ms).toBeLessThan(2000);
+    expect(noTitle.result.story.title).toBe('Fallback');
+    const junkTags = await timed(await makeEpub(THREE_CHAPTERS, { title: 'Book', opfTail: `${'<item'.repeat(200_000)}${'<itemref'.repeat(200_000)}` }));
+    expect(junkTags.ms).toBeLessThan(2000);
+    expect(junkTags.result.story.title).toBe('Book');
+    expect(junkTags.result.story.chapters).toHaveLength(3);
   });
 
   it('stops inflating once the byte budget is spent', async () => {

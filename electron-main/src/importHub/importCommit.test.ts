@@ -19,7 +19,14 @@ import {
 } from '../vault.js';
 import type { Manifest, StoryEntry } from '../ipc.js';
 import type { ImportPlan } from './types.js';
-import { commitImportPlan, IMPORT_MAX_SCENES, safeSegment, type ImportCommitDeps } from './importCommit.js';
+import {
+  commitImportPlan,
+  IMPORT_MAX_SCENES,
+  MAX_SEGMENT_BYTES,
+  safeSegment,
+  truncateUtf8,
+  type ImportCommitDeps,
+} from './importCommit.js';
 
 let tmp: string;
 
@@ -377,6 +384,44 @@ describe('commitImportPlan — v2 vault', () => {
   });
 });
 
+describe('commitImportPlan — long non-Latin names', () => {
+  const LONG_CJK = '吾輩は猫である'.repeat(15); // 105 characters, 315 UTF-8 bytes
+
+  it('imports a story, its plan note and notes whose titles pass 255 bytes', async () => {
+    const v = makeV2Vault();
+    const deps = v2Deps(v);
+    const plan = storyPlan({
+      story: { ...storyPlan().story!, title: LONG_CJK },
+      notes: [
+        { title: `${'🐉'.repeat(80)}`, folder: '', body: 'Dragons.', entityType: 'concept' },
+        { title: LONG_CJK, folder: LONG_CJK, body: 'Long.' },
+      ],
+    });
+    const result = await commitImportPlan(plan, deps);
+    expect(result).toMatchObject({ ok: true, storyTitle: LONG_CJK, entityCount: 1, noteCount: 1, warnings: [] });
+    if (!result.ok) return;
+
+    const cache = readManifest(v.cachePath);
+    const imported = cache.stories.find((st) => st.title === LONG_CJK)!;
+    expect(Buffer.byteLength(imported.path, 'utf8')).toBeLessThanOrEqual(200);
+    expect(fs.existsSync(path.join(v.storyRoot, imported.path, 'book.md'))).toBe(true);
+    // A rescan still finds exactly this story.
+    const rescanned = storyByPath(scanMythosStoryVault(v.mythosRoot), imported.path);
+    expect(rescanned.map(shape)).toEqual([shape(imported)]);
+
+    expect(result.planNotePath).toBeDefined();
+    const planName = result.planNotePath!.split('/').pop()!;
+    expect(Buffer.byteLength(planName, 'utf8')).toBeLessThanOrEqual(255);
+    expect(fs.existsSync(path.join(v.notesRoot, ...result.planNotePath!.split('/')))).toBe(true);
+
+    const written = deps.notifyNotesWritten.mock.calls[0][0] as string[];
+    for (const rel of written) {
+      for (const seg of rel.split('/')) expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(255);
+      expect(fs.existsSync(path.join(v.notesRoot, ...rel.split('/')))).toBe(true);
+    }
+  });
+});
+
 describe('commitImportPlan — legacy vault', () => {
   function makeLegacyVault(): { root: string; manifestPath: string } {
     const root = path.join(tmp, 'Legacy Vault');
@@ -429,6 +474,37 @@ describe('commitImportPlan — legacy vault', () => {
     expect(again.stories.map((s) => s.path)).toEqual(['Manuscript/the-gate', 'Manuscript/the-gate-2']);
     expect(fs.existsSync(path.join(notesRoot, 'Plans', 'Plan — The Gate 2.md'))).toBe(true);
   });
+
+  it('caps legacy slugs so a very long title still imports', async () => {
+    const { root, manifestPath } = makeLegacyVault();
+    const deps: ImportCommitDeps = {
+      getStoryVaultRoot: () => root,
+      isV2StoryVault: () => false,
+      getManifestPath: () => manifestPath,
+      readManifest: (p) => readManifest(p),
+      writeManifest: (p, m) => writeManifestRaw(p, m),
+      getNotesVaultRoot: () => null,
+      ensureNotesVaultDir: () => {},
+      notifyNotesWritten: vi.fn(),
+      notifyStoriesChanged: vi.fn(),
+      flushRenderer: async () => {},
+      now: () => NOW,
+    };
+    const long = 'A very long title '.repeat(20).trim();
+    const base = storyPlan();
+    const plan = storyPlan({
+      story: {
+        ...base.story!,
+        title: long,
+        chapters: [{ title: long, order: 0, scenes: [{ title: long, order: 0, prose: 'Words.' }] }],
+      },
+    });
+    const result = await commitImportPlan(plan, deps);
+    expect(result).toMatchObject({ ok: true, storyTitle: long, sceneCount: 1 });
+    const scene = readManifest(manifestPath).stories[0].chapters[0].scenes[0];
+    for (const seg of scene.path.split('/')) expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(255);
+    expect(readSceneFile(root, scene.path).title).toBe(long);
+  });
 });
 
 describe('safeSegment', () => {
@@ -440,5 +516,16 @@ describe('safeSegment', () => {
     expect(safeSegment('.hidden', 'x')).toBe('hidden');
     expect(safeSegment('name. . ', 'x')).toBe('name');
     expect([...safeSegment('a'.repeat(500), 'x')].length).toBeLessThanOrEqual(120);
+  });
+
+  it(`caps a segment at ${MAX_SEGMENT_BYTES} UTF-8 bytes without splitting a character`, () => {
+    const cjk = safeSegment('猫'.repeat(120), 'x');
+    expect(Buffer.byteLength(cjk, 'utf8')).toBeLessThanOrEqual(MAX_SEGMENT_BYTES);
+    expect(cjk).toBe('猫'.repeat(66));
+    const emoji = safeSegment('🐉'.repeat(100), 'x');
+    expect(Buffer.byteLength(emoji, 'utf8')).toBeLessThanOrEqual(MAX_SEGMENT_BYTES);
+    expect(emoji).toBe('🐉'.repeat(50));
+    expect(truncateUtf8('a🐉b', 3)).toBe('a');
+    expect(truncateUtf8('short', 200)).toBe('short');
   });
 });

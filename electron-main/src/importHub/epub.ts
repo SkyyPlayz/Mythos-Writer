@@ -16,6 +16,7 @@ import JSZip from 'jszip';
 import { segmentBlocks, type RichBlock } from './blocks.js';
 import { decodeEntities, htmlToBlocks } from './htmlBlocks.js';
 import type { ImportStory } from './types.js';
+import { ImportUserError } from './importErrors.js';
 
 export const EPUB_MAX_ENTRIES = 5000;
 export const EPUB_MAX_INFLATED_BYTES = 200 * 1024 * 1024; // 200 MB
@@ -45,7 +46,7 @@ class EntryReader {
   /** Inflate one entry, failing once the archive-wide byte budget is spent. */
   async text(entry: JSZip.JSZipObject): Promise<string> {
     const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
-    if (typeof declared === 'number' && this.used + declared > this.maxBytes) throw new Error(TOO_BIG);
+    if (typeof declared === 'number' && this.used + declared > this.maxBytes) throw new ImportUserError(TOO_BIG);
     const chunks: Uint8Array[] = [];
     await new Promise<void>((resolve, reject) => {
       const stream = (entry as unknown as { internalStream(type: 'uint8array'): StreamHelper }).internalStream('uint8array');
@@ -57,7 +58,7 @@ class EntryReader {
           if (this.used > this.maxBytes) {
             done = true;
             stream.pause();
-            reject(new Error(TOO_BIG));
+            reject(new ImportUserError(TOO_BIG));
             return;
           }
           chunks.push(chunk);
@@ -78,6 +79,39 @@ function decodeBytes(buf: Buffer): string {
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder('utf-16le').decode(buf.subarray(2));
   if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder('utf-16be').decode(buf.subarray(2));
   return new TextDecoder('utf-8').decode(buf).replace(/^\ufeff/, '');
+}
+
+/**
+ * Each `<name …>` start tag (any namespace prefix), sliced out with indexOf.
+ * The OPF is untrusted: no regex ever scans from a tag start to the end of
+ * the file, so a thousand unclosed `<item` can't stall the main process.
+ */
+function* startTags(xml: string, name: string): Generator<string> {
+  const re = new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?${name}(?=[\\s/>])`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) {
+    const end = xml.indexOf('>', re.lastIndex);
+    if (end === -1) return;
+    yield xml.slice(m.index, end + 1);
+    re.lastIndex = end + 1;
+  }
+}
+
+/** Longer than any real book title: the rest is not read. */
+const MAX_TITLE_SOURCE = 2000;
+
+/** The first `<dc:title>…</dc:title>` text: one search for its start, one for its end. */
+function readDcTitle(opf: string): string {
+  const open = /<dc:title\b/i.exec(opf);
+  if (!open) return '';
+  const openEnd = opf.indexOf('>', open.index);
+  if (openEnd === -1) return '';
+  const close = /<\/dc:title\s*>/gi;
+  close.lastIndex = openEnd + 1;
+  const cm = close.exec(opf);
+  if (!cm) return '';
+  const raw = opf.slice(openEnd + 1, Math.min(cm.index, openEnd + 1 + MAX_TITLE_SOURCE));
+  return decodeEntities(raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
 }
 
 function attr(tag: string, name: string): string | undefined {
@@ -111,10 +145,10 @@ export async function epubToBlocks(
   try {
     zip = await JSZip.loadAsync(buffer);
   } catch {
-    throw new Error(DAMAGED);
+    throw new ImportUserError(DAMAGED);
   }
   if (Object.keys(zip.files).length > (limits.maxEntries ?? EPUB_MAX_ENTRIES)) {
-    throw new Error('This ePub holds far more files than a book should, so Mythos stopped reading it.');
+    throw new ImportUserError('This ePub holds far more files than a book should, so Mythos stopped reading it.');
   }
   const reader = new EntryReader(zip, limits.maxInflatedBytes ?? EPUB_MAX_INFLATED_BYTES);
   const warnings: string[] = [];
@@ -124,32 +158,29 @@ export async function epubToBlocks(
   const container = reader.file('META-INF/container.xml');
   if (container) {
     const xml = await reader.text(container);
-    const rootfile = /<(?:\w+:)?rootfile\b[^>]*>/i.exec(xml)?.[0];
+    const rootfile = startTags(xml, 'rootfile').next().value;
     opfPath = rootfile ? attr(rootfile, 'full-path') : undefined;
   }
   if (!opfPath || !reader.file(opfPath)) {
     opfPath = Object.keys(zip.files).find((f) => f.toLowerCase().endsWith('.opf'));
   }
   const opfFile = opfPath ? reader.file(opfPath) : null;
-  if (!opfPath || !opfFile) throw new Error(DAMAGED);
+  if (!opfPath || !opfFile) throw new ImportUserError(DAMAGED);
   const opf = await reader.text(opfFile);
   const opfDir = path.posix.dirname(opfPath) === '.' ? '' : path.posix.dirname(opfPath);
 
   // 2) Manifest + spine.
   const items = new Map<string, { href: string; type: string; props: string }>();
-  for (const m of opf.matchAll(/<(?:\w+:)?item\b[^>]*>/gi)) {
-    const id = attr(m[0], 'id');
-    const href = attr(m[0], 'href');
-    if (id && href) items.set(id, { href, type: (attr(m[0], 'media-type') ?? '').toLowerCase(), props: attr(m[0], 'properties') ?? '' });
+  for (const tag of startTags(opf, 'item')) {
+    const id = attr(tag, 'id');
+    const href = attr(tag, 'href');
+    if (id && href) items.set(id, { href, type: (attr(tag, 'media-type') ?? '').toLowerCase(), props: attr(tag, 'properties') ?? '' });
   }
-  const spine = [...opf.matchAll(/<(?:\w+:)?itemref\b[^>]*>/gi)]
-    .filter((m) => (attr(m[0], 'linear') ?? 'yes').toLowerCase() !== 'no')
-    .map((m) => attr(m[0], 'idref'))
+  const spine = [...startTags(opf, 'itemref')]
+    .filter((tag) => (attr(tag, 'linear') ?? 'yes').toLowerCase() !== 'no')
+    .map((tag) => attr(tag, 'idref'))
     .filter((id): id is string => Boolean(id));
-  const rawTitle = /<dc:title\b[^>]*>([\s\S]*?)<\/dc:title>/i.exec(opf)?.[1];
-  const title = rawTitle
-    ? decodeEntities(rawTitle.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim()
-    : '';
+  const title = readDcTitle(opf);
 
   // 3) Spine documents in reading order.
   const blocks: RichBlock[] = [];
@@ -172,7 +203,7 @@ export async function epubToBlocks(
     docs++;
     for (const w of parsed.warnings) docWarnings.set(w, (docWarnings.get(w) ?? 0) + 1);
   }
-  if (docs === 0) throw new Error('This ePub has no readable chapters.');
+  if (docs === 0) throw new ImportUserError('This ePub has no readable chapters.');
   warnings.push(...summarizeDocWarnings(docWarnings));
   return { blocks, ...(title ? { title } : {}), warnings };
 }

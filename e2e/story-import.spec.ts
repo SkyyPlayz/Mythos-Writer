@@ -41,13 +41,14 @@ let app: ElectronApplication | undefined;
 let page: Page;
 let userData: string;
 let workDir: string;
+let mythosRoot: string;
 let storyVaultPath: string;
 let notesVaultPath: string;
 
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
-  ({ app, page, userData, workDir, storyVaultPath, notesVaultPath } = await setUpImportVault('import-hub'));
+  ({ app, page, userData, workDir, mythosRoot, storyVaultPath, notesVaultPath } = await setUpImportVault('import-hub'));
 });
 
 test.afterAll(async () => {
@@ -113,7 +114,7 @@ test('pick a multi-chapter .docx → preview → import writes chapters/scenes w
 
   const book = fs.readFileSync(path.join(storyDir, 'book.md'), 'utf-8');
   for (const ch of outline.chapters) expect(book).toContain(ch.title);
-  const mythosJson = fs.readFileSync(path.join(path.dirname(storyVaultPath), 'mythos.json'), 'utf-8');
+  const mythosJson = fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8');
   expect(mythosJson).toContain(outline.title);
   const plans = findMdFiles(path.join(notesVaultPath, 'Plans'));
   expect(plans.some((p) => path.basename(p).includes(outline.title))).toBe(true);
@@ -125,6 +126,20 @@ test('pick a multi-chapter .docx → preview → import writes chapters/scenes w
     return m.stories.map((s) => s.title);
   });
   expect(stories).toContain(outline.title);
+
+  // ── Spot-check like a writer: close Settings, find the book in the Story
+  // Navigator, open its first scene and see the formatting in the editor. ──
+  await page.locator('.settings-panel-close, [aria-label="Close settings"]').first().click()
+    .catch(() => page.keyboard.press('Escape'));
+  await expect(page.getByText(`Scene 1 · ${outline.chapters[0].scenes[0]}`)).toBeVisible({ timeout: 10_000 });
+  for (const ch of outline.chapters) await expect(page.getByText(ch.title, { exact: true }).first()).toBeVisible();
+  await page.getByText(`Scene 1 · ${outline.chapters[0].scenes[0]}`).click();
+  const editor = page.locator('.ProseMirror');
+  await expect(editor.locator('strong', { hasText: 'iron gate' })).toBeVisible({ timeout: 10_000 });
+  await expect(editor.locator('em', { hasText: 'lanterns' })).toBeVisible();
+  await expect(editor.locator('u', { hasText: 'never' })).toBeVisible();
+  await expect(editor.locator('s', { hasText: 'closed' })).toBeVisible();
+  await shot(page, '05-imported-scene-in-editor');
 });
 
 test('a dangerous file is refused before it is read, and nothing is written', async () => {

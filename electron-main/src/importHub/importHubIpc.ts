@@ -19,8 +19,15 @@ import type {
 } from './types.js';
 import { assessImportPath, SUPPORTED_IMPORT_EXTENSIONS, type AssessedImportPath } from './importSafety.js';
 import { detectImportSource } from './importDetect.js';
-import { createImportSession, scrubAbsolutePaths, takeImportSession } from './importPreview.js';
+import {
+  claimImportSession,
+  createImportSession,
+  finishImportSession,
+  releaseImportSession,
+  scrubAbsolutePaths,
+} from './importPreview.js';
 import { commitImportPlan, type ImportCommitDeps } from './importCommit.js';
+import { ImportUserError } from './importErrors.js';
 
 export interface ImportHubDeps extends ImportCommitDeps {
   showOpenDialog(opts: OpenDialogOptions): Promise<{ canceled: boolean; filePaths: string[] }>;
@@ -47,6 +54,7 @@ export const IMPORT_NO_VAULT_REASON =
   'Open or create a Mythos vault first (Settings → Vault & Files → New vault…).';
 export const IMPORT_SOURCE_CHANGED_ERROR = 'The file changed since the preview — drop it again.';
 export const IMPORT_TOKEN_EXPIRED_ERROR = 'This preview has expired — drop the file again.';
+export const IMPORT_ALREADY_RUNNING_ERROR = 'This import is already running.';
 
 type VaultProbeDeps = Pick<ImportCommitDeps, 'getStoryVaultRoot' | 'isV2StoryVault' | 'getManifestPath'>;
 
@@ -83,11 +91,15 @@ export async function previewImportPath(
   let plan: ImportPlan;
   try {
     plan = await deps.buildPlan(assessed.realPath, detected.kind, assessed);
-  } catch {
+  } catch (err) {
     return {
       ok: false,
       refused: false,
-      error: 'Mythos couldn\'t read this file — it may be damaged or saved in a way Mythos doesn\'t understand yet.',
+      // Importers phrase known failures for the writer (ImportUserError);
+      // anything else is unexpected and never leaks its message or a path.
+      error: err instanceof ImportUserError
+        ? scrubAbsolutePaths(err.userMessage)
+        : 'Mythos couldn\'t read this file — it may be damaged or saved in a way Mythos doesn\'t understand yet.',
       name: assessed.name,
     };
   }
@@ -114,7 +126,14 @@ function parseCommitOptions(raw: unknown): ImportCommitOptions {
   };
 }
 
-/** Commit the plan behind `token`. Pure apart from fs + deps (unit-testable). */
+/**
+ * Commit the plan behind `token`. Pure apart from fs + deps (unit-testable).
+ *
+ * The token is spent only by a successful commit (or one a retry can't fix:
+ * the source changed, or the writer threw part-way). commitImportPlan's
+ * ok:false results all return before writing or roll back what they wrote,
+ * so those keep the preview alive and the writer's "Try again" works.
+ */
 export async function commitImportToken(
   token: unknown,
   rawOptions: unknown,
@@ -123,21 +142,31 @@ export async function commitImportToken(
   if (typeof token !== 'string' || token.length === 0 || token.length > 256) {
     return { ok: false, error: IMPORT_TOKEN_EXPIRED_ERROR };
   }
-  const session = takeImportSession(token);
-  if (!session) return { ok: false, error: IMPORT_TOKEN_EXPIRED_ERROR };
+  const claim = claimImportSession(token);
+  if (claim.status === 'busy') return { ok: false, error: IMPORT_ALREADY_RUNNING_ERROR };
+  if (claim.status === 'missing') return { ok: false, error: IMPORT_TOKEN_EXPIRED_ERROR };
+  let sourceUnchanged = false;
   try {
-    const st = fs.statSync(session.source.realPath);
-    if (st.size !== session.source.size || st.mtimeMs !== session.source.mtimeMs) {
-      return { ok: false, error: IMPORT_SOURCE_CHANGED_ERROR };
-    }
+    const st = fs.statSync(claim.source.realPath);
+    sourceUnchanged = st.size === claim.source.size && st.mtimeMs === claim.source.mtimeMs;
   } catch {
+    sourceUnchanged = false;
+  }
+  if (!sourceUnchanged) {
+    finishImportSession(token);
     return { ok: false, error: IMPORT_SOURCE_CHANGED_ERROR };
   }
+  let result: ImportCommitResult;
   try {
-    return await commitImportPlan(session.plan, deps, parseCommitOptions(rawOptions));
+    result = await commitImportPlan(claim.plan, deps, parseCommitOptions(rawOptions));
   } catch {
-    return { ok: false, error: 'Mythos couldn\'t save the import. Nothing was added.' };
+    // Unexpected: something may already be on disk, so a retry could duplicate it.
+    finishImportSession(token);
+    return { ok: false, error: 'Mythos couldn\'t finish the import. Check your vault before importing again.' };
   }
+  if (result.ok) finishImportSession(token);
+  else releaseImportSession(token);
+  return result;
 }
 
 export function registerImportHubIpc(deps: ImportHubDeps): void {

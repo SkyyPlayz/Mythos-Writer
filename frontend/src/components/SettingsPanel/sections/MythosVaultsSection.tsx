@@ -541,6 +541,10 @@ export default function MythosVaultsSection({
 
   // #1765: "Import your writing" is a sibling section right after the Mythos
   // vaults cards (FULL-SPEC.md:204 — Mythos vaults → import → vault actions).
+  // It follows the live active vault so a preview built before a vault was
+  // created / switched can still commit, and it names the destination.
+  const activeVaultEntry = vaults.find((v) => v.vaultRoot === activeRoot);
+  const activeVaultName = activeVaultEntry ? displayNameFor(activeVaultEntry) : undefined;
   return (
     <>
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
@@ -943,7 +947,10 @@ export default function MythosVaultsSection({
         </div>
       )}
     </section>
-    <ImportSection />
+    <ImportSection
+      activeVaultRoot={activeRoot || undefined}
+      activeVaultName={activeVaultName}
+    />
     </>
   );
 }

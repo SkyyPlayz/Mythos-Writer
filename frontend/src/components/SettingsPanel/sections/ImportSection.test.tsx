@@ -8,7 +8,7 @@ import { resolve } from 'path';
 import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 import type { AxeMatchers } from 'vitest-axe/matchers';
-import ImportSection, { renderInlineMarkdown, excerptParagraphs } from './ImportSection';
+import ImportSection, { renderInlineMarkdown, excerptParagraphs, SPENT_PREVIEW_ERRORS } from './ImportSection';
 import type {
   ImportCommitResult,
   ImportPreview,
@@ -99,10 +99,16 @@ function deferred<T>() {
   return { promise, resolve: resolveFn };
 }
 
-async function setup() {
+async function setup(props: { activeVaultRoot?: string; activeVaultName?: string } = {}) {
   let utils!: ReturnType<typeof render>;
-  await act(async () => { utils = render(<ImportSection />); });
+  await act(async () => { utils = render(<ImportSection {...props} />); });
   return utils;
+}
+
+function dragOverOn(target: Element | Document, types: string[] = ['Files']) {
+  const ev = createEvent.dragOver(target, { dataTransfer: { types, dropEffect: 'copy' } }) as DragEvent;
+  fireEvent(target, ev);
+  return ev;
 }
 
 function fileDrop(target: HTMLElement, files: File[]) {
@@ -198,6 +204,36 @@ describe('ImportSection (#1765)', () => {
     expect(drop.defaultPrevented).toBe(true);
   });
 
+  it('a near miss on the section (heading, preview panel) is swallowed, not opened by the browser', async () => {
+    await setup();
+    await showPreview();
+    for (const target of [screen.getByRole('heading', { name: 'Import your writing' }), screen.getByTestId('import-preview')]) {
+      const over = dragOverOn(target);
+      expect(over.defaultPrevented).toBe(true);
+      // Not a drop target: the cursor says so.
+      expect(over.dataTransfer?.dropEffect).toBe('none');
+      const drop = fileDrop(target, [new File(['<script>x</script>'], 'Book.html')]);
+      expect(drop.defaultPrevented).toBe(true);
+    }
+    // Only the zone starts a preview.
+    expect(mockPreviewDropped).not.toHaveBeenCalled();
+    // The zone itself still accepts the drop.
+    expect(dragOverOn(screen.getByTestId('import-dropzone')).dataTransfer?.dropEffect).toBe('copy');
+  });
+
+  it('while mounted, a file dropped anywhere else in the window cannot navigate it; text drags and unmount are untouched', async () => {
+    const { unmount } = await setup();
+    const outside = document.createElement('div');
+    document.body.appendChild(outside);
+    expect(dragOverOn(outside).defaultPrevented).toBe(true);
+    expect(fileDrop(outside, [new File(['x'], 'Book.html')]).defaultPrevented).toBe(true);
+    // A text / tab drag keeps its normal behaviour.
+    expect(dragOverOn(outside, ['text/plain']).defaultPrevented).toBe(false);
+    unmount();
+    expect(dragOverOn(outside).defaultPrevented).toBe(false);
+    outside.remove();
+  });
+
   it('drag-enter counter keeps the active state across nested children', async () => {
     await setup();
     const zone = screen.getByTestId('import-dropzone');
@@ -288,6 +324,15 @@ describe('ImportSection (#1765)', () => {
     expect(ex.querySelectorAll('p.import-excerpt__p')).toHaveLength(2);
   });
 
+  it('a cut-off excerpt (ends with “…”) keeps a mark open at the cut; markers in earlier paragraphs follow the editor', async () => {
+    await setup();
+    const base = makePreview();
+    await showPreview({ ...base, story: { ...base.story!, excerpt: 'Stray **marker here.\n\nHe was **very tired and…' } });
+    const paras = screen.getByTestId('import-excerpt').querySelectorAll('p.import-excerpt__p');
+    expect(paras[0].innerHTML).toBe('Stray **marker here.');
+    expect(paras[1].innerHTML).toBe('He was <strong>very tired and…</strong>');
+  });
+
   it('notes list shows the first 8 titles and “and N more”', async () => {
     await setup();
     const notes = Array.from({ length: 11 }, (_, i) => ({ title: `Note ${i + 1}`, folder: '' }));
@@ -310,6 +355,29 @@ describe('ImportSection (#1765)', () => {
     expect(alert).toHaveTextContent('This is a program (.exe).');
     expect(alert).toHaveTextContent('Mythos never opens programs, scripts or macro files.');
     expect(screen.queryByTestId('import-preview')).not.toBeInTheDocument();
+  });
+
+  it('a refusal that is not about runnable content gets no "programs" line', async () => {
+    const reason = 'This file unpacks to more than Mythos will safely open (over 10,000 parts or 200 MB). It may be damaged or unsafe.';
+    mockPreviewDropped.mockResolvedValue({ ok: false, refused: true, reason });
+    await setup();
+    await act(async () => { fileDrop(screen.getByTestId('import-dropzone'), [new File(['PK'], 'Huge.docx')]); });
+    const alert = await screen.findByTestId('import-refused');
+    expect(alert.textContent).toBe(reason);
+    expect(alert).not.toHaveTextContent('programs');
+  });
+
+  it.each([
+    'Mythos never opens .exe files — they can run code on your computer. Import a document instead (Word, Markdown, ePub, RTF or plain text).',
+    'This file is really a script that can run code, not a document. Mythos won\'t open it.',
+    'This file contains macros, which can run code on your computer. Open it in Word, Save As a plain .docx (Word Document), then import that.',
+  ])('a program / script / macro refusal adds the reassurance: %s', async (reason) => {
+    mockPick.mockResolvedValue({ ok: false, refused: true, reason });
+    await setup();
+    await act(async () => { fireEvent.click(screen.getByTestId('import-pick-file')); });
+    expect(await screen.findByTestId('import-refused')).toHaveTextContent(
+      `${reason} Mythos never opens programs, scripts or macro files.`,
+    );
   });
 
   it('an unreadable / unsupported source shows the import-error alert', async () => {
@@ -356,6 +424,21 @@ describe('ImportSection (#1765)', () => {
     expect(screen.getByTestId('import-pick-file')).toBeEnabled();
   });
 
+  it.each([
+    [[{ title: 'Mara', type: 'character' }], 1, '1 character'],
+    [[{ title: 'Mara', type: 'character' }, { title: 'Tomas', type: 'character' }], 2, '2 characters'],
+    [[{ title: 'The Spire', type: 'location' }], 1, '1 place'],
+    [[{ title: 'The Guild', type: 'faction' }], 1, '1 entity'],
+    [[{ title: 'Mara', type: 'character' }, { title: 'The Guild', type: 'faction' }], 2, '2 entities'],
+  ] as const)('the success line counts entities in plain, correctly pluralised words (%#)', async (entities, entityCount, phrase) => {
+    mockCommit.mockResolvedValue({ ...OK_COMMIT, noteCount: 0, entityCount });
+    await setup();
+    await showPreview(makePreview({ notes: [], entities: [...entities] }));
+    await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+    const done = await screen.findByTestId('import-done');
+    expect(within(done).getByRole('heading').textContent).toBe(`Imported “The Last City” — 2 chapters, 3 scenes, ${phrase}`);
+  });
+
   it('unchecking a half passes false for it; unchecking both disables Import', async () => {
     mockCommit.mockResolvedValue(OK_COMMIT);
     await setup();
@@ -396,19 +479,74 @@ describe('ImportSection (#1765)', () => {
     expect(mockCommit).not.toHaveBeenCalled();
   });
 
-  it('a failed commit shows an alert and keeps the preview for a retry', async () => {
-    mockCommit.mockResolvedValueOnce({ ok: false, error: 'Disk is full.' });
+  it('a retryable commit failure (nothing written, main keeps the preview) keeps it for a retry on the same token', async () => {
+    // commitImportToken releases the session on commitImportPlan's ok:false
+    // results (no vault, a rolled-back write), so the same token commits next time.
+    mockCommit.mockResolvedValueOnce({ ok: false, error: 'Open or create a Mythos vault first (Settings → Vault & Files → New vault…).' });
     mockCommit.mockResolvedValueOnce(OK_COMMIT);
     await setup();
     await showPreview();
     await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
     const alert = await screen.findByTestId('import-commit-error');
     expect(alert).toHaveAttribute('role', 'alert');
-    expect(alert).toHaveTextContent('Disk is full.');
+    expect(alert).toHaveTextContent('Open or create a Mythos vault first');
     expect(screen.getByTestId('import-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('import-confirm')).toBeEnabled();
     await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
     expect(mockCommit).toHaveBeenCalledTimes(2);
+    expect(mockCommit).toHaveBeenNthCalledWith(2, 'tok-1', { story: true, notes: true });
     expect(await screen.findByTestId('import-done')).toBeInTheDocument();
+  });
+
+  it.each(SPENT_PREVIEW_ERRORS.map((e) => [e]))('a failure that spends the preview drops it and asks for a fresh drop: %s', async (error) => {
+    mockCommit.mockResolvedValue({ ok: false, error });
+    await setup();
+    await showPreview();
+    await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+    const alert = await screen.findByTestId('import-error');
+    expect(alert).toHaveAttribute('role', 'alert');
+    expect(alert).toHaveTextContent(error);
+    // No dead Import button left behind: back to the drop zone.
+    expect(screen.queryByTestId('import-preview')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('import-confirm')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-pick-file')).toBeEnabled();
+    expect(mockCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a preview blocked for lack of a vault unblocks once a vault is opened, and names it', async () => {
+    mockCommit.mockResolvedValue(OK_COMMIT);
+    const reason = 'Open or create a Mythos vault first (Settings → Vault & Files → New vault…).';
+    const { rerender } = await setup();
+    await showPreview(makePreview({ canCommit: false, commitBlockedReason: reason }));
+    expect(screen.getByTestId('import-confirm')).toBeDisabled();
+    expect(screen.getByTestId('import-blocked-reason')).toHaveTextContent(reason);
+    expect(screen.queryByTestId('import-destination')).not.toBeInTheDocument();
+
+    // The writer creates + opens a vault from the cards above.
+    await act(async () => { rerender(<ImportSection activeVaultRoot="/v/New Book/Story" activeVaultName="New Book" />); });
+    expect(screen.getByTestId('import-confirm')).toBeEnabled();
+    expect(screen.queryByTestId('import-blocked-reason')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-destination')).toHaveTextContent('It will go into “New Book”.');
+    await act(async () => { fireEvent.click(screen.getByTestId('import-confirm')); });
+    expect(mockCommit).toHaveBeenCalledWith('tok-1', { story: true, notes: true });
+  });
+
+  it('names the destination vault and warns when it was switched after the preview', async () => {
+    const { rerender } = await setup({ activeVaultRoot: '/v/A/Story', activeVaultName: 'Vault A' });
+    await showPreview();
+    expect(screen.getByTestId('import-destination')).toHaveTextContent('It will go into “Vault A”.');
+    await act(async () => { rerender(<ImportSection activeVaultRoot="/v/B/Story" activeVaultName="Vault B" />); });
+    expect(screen.getByTestId('import-destination')).toHaveTextContent(
+      'You switched vaults since this preview — it will go into “Vault B”.',
+    );
+  });
+
+  it('a blocked preview stays blocked while the same (non-Mythos) vault is open', async () => {
+    await setup({ activeVaultRoot: '/legacy', activeVaultName: 'Old' });
+    await showPreview(makePreview({ canCommit: false, commitBlockedReason: 'Open a Mythos vault first.' }));
+    expect(screen.getByTestId('import-confirm')).toBeDisabled();
+    expect(screen.getByTestId('import-blocked-reason')).toBeInTheDocument();
+    expect(screen.queryByTestId('import-destination')).not.toBeInTheDocument();
   });
 
   it('while committing, Import shows progress and both actions are disabled', async () => {
@@ -546,8 +684,8 @@ describe('ImportSection (#1765)', () => {
 });
 
 describe('renderInlineMarkdown (excerpt converter)', () => {
-  function html(src: string): string {
-    const { container } = render(<p>{renderInlineMarkdown(src)}</p>);
+  function html(src: string, opts?: { cutOff?: boolean }): string {
+    const { container } = render(<p>{renderInlineMarkdown(src, opts)}</p>);
     const out = (container.firstChild as HTMLElement).innerHTML;
     container.remove();
     return out;
@@ -557,7 +695,8 @@ describe('renderInlineMarkdown (excerpt converter)', () => {
     expect(html('**bold** *it* ~~gone~~ <u>under</u>')).toBe(
       '<strong>bold</strong> <em>it</em> <s>gone</s> <u>under</u>',
     );
-    expect(html('***both***')).toBe('<strong><em>both</em></strong>');
+    // markdown-it nests a triple run as <em><strong>.
+    expect(html('***both***')).toBe('<em><strong>both</strong></em>');
     expect(html('**a *b* c**')).toBe('<strong>a <em>b</em> c</strong>');
     expect(html('__bold__ and _it_')).toBe('<strong>bold</strong> and <em>it</em>');
   });
@@ -581,7 +720,35 @@ describe('renderInlineMarkdown (excerpt converter)', () => {
   });
 
   it('an unclosed mark from a truncated excerpt still formats the rest, without raw markers', () => {
-    expect(html('He was **very tired and')).toBe('He was <strong>very tired and</strong>');
+    expect(html('He was **very tired and', { cutOff: true })).toBe('He was <strong>very tired and</strong>');
+    expect(html('a ~~gone and', { cutOff: true })).toBe('a <s>gone and</s>');
+    // Not cut off: an unclosed run is literal, as in the editor.
+    expect(html('He was **very tired and')).toBe('He was **very tired and');
+  });
+
+  // Each expectation is markdown-it 14's renderInline output (the editor's
+  // parser via tiptap-markdown, html: true), so the preview shows what the
+  // editor will show — including literal markers it won't format.
+  it.each([
+    ['word*(aside)*', 'word*(aside)*'],
+    ['Mara**"Run!"**', 'Mara**"Run!"**'],
+    ['x*…*y', 'x*…*y'],
+    ['*(aside)* word', '<em>(aside)</em> word'],
+    ['“*quoted*”', '“<em>quoted</em>”'],
+    ['**Mara**’s', '<strong>Mara</strong>’s'],
+    ['*foo**bar**baz*', '<em>foo<strong>bar</strong>baz</em>'],
+    ['foo_bar_', 'foo_bar_'],
+    ['_foo_bar', '_foo_bar'],
+    ['__a__b', '__a__b'],
+    ['~~~a~~', '~<s>a</s>'],
+    ['a~b~c', 'a~b~c'],
+    ['*a ~~b* c~~', '<em>a ~~b</em> c~~'],
+    // Serializer output whose reopened delimiter follows a space: the editor
+    // shows those markers literally, so the preview must too.
+    ['She thought, ***Never**** again.*', 'She thought, <em><strong>Never</strong></em>* again.*'],
+    ['The **~~old~~**~~ house~~', 'The <strong><s>old</s></strong>~~ house~~'],
+  ])('follows CommonMark flanking like the editor: %s', (src, expected) => {
+    expect(html(src)).toBe(expected);
   });
 });
 
@@ -625,5 +792,10 @@ describe('importHubTypes mirror', () => {
 
   it.each(NAMES)('%s matches electron-main/src/importHub/types.ts', (name) => {
     expect(decl(renderer, name)).toBe(decl(main, name));
+  });
+
+  it.each(SPENT_PREVIEW_ERRORS.map((e) => [e]))('spent-preview error %s is still what commitImportToken returns', (error) => {
+    const ipc = readFileSync(resolve(__dirname, '../../../../../electron-main/src/importHub/importHubIpc.ts'), 'utf-8');
+    expect(ipc).toContain(error.replace(/'/g, "\\'"));
   });
 });

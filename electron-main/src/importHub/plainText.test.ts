@@ -52,6 +52,41 @@ describe('plainTextToBlocks', () => {
     expect(blocksToProse(plainTextToBlocks('# hash\n\n- dash\n\n*stars*'))).toBe('\\# hash\n\n\\- dash\n\n\\*stars\\*');
   });
 
+  it('one paragraph per line with a blank line only after the title keeps every paragraph', () => {
+    const long = (seed: string) => `${seed} ${'and the lantern swung on its hook while the road ran north '.repeat(4).trim()}.`;
+    const text = `THE LANTERN ROAD\n\nChapter 1\n${long('A')}\n${long('B')}\n“Hello,” she said.\nChapter 2\n${long('C')}\n${long('D')}\n`;
+    const { story } = segmentBlocks(plainTextToBlocks(text), { fallbackTitle: 'Lantern' });
+    expect(story.structure).toBe('patterns');
+    const chapters = Object.fromEntries(story.chapters.map((c) => [c.title, c.scenes.map((s) => s.prose.split('\n\n').length)]));
+    expect(chapters['Chapter 1']).toEqual([3]);
+    expect(chapters['Chapter 2']).toEqual([2]);
+    expect(story.chapters.find((c) => c.title === 'Chapter 1')?.scenes[0].prose).toContain('north.\n\n“Hello,” she said.');
+  });
+
+  it('hard-wrapped prose with long paragraphs (few blank lines) is still joined per paragraph', () => {
+    const wrapped = Array.from({ length: 12 }, (_, i) => `line ${i} of a paragraph that was wrapped at seventy columns by`).join('\n');
+    const blocks = plainTextToBlocks(`${wrapped}\n\n${wrapped}\n`);
+    expect(blocks.map((b) => b.kind)).toEqual(['paragraph', 'paragraph']);
+  });
+
+  it('a line too long to have been hard-wrapped is never joined to the next one', () => {
+    const long = `${'word '.repeat(30).trim()}.`;
+    expect(plainTextToBlocks(`short wrapped\nline here\n\n${long}\nNext paragraph\n\nlast`).map((b) => b.kind === 'paragraph' && b.inlines[0].text))
+      .toEqual(['short wrapped line here', long, 'Next paragraph', 'last']);
+  });
+
+  it('with a paragraph per line, a blank line is an empty block (a possible scene break)', () => {
+    const long = (seed: string) => `${seed} ${'she walked on and did not look back at the house '.repeat(3).trim()}.`;
+    expect(plainTextToBlocks(`${long('A')}\n${long('B')}\n\n${long('C')}\n${long('D')}\n${long('E')}\n${long('F')}`).map((b) => b.kind))
+      .toEqual(['paragraph', 'paragraph', 'empty', 'paragraph', 'paragraph', 'paragraph', 'paragraph']);
+  });
+
+  it('a long run of whitespace inside a line is handled in linear time', () => {
+    const start = performance.now();
+    plainTextToBlocks(`x${' '.repeat(200_000)}y\n${'\t'.repeat(200_000)}z  \n`);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it('empty input → no blocks', () => {
     expect(plainTextToBlocks('')).toEqual([]);
     expect(plainTextToBlocks('\n\n  \n')).toEqual([]);

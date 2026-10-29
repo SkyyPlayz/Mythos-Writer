@@ -1,6 +1,8 @@
 // #1765 — rich-text core: inline serializer, prose, manuscript markers, segmenter.
 
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
+import MarkdownIt from 'markdown-it';
 import {
   blocksToProse,
   inlinesToMarkdown,
@@ -104,6 +106,122 @@ describe('inlinesToMarkdown', () => {
   });
 });
 
+// ── Round trip through markdown-it (what tiptap-markdown parses with) ────────
+
+// tiptap-markdown's defaults: inline HTML on (for <u>), linkify and breaks off.
+const markdownIt = new MarkdownIt({ html: true });
+const HTML_MARK: Record<string, string> = { strong: 'b', em: 'i', s: 's', u: 'u' };
+
+/** Characters of one paragraph with their marks ('b', 'i', 's', 'u'); '\n' is a hard break. */
+type MarkedChars = Array<[string, string]>;
+
+/** What the editor reads back from serialized Markdown, as marked characters. */
+function readBack(src: string): MarkedChars | string {
+  const tokens = markdownIt.parse(src, {});
+  if (src === '') return tokens.length === 0 ? [] : 'tokens for empty input';
+  if (tokens.length !== 3 || tokens[0].type !== 'paragraph_open' || tokens[1].type !== 'inline') {
+    return `not one paragraph: ${tokens.map((t) => t.type).join(',')}`;
+  }
+  const open: Record<string, number> = { b: 0, i: 0, s: 0, u: 0 };
+  const out: MarkedChars = [];
+  const key = () => Object.keys(open).filter((k) => open[k] > 0).join('');
+  for (const t of tokens[1].children ?? []) {
+    const html = t.type === 'html_inline' ? /^<(\/?)(strong|em|s|u)>$/.exec(t.content) : null;
+    if (t.type === 'text' || t.type === 'text_special') for (const ch of t.content) out.push([ch, key()]);
+    else if (t.type === 'hardbreak') out.push(['\n', '']);
+    else if (/^(strong|em|s)_(open|close)$/.test(t.type)) {
+      const [tag, dir] = t.type.split('_');
+      open[HTML_MARK[tag]] += dir === 'open' ? 1 : -1;
+    } else if (html) open[HTML_MARK[html[2]]] += html[1] ? -1 : 1;
+    else return `unexpected ${t.type} ${JSON.stringify(t.content)}`;
+  }
+  return out;
+}
+
+/** The serializer's contract: whitespace collapsed, lines trimmed, end breaks dropped, marks kept. */
+function expectedChars(runs: RichInline[]): MarkedChars {
+  const lines: MarkedChars[] = [[]];
+  for (const r of runs) {
+    if (r.hardBreak) { lines.push([]); continue; }
+    const k = [r.bold && 'b', r.italic && 'i', r.strike && 's', r.underline && 'u'].filter(Boolean).join('');
+    for (const ch of r.text.replace(/[\t\n\r\f\v\u00a0]/g, ' ')) {
+      const line = lines[lines.length - 1];
+      if (ch === ' ' && (line.length === 0 || line[line.length - 1][0] === ' ')) continue;
+      line.push([ch, k]);
+    }
+  }
+  for (const line of lines) while (line.length && line[line.length - 1][0] === ' ') line.pop();
+  while (lines.length && lines[0].length === 0) lines.shift();
+  while (lines.length && lines[lines.length - 1].length === 0) lines.pop();
+  const out: MarkedChars = [];
+  lines.forEach((line, i) => {
+    if (i > 0) out.push(['\n', '']);
+    out.push(...line);
+  });
+  return out;
+}
+
+/** Marks on whitespace are the serializer's choice (it moves spaces outside markers). */
+const comparable = (chars: MarkedChars) => chars.map(([ch, k]) => (ch === ' ' || ch === '\n' ? ch : `${ch}:${k}`));
+
+function expectRoundTrip(runs: RichInline[]): void {
+  const md = inlinesToMarkdown(runs);
+  const back = readBack(md);
+  expect(typeof back === 'string' ? `${back} in ${JSON.stringify(md)}` : comparable(back), JSON.stringify(md))
+    .toEqual(comparable(expectedChars(runs)));
+}
+
+describe('inlinesToMarkdown — markdown-it round trip', () => {
+  it('runs of underscores (redacted names, blanks to fill in) stay literal', () => {
+    expect(inlinesToMarkdown([{ text: 'Mr. ______ and Mrs. ______ came' }])).toBe('Mr. \\_\\_\\_\\_\\_\\_ and Mrs. \\_\\_\\_\\_\\_\\_ came');
+    expectRoundTrip([{ text: 'Mr. ______ and Mrs. ______ came' }]);
+    expectRoundTrip([{ text: 'Name: __________ Date: ____' }]);
+    expectRoundTrip([{ text: 'run __main__ now, a__b and snake_case' }]);
+    expect(inlinesToMarkdown([{ text: 'snake_case' }])).toBe('snake_case');
+  });
+
+  it('a mark next to punctuation that a delimiter can\'t flank uses the HTML form', () => {
+    expect(inlinesToMarkdown([{ text: 'It was ' }, { text: 'over—', italic: true }, { text: 'and' }])).toBe('It was <em>over—</em>and');
+    expect(inlinesToMarkdown([{ text: 'She stopped' }, { text: '—then', italic: true }])).toBe('She stopped<em>—then</em>');
+    expect(inlinesToMarkdown([{ text: 'Chapter 1:', bold: true }, { text: 'The Gate' }])).toBe('<strong>Chapter 1:</strong>The Gate');
+    expect(inlinesToMarkdown([{ text: 'Wait' }, { text: '...', bold: true }, { text: 'what' }])).toBe('Wait<strong>...</strong>what');
+    expect(inlinesToMarkdown([{ text: 'no' }, { text: '(gone)', strike: true }, { text: 'more' }])).toBe('no<s>(gone)</s>more');
+    // Where delimiters do flank, the editor's own form stays.
+    expect(inlinesToMarkdown([{ text: 'It was ' }, { text: 'over—', italic: true }, { text: ' and' }])).toBe('It was *over—* and');
+    expect(inlinesToMarkdown([{ text: '“' }, { text: 'Go', bold: true }, { text: ',” she said.' }])).toBe('“**Go**,” she said.');
+    for (const runs of [
+      [{ text: 'It was ' }, { text: 'over—', italic: true }, { text: 'and' }],
+      [{ text: 'She stopped' }, { text: '—then', italic: true }],
+      [{ text: 'Chapter 1:', bold: true }, { text: 'The Gate' }],
+      [{ text: 'Wait' }, { text: '...', bold: true }, { text: 'what' }],
+      [{ text: 'no' }, { text: '(gone)', strike: true }, { text: 'more' }],
+      [{ text: 'un' }, { text: 'believ', italic: true }, { text: 'able' }],
+    ]) expectRoundTrip(runs);
+  });
+
+  it('a mark that ends while a longer one continues does not close and reopen it', () => {
+    expect(inlinesToMarkdown([{ text: 'a', bold: true, italic: true }, { text: ' b', italic: true }])).toBe('***a** b*');
+    expectRoundTrip([{ text: 'a', bold: true, italic: true }, { text: ' b', italic: true }]);
+    // Italic then bold with no space between: the run "*a***b**" would be ambiguous.
+    expectRoundTrip([{ text: 'a', italic: true }, { text: 'b', bold: true }]);
+  });
+
+  it('any runs of text and marks read back as the same characters and marks', () => {
+    const unit = fc.constantFrom(
+      'a', 'b', 'Z', '1', '9', ' ', ' ', ' ', '*', '_', '~', '-', '#', '.', ',', '—', '(', ')', '<', '>', '&', '\\', '`',
+      '[', ']', '!', '"', '“', '’', ':', '=', '+', '\u00a0', 'é', '\t', '$', '%', ';', '?', '/', '{', '}', '^', '\'',
+    );
+    const run = fc.oneof(
+      { weight: 9, arbitrary: fc.record({
+        text: fc.string({ unit, maxLength: 6 }),
+        bold: fc.boolean(), italic: fc.boolean(), underline: fc.boolean(), strike: fc.boolean(),
+      }) },
+      { weight: 1, arbitrary: fc.constant<RichInline>({ text: '', hardBreak: true }) },
+    );
+    fc.assert(fc.property(fc.array(run, { maxLength: 8 }), (runs) => { expectRoundTrip(runs); }), { numRuns: 4000, seed: 1765 });
+  });
+});
+
 describe('inlinesToPlainText', () => {
   it('drops marks, turns hard breaks into spaces, collapses whitespace', () => {
     expect(inlinesToPlainText([{ text: ' Chapter ', bold: true }, { text: '', hardBreak: true }, { text: 'One\u00a0' }]))
@@ -197,9 +315,22 @@ describe('matchChapterMarker', () => {
 
 describe('segmentBlocks — heading styles', () => {
   it('H1 chapters + H2 scenes; the first H1 is the story title (legacy rule)', () => {
-    expect(outline([h(1, 'Chapter One'), h(2, 'Morning'), p('Sun.'), h(2, 'Evening'), p('Stars.'), h(1, 'Chapter Two'), h(2, 'Dawn'), p('Fresh.')]))
+    expect(outline([h(1, 'The Gate'), h(2, 'Morning'), p('Sun.'), h(2, 'Evening'), p('Stars.'), h(1, 'The Road'), h(2, 'Dawn'), p('Fresh.')]))
       .toEqual({
-        title: 'Chapter One',
+        title: 'The Gate',
+        structure: 'headings',
+        partCount: 0,
+        chapters: [
+          { title: 'The Gate', scenes: ['Morning', 'Evening'] },
+          { title: 'The Road', scenes: ['Dawn'] },
+        ],
+      });
+  });
+
+  it('a first H1 that reads "Chapter One" / "Prologue" is not the story title: the file name stays', () => {
+    expect(outline([h(1, 'Chapter One'), h(2, 'Morning'), p('Sun.'), h(2, 'Evening'), p('Stars.'), h(1, 'Chapter Two'), h(2, 'Dawn'), p('Fresh.')], 'My Novel'))
+      .toEqual({
+        title: 'My Novel',
         structure: 'headings',
         partCount: 0,
         chapters: [
@@ -207,6 +338,7 @@ describe('segmentBlocks — heading styles', () => {
           { title: 'Chapter Two', scenes: ['Dawn'] },
         ],
       });
+    expect(outline([h(1, 'Prologue'), p('x'), h(1, 'Chapter 1'), p('y')], 'My Novel').title).toBe('My Novel');
   });
 
   it('three levels: H1 part folded into "Part · Chapter", H2 chapter, H3 scene; title stays the fallback', () => {
@@ -254,9 +386,42 @@ describe('segmentBlocks — heading styles', () => {
       .toEqual([{ title: 'Chapter One', scenes: ['Chapter One', 'Scene Title'] }]);
   });
 
-  it('prose before the first chapter heading becomes a chapter titled with the fallback', () => {
+  it('a short run of text before the first chapter heading is kept as "Front Matter", not a chapter named after the file', () => {
     expect(outline([p('Dedication.'), h(1, 'A'), h(2, 'A1'), p('x'), h(1, 'B'), h(2, 'B1'), p('y')], 'Book').chapters[0])
-      .toEqual({ title: 'Book', scenes: ['Book'] });
+      .toEqual({ title: 'Front Matter', scenes: ['Front Matter'] });
+  });
+
+  it('a Normal-style title page names the book (ALL CAPS tidied), skipping the byline; its words stay in Front Matter', () => {
+    const blocks = [
+      p('THE LANTERN ROAD OF THE NORTH'), p('a novel by Skyy'), page, p('For my brother.'), page,
+      h(1, 'Chapter One'), p('x'), h(1, 'Chapter Two'), p('y'),
+    ];
+    const o = outline(blocks, 'lantern-final-v3');
+    expect(o.title).toBe('The Lantern Road of the North');
+    expect(o.chapters.map((c) => c.title)).toEqual(['Front Matter', 'Chapter One', 'Chapter Two']);
+    const { story } = segmentBlocks(blocks, { fallbackTitle: 'lantern-final-v3' });
+    const frontProse = story.chapters[0].scenes.map((sc) => sc.prose).join('\n');
+    expect(frontProse).toContain('a novel by Skyy');
+    expect(frontProse).toContain('For my brother.');
+  });
+
+  it('same for typed "CHAPTER ONE" lines; a byline or sentence never becomes the title', () => {
+    const typed = [p('by Skyy'), page, p('CHAPTER ONE'), p('x'), page, p('CHAPTER TWO'), p('y')];
+    expect(outline(typed, 'draft').title).toBe('draft');
+    expect(outline(typed, 'draft').chapters[0].title).toBe('Front Matter');
+    expect(outline([p('It was a dark night.'), p('CHAPTER ONE'), p('x'), p('CHAPTER TWO'), p('y')], 'draft').title).toBe('draft');
+  });
+
+  it('a Title block or authoritative title is never replaced by the title page line', () => {
+    const blocks = [p('Working Title'), h(1, 'Chapter One'), p('x'), h(1, 'Chapter Two'), p('y')];
+    expect(outline([title('Real Name'), ...blocks]).title).toBe('Real Name');
+    expect(outline(blocks, 'Dc Title', true).title).toBe('Dc Title');
+  });
+
+  it('a long unlabelled opening (> 250 words) is a real chapter, not Front Matter', () => {
+    const long = p(Array.from({ length: 260 }, (_, i) => `w${i}`).join(' '));
+    const o = outline([long, h(1, 'Chapter One'), p('x'), h(1, 'Chapter Two'), p('y')], 'Book');
+    expect(o.chapters[0].title).toBe('Book');
   });
 
   it('a Title block wins over the first-H1 rule; titleIsAuthoritative wins over both', () => {
@@ -289,6 +454,52 @@ describe('segmentBlocks — heading styles', () => {
   it('keeps H4–H6 headings inside scene prose', () => {
     const { story } = segmentBlocks([h(1, 'A'), h(4, 'A letter'), p('Dear you.'), h(1, 'B'), p('y')], { fallbackTitle: 'F' });
     expect(story.chapters[0].scenes[0].prose).toBe('#### A letter\n\nDear you.');
+  });
+
+  it('H1 "Part …" over H2 "Chapter …" (two levels) is parts over chapters, not chapters over scenes', () => {
+    expect(outline([
+      h(1, 'Part One'), h(2, 'Chapter 1'), p('a'), h(2, 'Chapter 2'), p('b'),
+      h(1, 'Part Two'), h(2, 'Chapter 3'), p('c'),
+    ], 'My Novel')).toEqual({
+      title: 'My Novel',
+      structure: 'headings',
+      partCount: 2,
+      chapters: [
+        { title: 'Part One · Chapter 1', scenes: ['Part One · Chapter 1'] },
+        { title: 'Part One · Chapter 2', scenes: ['Part One · Chapter 2'] },
+        { title: 'Part Two · Chapter 3', scenes: ['Part Two · Chapter 3'] },
+      ],
+    });
+  });
+
+  it('H2 "Part …" over H3 "Chapter …" under a book-title H1; scene breaks still split scenes', () => {
+    expect(outline([
+      h(1, 'The Lantern Road'), h(2, 'Book One'), h(3, 'Chapter 1'), p('a'), scene, p('b'), h(2, 'Book Two'), h(3, 'Prologue'), p('c'),
+    ])).toEqual({
+      title: 'The Lantern Road',
+      structure: 'headings',
+      partCount: 2,
+      chapters: [
+        { title: 'Book One · Chapter 1', scenes: ['Scene 1', 'Scene 2'] },
+        { title: 'Book Two · Prologue', scenes: ['Book Two · Prologue'] },
+      ],
+    });
+  });
+
+  it('a single "Part One" H1 above H2 chapters + H3 scenes is a part, not the book title', () => {
+    const o = outline([h(1, 'Part One'), h(2, 'Night'), h(3, 'a'), p('x'), h(2, 'Day'), h(3, 'b'), p('y')], 'My Novel');
+    expect(o.title).toBe('My Novel');
+    expect(o.partCount).toBe(1);
+    expect(o.chapters.map((c) => c.title)).toEqual(['Part One · Night', 'Part One · Day']);
+  });
+
+  it('"Part …" headings at the same level as the chapter headings are parts', () => {
+    const o = outline([
+      h(1, 'Part One'), h(1, 'Chapter 1'), p('a'), h(1, 'Chapter 2'), p('b'), h(1, 'Part Two'), h(1, 'Chapter 3'), p('c'),
+    ], 'My Novel');
+    expect(o.title).toBe('My Novel');
+    expect(o.partCount).toBe(2);
+    expect(o.chapters.map((c) => c.title)).toEqual(['Part One · Chapter 1', 'Part One · Chapter 2', 'Part Two · Chapter 3']);
   });
 
   it('ignores empty headings (Enter pressed in a heading style)', () => {
@@ -358,6 +569,13 @@ describe('segmentBlocks — "Chapter One" lines', () => {
     expect(o.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
   });
 
+  it('a chapter styled as a heading among typed "Chapter …" lines is still a chapter, not the title', () => {
+    const o = outline([h(1, 'Chapter 1'), p('a'), p('Chapter 2'), p('b'), p('Chapter 3'), p('c')], 'My Novel');
+    expect(o.structure).toBe('patterns');
+    expect(o.title).toBe('My Novel');
+    expect(o.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
+  });
+
   it('a lone heading before the markers is the book title', () => {
     const o = outline([h(1, 'The Lantern Road'), p('Chapter 1'), p('a'), p('Chapter 2'), p('b')]);
     expect(o.title).toBe('The Lantern Road');
@@ -421,6 +639,22 @@ describe('segmentBlocks — empty paragraphs', () => {
   it('two or more empty paragraphs are a scene break in a normally spaced document', () => {
     const o = outline([h(1, 'A'), p('1'), p('2'), p('3'), empty, empty, p('4'), p('5'), empty, p('6')]);
     expect(o.chapters).toEqual([{ title: 'A', scenes: ['Scene 1', 'Scene 2'] }]);
+  });
+
+  it('one empty paragraph is a scene break in a single-spaced manuscript where gaps are rare', () => {
+    const { story } = segmentBlocks([
+      p('Chapter 1'), p('A1.'), p('A2.'), p('A3.'), empty, p('B1.'), p('B2.'), p('Chapter 2'), p('C1.'), p('C2.'),
+    ], { fallbackTitle: 'F' });
+    expect(story.chapters.map((c) => [c.title, c.scenes.map((s) => s.prose)])).toEqual([
+      ['Chapter 1', ['A1.\n\nA2.\n\nA3.', 'B1.\n\nB2.']],
+      ['Chapter 2', ['C1.\n\nC2.']],
+    ]);
+  });
+
+  it('single empty paragraphs scattered too often to be scene breaks are ignored', () => {
+    const blocks: RichBlock[] = [h(1, 'A')];
+    for (let i = 0; i < 12; i++) blocks.push(p(`P${i}.`), ...(i % 3 === 0 ? [empty] : []));
+    expect(outline(blocks).chapters[0].scenes).toHaveLength(1);
   });
 
   it('a double-spaced manuscript (empty paragraph after every paragraph) is NOT hundreds of scenes', () => {

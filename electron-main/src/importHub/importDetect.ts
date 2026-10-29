@@ -36,8 +36,20 @@ function extOf(name: string): string {
   return path.extname(name).replace(/^\./, '').toLowerCase();
 }
 
-/** A NUL byte in the first 4 KB means binary, not text. */
+/** 'utf-16le' / 'utf-16be' when the head starts with a UTF-16 byte-order mark. */
+function utf16Bom(head: Buffer): 'utf-16le' | 'utf-16be' | null {
+  if (head.length >= 2 && head[0] === 0xff && head[1] === 0xfe) return 'utf-16le';
+  if (head.length >= 2 && head[0] === 0xfe && head[1] === 0xff) return 'utf-16be';
+  return null;
+}
+
+/**
+ * A NUL byte in the first 4 KB means binary, not text — except in UTF-16 text
+ * (Word's "Plain Text → Unicode", older Notepad "Unicode"), which is full of
+ * NULs and announces itself with a BOM. The readers decode it by that BOM.
+ */
 function looksBinary(head: Buffer): boolean {
+  if (utf16Bom(head)) return false;
   return head.includes(0);
 }
 
@@ -87,7 +99,10 @@ function detectDirectory(assessed: AssessedImportPath): ImportDetection {
 
 function readWholeText(realPath: string): string | null {
   try {
-    return fs.readFileSync(realPath, 'utf-8');
+    const buf = fs.readFileSync(realPath);
+    const bom = utf16Bom(buf);
+    if (bom) return new TextDecoder(bom).decode(buf.subarray(2));
+    return new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
   } catch {
     return null;
   }

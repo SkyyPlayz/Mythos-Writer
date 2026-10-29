@@ -21,6 +21,7 @@ import { IPC_CHANNELS, UNTRUSTED_FRAME_REJECTION } from '../ipc.js';
 import type { Manifest } from '../ipc.js';
 import { defaultManifest, readManifest, writeManifest as writeManifestRaw } from '../vault.js';
 import {
+  IMPORT_ALREADY_RUNNING_ERROR,
   IMPORT_NO_VAULT_REASON,
   IMPORT_SOURCE_CHANGED_ERROR,
   IMPORT_TOKEN_EXPIRED_ERROR,
@@ -30,6 +31,7 @@ import {
 } from './importHubIpc.js';
 import { _clearImportSessionsForTest } from './importPreview.js';
 import type { ImportPlan, ImportPreviewResult } from './types.js';
+import { ImportUserError } from './importErrors.js';
 
 let tmp: string;
 
@@ -173,6 +175,18 @@ describe('import:preview', () => {
     expect(text).not.toMatch(/ENOENT|openSync|at Object/);
   });
 
+  it('shows an importer\'s writer-facing message (ImportUserError), scrubbed of paths', async () => {
+    const { deps } = harness();
+    deps.buildPlan = vi.fn(async () => {
+      throw new ImportUserError(`This ePub has no readable chapters. (${tmp}/book.epub)`);
+    });
+    const r = await previewImportPath(source(), deps);
+    expect(r).toMatchObject({ ok: false, refused: false });
+    const error = (r as { error: string }).error;
+    expect(error).toContain('This ePub has no readable chapters.');
+    expect(error).not.toContain(tmp);
+  });
+
   it('marks the preview not committable when no vault is open', async () => {
     const { deps } = harness({ vault: false });
     const r = await previewImportPath(source(), deps);
@@ -216,6 +230,65 @@ describe('import:commit', () => {
     expect(r).toEqual({ ok: false, error: IMPORT_SOURCE_CHANGED_ERROR });
     expect(readManifest(manifestPath).stories).toHaveLength(0);
     expect(deps.flushRenderer).not.toHaveBeenCalled();
+  });
+
+  it('keeps the preview after a commit that failed before writing, so Try again works', async () => {
+    const { deps, manifestPath } = harness();
+    registerImportHubIpc(deps);
+    const token = await previewToken(deps, source());
+    const commit = handleMap.get(IPC_CHANNELS.IMPORT_COMMIT)!;
+    vi.mocked(deps.flushRenderer).mockRejectedValueOnce(new Error('renderer gone'));
+    expect(await commit(topEvent(), { token })).toEqual({
+      ok: false,
+      error: 'Mythos couldn\'t save your open work before importing. Try again.',
+    });
+    expect(readManifest(manifestPath).stories).toHaveLength(0);
+    expect(await commit(topEvent(), { token })).toMatchObject({ ok: true, storyTitle: 'Imported Tale' });
+    expect(readManifest(manifestPath).stories).toHaveLength(1);
+    expect(await commit(topEvent(), { token })).toEqual({ ok: false, error: IMPORT_TOKEN_EXPIRED_ERROR });
+  });
+
+  it('keeps the preview after a rolled-back story write (e.g. disk full) and imports once on retry', async () => {
+    const { deps, manifestPath, vaultRoot } = harness();
+    registerImportHubIpc(deps);
+    const token = await previewToken(deps, source());
+    const commit = handleMap.get(IPC_CHANNELS.IMPORT_COMMIT)!;
+    const realWrite = deps.writeManifest;
+    deps.writeManifest = vi.fn(() => {
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    });
+    expect(await commit(topEvent(), { token })).toEqual({ ok: false, error: 'Your disk is full. Free some space and try again.' });
+    deps.writeManifest = realWrite;
+    expect(await commit(topEvent(), { token })).toMatchObject({ ok: true });
+    expect(readManifest(manifestPath).stories).toHaveLength(1);
+    // The failed attempt was rolled back: exactly one story folder on disk.
+    expect(fs.readdirSync(path.join(vaultRoot, 'Manuscript'))).toEqual(['imported-tale']);
+  });
+
+  it('refuses a second commit of the same preview while the first is still running', async () => {
+    const { deps, manifestPath } = harness();
+    registerImportHubIpc(deps);
+    const token = await previewToken(deps, source());
+    const commit = handleMap.get(IPC_CHANNELS.IMPORT_COMMIT)!;
+    let finishFlush: () => void = () => {};
+    vi.mocked(deps.flushRenderer).mockImplementationOnce(() => new Promise<void>((resolve) => { finishFlush = resolve; }));
+    const first = commit(topEvent(), { token });
+    expect(await commit(topEvent(), { token })).toEqual({ ok: false, error: IMPORT_ALREADY_RUNNING_ERROR });
+    finishFlush();
+    expect(await first).toMatchObject({ ok: true });
+    expect(readManifest(manifestPath).stories).toHaveLength(1);
+  });
+
+  it('spends the token when the source changed (a retry cannot fix that)', async () => {
+    const { deps } = harness();
+    registerImportHubIpc(deps);
+    const p = source();
+    const token = await previewToken(deps, p);
+    const future = new Date(Date.now() + 60_000);
+    fs.utimesSync(p, future, future);
+    const commit = handleMap.get(IPC_CHANNELS.IMPORT_COMMIT)!;
+    expect(await commit(topEvent(), { token })).toEqual({ ok: false, error: IMPORT_SOURCE_CHANGED_ERROR });
+    expect(await commit(topEvent(), { token })).toEqual({ ok: false, error: IMPORT_TOKEN_EXPIRED_ERROR });
   });
 
   it('rejects junk tokens', async () => {

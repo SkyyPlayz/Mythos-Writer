@@ -92,6 +92,25 @@ describe('detectImportSource — files', () => {
     expect(detectImportSource(assessed(p))).toEqual({ ok: true, kind: 'scrivener' });
   });
 
+  function utf16(text: string, order: 'le' | 'be'): Buffer {
+    const le = Buffer.from(text, 'utf16le');
+    if (order === 'le') return Buffer.concat([Buffer.from([0xff, 0xfe]), le]);
+    return Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(le).swap16()]);
+  }
+
+  it('accepts UTF-16 text with a byte-order mark (Word "Unicode" .txt, old Notepad)', () => {
+    const body = 'Chapter One\r\n\r\nIt was dark.';
+    expect(detectImportSource(assessed(write('Unicode.txt', utf16(body, 'le'))))).toEqual({ ok: true, kind: 'text' });
+    expect(detectImportSource(assessed(write('BigEndian.txt', utf16(body, 'be'))))).toEqual({ ok: true, kind: 'text' });
+    expect(detectImportSource(assessed(write('Notes.md', utf16('# Hi\n', 'le'))))).toEqual({ ok: true, kind: 'markdown' });
+  });
+
+  it('decodes UTF-16 HTML before checking for a Google Docs export', () => {
+    const gdoc = '<html><body><p><b id="docs-internal-guid-1">x</b></p></body></html>';
+    expect(detectImportSource(assessed(write('Draft.html', utf16(gdoc, 'le'))))).toEqual({ ok: true, kind: 'gdoc-html' });
+    expect(detectImportSource(assessed(write('Page.html', utf16('<p>Plain</p>', 'be'))))).toEqual({ ok: true, kind: 'html' });
+  });
+
   it('rejects binary content behind a text extension', () => {
     const r = detectImportSource(assessed(write('weird.md', Buffer.from([0x41, 0x00, 0x42, 0x00]))));
     expect(r.ok).toBe(false);

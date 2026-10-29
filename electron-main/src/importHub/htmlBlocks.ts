@@ -10,7 +10,7 @@
 //
 // Pure — no Electron, no fs.
 
-import type { RichBlock, RichInline } from './blocks.js';
+import { isSceneBreakText, type RichBlock, type RichInline } from './blocks.js';
 
 // ─── Entities ────────────────────────────────────────────────────────────────
 
@@ -113,9 +113,24 @@ function tagEnd(html: string, from: number): number {
 function parseHtml(html: string): ElementNode {
   const root: ElementNode = { type: 'element', tag: '#root', attrs: {}, children: [] };
   const stack: ElementNode[] = [root];
-  // mammoth writes a Scene Break paragraph as `<hr class="…">* * *</hr>`; only
-  // when the source really closes its <hr>s is the content inside one dropped.
-  const hrHasCloseTags = /<\/hr\s*>/i.test(html);
+  // mammoth writes a Scene Break paragraph as `<hr class="…">* * *</hr>`. An
+  // <hr> holds content only when its own `</hr>` comes before the next <hr>;
+  // every other <hr> is void. Positions are found once, in one pass each.
+  const hrOpens: number[] = [];
+  const hrCloses: number[] = [];
+  for (const m of html.matchAll(/<hr\b/gi)) hrOpens.push(m.index);
+  for (const m of html.matchAll(/<\/hr\b/gi)) hrCloses.push(m.index);
+  let nextHrOpen = 0;
+  let nextHrClose = 0;
+  const hrIsContainer = (at: number, contentFrom: number): boolean => {
+    while (nextHrOpen < hrOpens.length && hrOpens[nextHrOpen] <= at) nextHrOpen++;
+    while (nextHrClose < hrCloses.length && hrCloses[nextHrClose] < contentFrom) nextHrClose++;
+    const close = hrCloses[nextHrClose];
+    return close !== undefined && (nextHrOpen >= hrOpens.length || close < hrOpens[nextHrOpen]);
+  };
+  // Once a quoted attribute runs unclosed to the end of the input, every later
+  // tag would rescan to the end too: from then on tags end at the next `>`.
+  let quotesBroken = false;
   const top = () => stack[stack.length - 1];
   const appendText = (text: string) => {
     if (!text) return;
@@ -182,8 +197,11 @@ function parseHtml(html: string): ElementNode {
       continue;
     }
     // An unbalanced quote must not swallow the rest of the document.
-    let end = tagEnd(html, lt + nameMatch[0].length);
-    if (end === -1) end = html.indexOf('>', lt);
+    let end = quotesBroken ? -1 : tagEnd(html, lt + nameMatch[0].length);
+    if (end === -1) {
+      quotesBroken = true;
+      end = html.indexOf('>', lt);
+    }
     if (end === -1) {
       i = html.length;
       break;
@@ -201,13 +219,12 @@ function parseHtml(html: string): ElementNode {
         top().children.push(el);
         continue;
       }
-      const close = new RegExp(`</${tag}\\s*>`, 'i');
-      const rest = html.slice(i);
-      const cm = close.exec(rest);
-      const raw = cm ? rest.slice(0, cm.index) : rest;
-      el.children.push({ type: 'text', text: raw });
+      const close = new RegExp(`</${tag}\\s*>`, 'gi');
+      close.lastIndex = i;
+      const cm = close.exec(html);
+      el.children.push({ type: 'text', text: html.slice(i, cm ? cm.index : html.length) });
       top().children.push(el);
-      i = cm ? i + cm.index + cm[0].length : html.length;
+      i = cm ? cm.index + cm[0].length : html.length;
       continue;
     }
 
@@ -232,7 +249,7 @@ function parseHtml(html: string): ElementNode {
     }
 
     top().children.push(el);
-    const isVoid = tag === 'hr' ? !hrHasCloseTags : VOID_TAGS.has(tag);
+    const isVoid = tag === 'hr' ? selfClosing || !hrIsContainer(lt, i) : VOID_TAGS.has(tag);
     if (!selfClosing && !isVoid && stack.length < MAX_DEPTH) stack.push(el);
   }
   return root;
@@ -268,7 +285,8 @@ function parseDeclarations(decl: string): StyleMarks {
     const idx = part.indexOf(':');
     if (idx === -1) continue;
     const prop = part.slice(0, idx).trim().toLowerCase();
-    const value = part.slice(idx + 1).trim().toLowerCase().replace(/\s*!important$/, '');
+    let value = part.slice(idx + 1).trim().toLowerCase();
+    if (value.endsWith('!important')) value = value.slice(0, -'!important'.length).trimEnd();
     switch (prop) {
       case 'font-weight': {
         const n = Number(value);
@@ -303,16 +321,61 @@ function parseDeclarations(decl: string): StyleMarks {
   return out;
 }
 
-/** `.c3{font-weight:700}` rules from <style> blocks → class → marks (later rules win). */
+/** Remove CSS comments in one forward pass (an unclosed one runs to the end). */
+function stripCssComments(css: string): string {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const open = css.indexOf('/*', i);
+    if (open === -1) return out + css.slice(i);
+    out += css.slice(i, open);
+    const close = css.indexOf('*/', open + 2);
+    if (close === -1) return out;
+    i = close + 2;
+  }
+}
+
+/**
+ * `.c3{font-weight:700}` rules from <style> blocks → class → marks (later
+ * rules win). One forward scan with indexOf — the CSS is untrusted, so no
+ * backtracking regex ever runs over it. At-rules (`@import`, `@media {…}`)
+ * are skipped; rules nested in `@media` are not read.
+ */
 function parseClassTable(css: string): Map<string, StyleMarks> {
   const table = new Map<string, StyleMarks>();
-  const clean = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]*;/gi, '');
-  const re = /([^{}]+)\{([^{}]*)\}/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(clean))) {
-    const marks = parseDeclarations(m[2]);
+  const clean = stripCssComments(css);
+  let i = 0;
+  while (i < clean.length) {
+    const open = clean.indexOf('{', i);
+    if (open === -1) break;
+    // The selector is whatever follows the last `}` or `;` before this `{`.
+    let selStart = i;
+    for (let k = open - 1; k >= i; k--) {
+      if (clean[k] === ';') { selStart = k + 1; break; }
+    }
+    const selector = clean.slice(selStart, open);
+    const close = clean.indexOf('}', open + 1);
+    const nested = clean.indexOf('{', open + 1);
+    if (close === -1) break;
+    if (selector.trimStart().startsWith('@') && nested !== -1 && nested < close) {
+      // `@media … {` — skip to the end of the block (one level of nesting).
+      let depth = 1;
+      let k = open + 1;
+      while (k < clean.length && depth > 0) {
+        const c = clean[k];
+        if (c === '{') depth++;
+        else if (c === '}') depth--;
+        k++;
+      }
+      i = k;
+      continue;
+    }
+    i = close + 1;
+    if (nested !== -1 && nested < close) continue; // malformed: `a { b { … }`
+    const marks = parseDeclarations(clean.slice(open + 1, close));
     if (Object.keys(marks).length === 0) continue;
-    for (const sel of m[1].split(',')) {
+    for (const sel of selector.split(',')) {
+      if (sel.length > 200) continue;
       const cls = /^\s*(?:[a-z0-9]*)\.([A-Za-z_][\w-]*)\s*$/.exec(sel);
       if (!cls) continue;
       table.set(cls[1], { ...table.get(cls[1]), ...marks });
@@ -328,8 +391,21 @@ export function isGoogleDocsHtml(html: string): boolean {
   const head = html.slice(0, 200_000);
   return /class="[^"]*\bdoc-content\b/i.test(head)
     || /id="docs-internal-guid-/i.test(head)
-    || /<meta[^>]+(?:google-docs|docs\.google\.com)/i.test(head)
+    || hasGoogleMeta(head)
     || /\.lst-kix_[\w-]+/.test(head);
+}
+
+/** A `<meta>` naming Google Docs — each tag is sliced out by indexOf, never regex-scanned to its end. */
+function hasGoogleMeta(html: string): boolean {
+  const re = /<meta\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const end = html.indexOf('>', m.index);
+    if (end === -1) return false;
+    if (/google-docs|docs\.google\.com/i.test(html.slice(m.index, end))) return true;
+    re.lastIndex = end + 1;
+  }
+  return false;
 }
 
 // ─── Walk ────────────────────────────────────────────────────────────────────
@@ -537,6 +613,10 @@ export function htmlToBlocks(html: string): { blocks: RichBlock[]; title?: strin
     if (el.tag === 'hr') {
       const page = classes.includes('mythos-pagebreak') || sm.pageBreakBefore === true || classes.includes('page-break');
       pushBreak(page ? 'pageBreak' : 'sceneBreak');
+      // `<hr>* * *</hr>` (mammoth's Scene Break) holds only the marker; any
+      // real text inside an <hr>…</hr> is still the writer's and is kept.
+      const inner = decodeEntities(textOf(el)).replace(/[\s\u00a0]+/g, ' ').trim();
+      if (inner && !isSceneBreakText(inner)) for (const c of el.children) visit(c, ctx);
       return;
     }
     if (sm.hidden) return;

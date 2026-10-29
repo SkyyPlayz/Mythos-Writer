@@ -5,8 +5,10 @@
 // of RichBlocks. One segmenter turns blocks into chapters/scenes, and one
 // serializer turns block inlines into the editor's Markdown dialect
 // (frontend/src/lib/useRichEditor.ts — tiptap-markdown: **bold**, *italic*,
-// <u>underline</u>, ~~strike~~, blank-line paragraphs, `\`+newline hard
-// breaks, ` {.center}` alignment suffix, backslash-escaped block syntax).
+// <u>underline</u>, ~~strike~~ — or <strong>/<em>/<s> where CommonMark's
+// flanking rules would leave a delimiter literal — blank-line paragraphs,
+// `\`+newline hard breaks, ` {.center}` alignment suffix, backslash-escaped
+// block syntax).
 //
 // Pure — no Electron, no fs.
 
@@ -53,14 +55,43 @@ export type RichBlock =
 
 type MarkName = 'bold' | 'italic' | 'strike' | 'underline';
 
-/** Fixed nesting order, outermost first. */
+/** Nesting order, outermost first, for marks that start and end together. */
 const MARK_ORDER: readonly MarkName[] = ['bold', 'italic', 'strike', 'underline'];
-const MARK_OPEN: Record<MarkName, string> = { bold: '**', italic: '*', strike: '~~', underline: '<u>' };
-const MARK_CLOSE: Record<MarkName, string> = { bold: '**', italic: '*', strike: '~~', underline: '</u>' };
+/** Delimiter form (underline has none in the editor dialect). */
+const MARK_DELIM: Record<MarkName, string> = { bold: '**', italic: '*', strike: '~~', underline: '' };
+/** HTML form: used when CommonMark's flanking rules would leave the delimiter literal. */
+const MARK_TAG: Record<MarkName, string> = { bold: 'strong', italic: 'em', strike: 's', underline: 'u' };
 
 interface Piece {
   text: string;
   marks: MarkName[];
+}
+
+/** One opened-and-closed stretch of a mark in the output. */
+interface Span {
+  mark: MarkName;
+  html: boolean;
+}
+
+type Seg = { t: 'text'; md: string } | { t: 'mark'; span: Span; open: boolean; group: number };
+
+const ALNUM = /[\p{L}\p{N}]/u;
+// CommonMark / markdown-it character classes for delimiter flanking.
+const MD_WHITESPACE = /^[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]$/;
+const MD_PUNCT = /^[\p{P}\p{S}]$/u;
+
+function renderMark(s: Seg & { t: 'mark' }): string {
+  if (!s.span.html) return MARK_DELIM[s.span.mark];
+  return s.open ? `<${MARK_TAG[s.span.mark]}>` : `</${MARK_TAG[s.span.mark]}>`;
+}
+
+function firstChar(s: string): string {
+  return String.fromCodePoint(s.codePointAt(0) ?? 0x20);
+}
+
+function lastChar(s: string): string {
+  const c = s.charCodeAt(s.length - 1);
+  return (c & 0xfc00) === 0xdc00 && s.length > 1 ? s.slice(-2) : s.slice(-1);
 }
 
 function marksOf(r: RichInline): MarkName[] {
@@ -86,8 +117,10 @@ function pushPiece(out: Piece[], text: string, marks: MarkName[]): void {
  * look-alikes, `1)` lists and `===` setext underlines.
  */
 function escapeText(s: string, atLineStart: boolean): string {
+  // An `_` between two letters/digits can't open or close emphasis, so
+  // `snake_case` stays readable; anywhere else (`______`, `__main__`) it is escaped.
   let r = s.replace(/[`*\\~[\]_]/g, (m: string, i: number) =>
-    m === '_' && i > 0 && i + 1 < s.length && /\w/.test(s[i - 1]) && /\w/.test(s[i + 1]) ? m : `\\${m}`);
+    m === '_' && i > 0 && i + 1 < s.length && ALNUM.test(s[i - 1]) && ALNUM.test(s[i + 1]) ? m : `\\${m}`);
   r = r.replace(/&(?=#\d+;|#x[0-9a-f]+;|[a-z][a-z0-9]*;)/gi, '&amp;');
   r = r.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (atLineStart) {
@@ -106,15 +139,14 @@ function lineToMarkdown(runs: RichInline[]): string {
   for (const r of runs) pushPiece(merged, r.text.replace(/[\t\n\r\f\v\u00a0]/g, ' '), marksOf(r));
   for (const piece of merged) piece.text = piece.text.replace(/ {2,}/g, ' ');
   // Collapse spaces across run boundaries, then trim the line.
-  for (let i = 1; i < merged.length; i++) {
-    if (merged[i - 1].text.endsWith(' ') && merged[i].text.startsWith(' ')) {
-      merged[i].text = merged[i].text.slice(1);
-    }
+  let spaceBefore = true; // also trims the line start
+  for (const piece of merged) {
+    if (spaceBefore && piece.text.startsWith(' ')) piece.text = piece.text.slice(1);
+    if (piece.text) spaceBefore = piece.text.endsWith(' ');
   }
-  if (merged.length) {
-    merged[0].text = merged[0].text.replace(/^ +/, '');
-    const last = merged[merged.length - 1];
-    last.text = last.text.replace(/ +$/, '');
+  for (let i = merged.length - 1; i >= 0; i--) {
+    merged[i].text = merged[i].text.replace(/ +$/, '');
+    if (merged[i].text) break;
   }
 
   // 2. Move whitespace out of markers: a space keeps only the marks shared by
@@ -142,30 +174,133 @@ function lineToMarkdown(runs: RichInline[]): string {
     pushPiece(pieces, p.text, shared);
   }
 
-  // 3. Emit: keep marks that continue open, close from the top down to the
-  //    first one that ends, open new ones in the fixed order.
-  let out = '';
-  const active: MarkName[] = [];
-  for (const p of pieces) {
+  // 3. Lay out open/close markers: keep marks that continue open, close from
+  //    the top down to the first one that ends, open new ones with the one that
+  //    runs furthest outermost (fixed order on ties) so a shorter mark can close
+  //    without closing and reopening a longer one.
+  const runEnd: Record<MarkName, number[]> = { bold: [], italic: [], strike: [], underline: [] };
+  for (const m of MARK_ORDER) {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      runEnd[m][i] = !pieces[i].marks.includes(m) ? -1 : (runEnd[m][i + 1] ?? -1) >= 0 ? runEnd[m][i + 1] : i;
+    }
+  }
+  const segs: Seg[] = [];
+  let group = -1;
+  let inGroup = false;
+  const pushMark = (span: Span, open: boolean) => {
+    if (!inGroup) { group++; inGroup = true; }
+    segs.push({ t: 'mark', span, open, group });
+  };
+  const active: Span[] = [];
+  pieces.forEach((p, i) => {
     let keep = 0;
-    while (keep < active.length && p.marks.includes(active[keep])) keep++;
-    while (active.length > keep) out += MARK_CLOSE[active.pop() as MarkName];
-    for (const m of MARK_ORDER) {
-      if (p.marks.includes(m) && !active.includes(m)) {
-        out += MARK_OPEN[m];
-        active.push(m);
+    while (keep < active.length && p.marks.includes(active[keep].mark)) keep++;
+    while (active.length > keep) pushMark(active.pop() as Span, false);
+    const opening = MARK_ORDER
+      .filter((m) => p.marks.includes(m) && !active.some((s) => s.mark === m))
+      .sort((a, b) => runEnd[b][i] - runEnd[a][i]);
+    for (const mark of opening) {
+      const span: Span = { mark, html: mark === 'underline' };
+      pushMark(span, true);
+      active.push(span);
+    }
+    segs.push({ t: 'text', md: escapeText(p.text, segs.length === 0) });
+    inGroup = false;
+  });
+  while (active.length) pushMark(active.pop() as Span, false);
+
+  // 4. Pick each span's form: `**` / `*` / `~~` where markdown-it will read the
+  //    delimiter as emphasis, the HTML tag where it would stay literal.
+  resolveMarkForms(segs, group + 1);
+  return segs.map((s) => (s.t === 'text' ? s.md : renderMark(s))).join('');
+}
+
+/**
+ * CommonMark only reads a delimiter run as emphasis when it is left-flanking
+ * (to open) or right-flanking (to close): `It was *over—*and` stays literal
+ * because the closing `*` sits between punctuation and a letter. Such spans
+ * switch to their HTML form (`<em>over—</em>and`), which tiptap-markdown
+ * reads the same way. A run mixing closers and openers (`*a***b**`) is
+ * ambiguous, so its openers switch too. Each marker group sits between two
+ * text segments, so a switch only changes the two groups of that span.
+ */
+function resolveMarkForms(segs: Seg[], groupCount: number): void {
+  const groups: number[][] = Array.from({ length: groupCount }, () => []);
+  segs.forEach((s, i) => { if (s.t === 'mark') groups[s.group].push(i); });
+  const spanGroups = new Map<Span, number[]>();
+  for (const s of segs) if (s.t === 'mark') spanGroups.set(s.span, [...(spanGroups.get(s.span) ?? []), s.group]);
+
+  const charBefore = (i: number): string => {
+    const s = segs[i - 1];
+    if (!s) return ' ';
+    return s.t === 'text' ? lastChar(s.md) : lastChar(renderMark(s));
+  };
+  const charAfter = (i: number): string => {
+    const s = segs[i + 1];
+    if (!s) return ' ';
+    return s.t === 'text' ? firstChar(s.md) : firstChar(renderMark(s));
+  };
+
+  /** Spans in group `g` whose delimiter would not parse; empty when the group is fine. */
+  const badSpans = (g: number): Span[] => {
+    const idx = groups[g];
+    const bad: Span[] = [];
+    for (let k = 0; k < idx.length;) {
+      const s = segs[idx[k]] as Seg & { t: 'mark' };
+      if (s.span.html) { k++; continue; }
+      // A run: consecutive delimiters made of the same character.
+      const ch = MARK_DELIM[s.span.mark][0];
+      let end = k;
+      while (end + 1 < idx.length) {
+        const n = segs[idx[end + 1]] as Seg & { t: 'mark' };
+        if (n.span.html || MARK_DELIM[n.span.mark][0] !== ch) break;
+        end++;
+      }
+      const run = idx.slice(k, end + 1).map((i) => segs[i] as Seg & { t: 'mark' });
+      const before = charBefore(idx[k]);
+      const after = charAfter(idx[end]);
+      const lastWs = MD_WHITESPACE.test(before);
+      const nextWs = MD_WHITESPACE.test(after);
+      const lastPunct = MD_PUNCT.test(before);
+      const nextPunct = MD_PUNCT.test(after);
+      const leftFlanking = !nextWs && (!nextPunct || lastWs || lastPunct);
+      const rightFlanking = !lastWs && (!lastPunct || nextWs || nextPunct);
+      // A `*` run that could both open and close (`a*b`, `#*:`) gets paired by
+      // markdown-it's "rule of 3" against the wrong neighbour, so `*` runs must
+      // be one-sided. `~~` can't nest in itself, so a two-sided run is safe.
+      const oneSided = ch !== '*' || leftFlanking !== rightFlanking;
+      const openers = run.filter((r) => r.open);
+      const closers = run.filter((r) => !r.open);
+      if (openers.length && (closers.length || !leftFlanking || !oneSided)) bad.push(...openers.map((r) => r.span));
+      if (closers.length && (!rightFlanking || !oneSided)) bad.push(...closers.map((r) => r.span));
+      k = end + 1;
+    }
+    return bad;
+  };
+
+  const queue = groups.map((_, g) => g);
+  const queued = new Set(queue);
+  for (let head = 0; head < queue.length; head++) {
+    const g = queue[head];
+    queued.delete(g);
+    const bad = badSpans(g);
+    for (const span of bad) {
+      if (span.html) continue;
+      span.html = true;
+      for (const other of spanGroups.get(span) ?? []) {
+        if (!queued.has(other)) { queue.push(other); queued.add(other); }
       }
     }
-    out += escapeText(p.text, out === '');
   }
-  while (active.length) out += MARK_CLOSE[active.pop() as MarkName];
-  return out;
 }
 
 /**
  * Inline runs → the editor's Markdown: `**bold**`, `*italic*`, `~~strike~~`,
- * `<u>underline</u>` (nested in that order, outermost first), `\` + newline
- * for a hard break, markdown-significant text escaped.
+ * `<u>underline</u>` (marks that start and end together nest in that order,
+ * outermost first; otherwise the longer-running mark is outermost), the
+ * `<strong>` / `<em>` / `<s>` form where a delimiter would not parse (`It was
+ * <em>over—</em>and`), `\` + newline for a hard break, markdown-significant
+ * text escaped.
  */
 export function inlinesToMarkdown(inlines: RichInline[]): string {
   const lines: RichInline[][] = [[]];
@@ -209,7 +344,7 @@ export function blocksToProse(blocks: RichBlock[]): string {
         break;
       }
       case 'markdown': {
-        const text = b.text.replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
+        const text = b.text.replace(/^(?:[ \t]*\n)+/, '').trimEnd();
         if (text) parts.push(text);
         break;
       }
@@ -294,6 +429,9 @@ const LARGE_SCENE_WORDS = 20000;
 const NO_STRUCTURE_WARN_WORDS = 3000;
 /** A page-break chunk this long reads as a chapter. */
 const PAGE_CHUNK_MIN_WORDS = 150;
+/** Text before the first chapter up to this long is a title page / dedication, not a story chapter. */
+const FRONT_MATTER_MAX_WORDS = 250;
+export const FRONT_MATTER_TITLE = 'Front Matter';
 
 type Item =
   | { t: 'heading'; level: number; part: boolean; text: string; block: RichBlock }
@@ -319,6 +457,34 @@ interface SceneDraft {
 interface ChapterDraft {
   title: string;
   scenes: SceneDraft[];
+  /** Opened for text that came before any chapter marker (title page, dedication…). */
+  implicit?: boolean;
+}
+
+function blockText(b: RichBlock): string {
+  if (b.kind === 'markdown') return b.text;
+  if (b.kind === 'paragraph' || b.kind === 'heading' || b.kind === 'title') return inlinesToPlainText(b.inlines);
+  return '';
+}
+
+/** A title page's first line can name the book: short, no sentence end, not a byline. */
+function isTitleLikeLine(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > 80 || t.split(/\s+/).length > 10) return false;
+  if (/[.!?…,;:]$/.test(t) && !/\.\.\.$/.test(t)) return false;
+  if (/^(?:by|a novel|a story|a novella|copyright|©|for\b|dedicated|draft|version|v\d)/i.test(t)) return false;
+  return !matchChapterMarker(t);
+}
+
+const TITLE_SMALL_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'nor', 'of', 'on', 'or', 'the', 'to', 'with']);
+
+/** "THE LANTERN ROAD" → "The Lantern Road"; any other casing is the author's and stays. */
+function tidyTitle(text: string): string {
+  const t = text.trim().replace(/\s+/g, ' ');
+  if (t !== t.toUpperCase() || t === t.toLowerCase()) return t;
+  return t.toLowerCase().split(' ').map((w, i) => (
+    i > 0 && TITLE_SMALL_WORDS.has(w) ? w : w.replace(/^(\P{L}*)(\p{L})/u, (_, pre: string, c: string) => pre + c.toUpperCase())
+  )).join(' ');
 }
 
 function countWords(s: string): number {
@@ -408,11 +574,13 @@ function resolveEmpties(items: Item[]): Item[] {
     if (n > best) { usual = g; best = n; }
   }
   const threshold = Math.max(2, usual + 1);
-  const candidates = runs.filter((r) => r.len >= threshold);
+  let candidates = runs.filter((r) => r.len >= threshold);
   // "Rarer than spacing": at most one gap in three may be a scene break.
-  const breakStarts = new Set(candidates.length > 0 && candidates.length * 3 <= gaps.length
-    ? candidates.map((r) => r.start)
-    : []);
+  if (candidates.length * 3 > gaps.length) candidates = [];
+  // A single-spaced manuscript whose writer leaves one empty paragraph between
+  // scenes: when every gap of any length is rare (one in five at most), each is a break.
+  if (usual === 0 && runs.length > 0 && runs.length * 5 <= gaps.length) candidates = runs;
+  const breakStarts = new Set(candidates.map((r) => r.start));
 
   const out: Item[] = [];
   items.forEach((it, i) => {
@@ -465,8 +633,8 @@ function walk(structs: Struct[], implicitChapterTitle: string): { chapters: Chap
   let part = '';
   let partCount = 0;
   let nextByBreak = false;
-  const openChapter = (title: string): ChapterDraft => {
-    const c: ChapterDraft = { title, scenes: [] };
+  const openChapter = (title: string, implicit = false): ChapterDraft => {
+    const c: ChapterDraft = { title, scenes: [], ...(implicit ? { implicit: true } : {}) };
     chapters.push(c);
     sc = null;
     nextByBreak = false;
@@ -484,7 +652,7 @@ function walk(structs: Struct[], implicitChapterTitle: string): { chapters: Chap
         ch = openChapter(part ? `${part} · ${s.title}` : s.title);
         break;
       case 'scene':
-        if (!ch) ch = openChapter(part || implicitChapterTitle);
+        if (!ch) ch = openChapter(part || implicitChapterTitle, !part);
         sc = { title: s.title, blocks: [], byBreak: false };
         ch.scenes.push(sc);
         nextByBreak = false;
@@ -493,7 +661,7 @@ function walk(structs: Struct[], implicitChapterTitle: string): { chapters: Chap
         if (sc) { sc = null; nextByBreak = true; }
         break;
       case 'content':
-        if (!ch) ch = openChapter(part || implicitChapterTitle);
+        if (!ch) ch = openChapter(part || implicitChapterTitle, !part);
         if (!sc) {
           sc = { blocks: [], byBreak: nextByBreak && ch.scenes.length > 0 };
           ch.scenes.push(sc);
@@ -535,8 +703,10 @@ export function segmentBlocks(
   const structural = items.filter((it): it is Item & { t: 'heading' } => it.t === 'heading' && (it.part || it.level <= 3));
   const levels = new Set(structural.filter((h) => !h.part).map((h) => h.level));
   const h1Count = structural.filter((h) => !h.part && h.level === 1).length;
-  // One H1 on top of H2 chapters + H3 scenes is the book's title, not a part.
+  // One H1 on top of H2 chapters + H3 scenes is the book's title, not a part
+  // (unless it reads "Part One" / "Chapter 1").
   const titleHeading = h1Count === 1 && levels.has(2) && levels.has(3) && structural[0].level === 1 && !structural[0].part
+    && !matchChapterMarker(structural[0].text)
     ? structural[0]
     : undefined;
   if (titleHeading) levels.delete(1);
@@ -545,7 +715,18 @@ export function segmentBlocks(
   const h3 = levels.has(3);
   const role = new Map<number, 'part' | 'chapter' | 'scene'>();
   let firstChapterIsTitle = false;
-  if (h1 && h2 && h3) {
+  // Heading texts can say what the levels mean: "Part One" headings over
+  // "Chapter 1" headings are parts over chapters, whatever their levels.
+  const sortedLevels = [...levels].sort((a, b) => a - b);
+  const textsAt = (level: number) => structural
+    .filter((hd) => !hd.part && hd !== titleHeading && hd.level === level)
+    .map((hd) => hd.text);
+  const mostly = (texts: string[], kinds: readonly string[]) =>
+    texts.length > 0 && texts.filter((t) => kinds.includes(matchChapterMarker(t)?.kind ?? '')).length * 2 > texts.length;
+  if (sortedLevels.length >= 2 && mostly(textsAt(sortedLevels[0]), ['part']) && mostly(textsAt(sortedLevels[1]), ['chapter', 'front'])) {
+    role.set(sortedLevels[0], 'part').set(sortedLevels[1], 'chapter');
+    if (sortedLevels.length >= 3) role.set(sortedLevels[2], 'scene');
+  } else if (h1 && h2 && h3) {
     role.set(1, 'part').set(2, 'chapter').set(3, 'scene');
   } else if (h1 && h2) {
     role.set(1, 'chapter').set(2, 'scene');
@@ -560,7 +741,18 @@ export function segmentBlocks(
     for (const l of levels) role.set(l, 'chapter');
     firstChapterIsTitle = h1;
   }
-  const headingChapters = structural.filter((hd) => !hd.part && hd !== titleHeading && role.get(hd.level) === 'chapter').length;
+  // "Part Two" among chapter headings of the same level (all Heading 1) is a part.
+  const isPartText = (t: string) => matchChapterMarker(t)?.kind === 'part';
+  const chapterTexts = structural
+    .filter((hd) => !hd.part && hd !== titleHeading && role.get(hd.level) === 'chapter')
+    .map((hd) => hd.text);
+  const partsByText = chapterTexts.some(isPartText) && chapterTexts.some((t) => !isPartText(t));
+  const roleOf = (hd: Item & { t: 'heading' }): 'part' | 'chapter' | 'scene' => {
+    if (hd.part) return 'part';
+    const r = role.get(hd.level) ?? 'chapter';
+    return r === 'chapter' && partsByText && isPartText(hd.text) ? 'part' : r;
+  };
+  const headingChapters = structural.filter((hd) => hd !== titleHeading && roleOf(hd) === 'chapter').length;
 
   const markers = findMarkers(items);
   const markerChapters = [...markers.values()].filter((m) => m.role === 'chapter').length;
@@ -580,12 +772,13 @@ export function segmentBlocks(
     for (const it of items) {
       if (it === titleHeading) continue;
       if (it.t === 'heading' && (it.part || it.level <= 3)) {
-        const r = it.part ? 'part' : role.get(it.level);
+        const r = roleOf(it);
         if (r === 'chapter' && firstChapterIsTitle && canTakeHeadingTitle && !titleTaken) {
-          storyTitle = it.text;
+          // "Chapter One" / "Prologue" is never the book's name: keep the file name.
+          if (!matchChapterMarker(it.text)) storyTitle = it.text;
           titleTaken = true;
         }
-        structs.push({ t: r ?? 'chapter', title: it.text });
+        structs.push({ t: r, title: it.text });
       } else if (it.t === 'heading' || it.t === 'content') {
         structs.push({ t: 'content', block: it.block });
       } else if (it.t === 'scene' || it.t === 'page') {
@@ -595,7 +788,8 @@ export function segmentBlocks(
   } else if (markerChapters >= 2) {
     // ── 2. "Chapter One" / "Prologue" / "Part Two" lines ──
     structure = 'patterns';
-    const firstMarker = Math.min(...markers.keys());
+    let firstMarker = Infinity;
+    for (const k of markers.keys()) firstMarker = Math.min(firstMarker, k);
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       const marker = markers.get(i);
@@ -607,9 +801,16 @@ export function segmentBlocks(
         }
         structs.push({ t: marker.role, title });
       } else if (it.t === 'heading') {
-        // The first heading, above every marker, is the book title.
-        if (i < firstMarker && it === structural[0] && canTakeHeadingTitle) storyTitle = it.text;
-        else structs.push({ t: 'content', block: it.block });
+        const headingMarker = matchChapterMarker(it.text);
+        if (headingMarker) {
+          // One chapter styled as a heading among typed "Chapter …" lines.
+          structs.push({ t: headingMarker.kind === 'part' ? 'part' : 'chapter', title: headingMarker.title });
+        } else if (i < firstMarker && it === structural[0] && canTakeHeadingTitle) {
+          // The first heading, above every marker, is the book title.
+          storyTitle = it.text;
+        } else {
+          structs.push({ t: 'content', block: it.block });
+        }
       } else if (it.t === 'content') {
         structs.push({ t: 'content', block: it.block });
       } else if (it.t === 'scene' || it.t === 'page') {
@@ -647,6 +848,23 @@ export function segmentBlocks(
   }
 
   const { chapters: drafts, partCount } = walk(structs, structure === 'none' ? storyTitle : implicitTitle);
+
+  // A short run of text before the first real chapter is the title page /
+  // dedication of a manuscript typed in Normal style. Keep every word, but as
+  // "Front Matter" rather than a chapter named after the file — and when the
+  // book has no Title-style line, its first title-like line names the book.
+  const front = drafts[0];
+  if (structure !== 'none' && front?.implicit && drafts.length > 1 && front.scenes.every((sc) => sc.title === undefined)) {
+    const frontBlocks = front.scenes.flatMap((sc) => sc.blocks);
+    const frontWords = frontBlocks.reduce((n, b) => n + countWords(blockText(b)), 0);
+    if (frontWords <= FRONT_MATTER_MAX_WORDS) {
+      front.title = FRONT_MATTER_TITLE;
+      if (canTakeHeadingTitle && storyTitle === fallbackTitle) {
+        const first = frontBlocks.map(blockText).find((t) => t.trim() !== '');
+        if (first && isTitleLikeLine(first)) storyTitle = tidyTitle(first);
+      }
+    }
+  }
 
   // ── Assemble ──
   let chapters: ImportChapter[] = drafts.map((d) => {

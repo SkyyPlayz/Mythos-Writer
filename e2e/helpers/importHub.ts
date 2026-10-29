@@ -20,6 +20,8 @@ const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 export interface ImportHubScratch {
   userData: string;
   workDir: string;
+  /** The Mythos vault folder (holds mythos.json). */
+  mythosRoot: string;
   storyVaultPath: string;
   notesVaultPath: string;
 }
@@ -65,7 +67,7 @@ export async function setUpImportVault(prefix: string): Promise<ImportHubScratch
   const setupPage = await readyWindow(setupApp);
   const created = await setupPage.evaluate(
     (parent) => (window as unknown as {
-      api: { createVaultFromOptions: (p: unknown) => Promise<{ ok: boolean; storyVaultPath?: string; notesVaultPath?: string; error?: string }> };
+      api: { createVaultFromOptions: (p: unknown) => Promise<{ ok: boolean; mythosRoot?: string; storyVaultPath?: string; notesVaultPath?: string; error?: string }> };
     }).api.createVaultFromOptions({
       mode: 'template', destinationParent: parent, name: 'Import Hub Vault', exactName: true, activate: true,
     }),
@@ -79,6 +81,7 @@ export async function setUpImportVault(prefix: string): Promise<ImportHubScratch
   return {
     userData,
     workDir,
+    mythosRoot: created.mythosRoot!,
     storyVaultPath: created.storyVaultPath!,
     notesVaultPath: created.notesVaultPath!,
     app,

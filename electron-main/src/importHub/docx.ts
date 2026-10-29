@@ -14,6 +14,7 @@ import mammoth from 'mammoth';
 import { segmentBlocks, type RichBlock, type RichInline } from './blocks.js';
 import { dropBodyWideAlignment, htmlToBlocks } from './htmlBlocks.js';
 import type { ImportStory } from './types.js';
+import { ImportUserError } from './importErrors.js';
 
 /** Absolute cap before we even attempt parsing (saves memory on huge files). */
 export const DOCX_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -162,9 +163,9 @@ const NOISE_WARNINGS = [
  */
 export async function docxToBlocks(buffer: Buffer): Promise<{ blocks: RichBlock[]; title?: string; warnings: string[] }> {
   if (buffer.length > DOCX_MAX_BYTES) {
-    throw new Error(`This Word file is too large to import (over ${DOCX_MAX_BYTES / (1024 * 1024)} MB).`);
+    throw new ImportUserError(`This Word file is too large to import (over ${DOCX_MAX_BYTES / (1024 * 1024)} MB).`);
   }
-  if (buffer.length === 0) throw new Error(DOCX_DAMAGED_MESSAGE);
+  if (buffer.length === 0) throw new ImportUserError(DOCX_DAMAGED_MESSAGE);
   let result: Awaited<ReturnType<typeof mammoth.convertToHtml>>;
   try {
     result = await mammoth.convertToHtml({ buffer }, {
@@ -175,7 +176,7 @@ export async function docxToBlocks(buffer: Buffer): Promise<{ blocks: RichBlock[
       convertImage: mammoth.images.imgElement(() => Promise.resolve({ src: '' })),
     });
   } catch {
-    throw new Error(DOCX_DAMAGED_MESSAGE);
+    throw new ImportUserError(DOCX_DAMAGED_MESSAGE);
   }
 
   const parsed = htmlToBlocks(result.value);

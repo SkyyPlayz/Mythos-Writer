@@ -65,26 +65,63 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }
 
+/**
+ * Commit failures after which main has forgotten the preview (its token is
+ * spent), so "Import" can only fail again with the expired message. Mirrors
+ * electron-main/src/importHub/importHubIpc.ts commitImportToken (the test
+ * checks the strings against that file). Every other failure — no vault yet,
+ * a write error rolled back — keeps the preview alive for a retry.
+ */
+export const SPENT_PREVIEW_ERRORS: readonly string[] = [
+  'This preview has expired — drop the file again.',
+  'The file changed since the preview — drop it again.',
+  'Mythos couldn\'t finish the import. Check your vault before importing again.',
+];
+
+/** Refusals about runnable content get the reassurance; size / damage refusals don't. */
+const RUNNABLE_REFUSAL = /\b(?:programs?|scripts?|macros?)\b|run code/i;
+
 // ─── Excerpt: editor Markdown → React elements ───────────────────────────────
 // A tiny, safe subset renderer for the preview excerpt (never HTML injection):
 // **bold** / __bold__, *italic* / _italic_, ~~strike~~, <u>underline</u>,
 // `\`+newline hard breaks, backslash escapes, the entities the serializer
 // writes, ` {.center}` alignment suffixes and `#` headings left in a scene.
+//
+// Emphasis follows CommonMark's delimiter rules the way markdown-it (the
+// editor's parser, via tiptap-markdown) applies them — left/right-flanking
+// runs with Unicode punctuation, `_` never splitting a word, the "rule of 3"
+// and `~~` pairs — so a marker the editor would show as a literal `*` shows
+// as one here too. The panel exists to catch exactly those mistakes.
 
 type MarkName = 'bold' | 'italic' | 'strike' | 'underline';
+type DelimChar = '*' | '_' | '~';
 
-/**
- * `run` is a whole run of `*`, `_` or `~` (so `***x***` nests like the
- * serializer wrote it); `u` is an explicit `<u>` / `</u>` tag.
- */
-type Token =
-  | { t: 'text'; v: string }
-  | { t: 'br' }
-  | { t: 'run'; ch: '*' | '_' | '~'; len: number; open: boolean; close: boolean }
-  | { t: 'u'; closing: boolean; raw: string };
+/** A delimiter run in the node list; `count` is how many of its chars are still unmatched (literal). */
+interface DelimNode { k: 'delim'; ch: DelimChar; count: number }
+
+type InlineNode =
+  | { k: 'text'; v: string }
+  | { k: 'br' }
+  | { k: 'u'; closing: boolean; raw: string }
+  | DelimNode
+  | { k: 'mark'; mark: MarkName; children: InlineNode[] };
+
+interface Delimiter {
+  node: DelimNode;
+  ch: DelimChar;
+  /** Run length as written, for the rule of 3 (0 for `~~`, like markdown-it). */
+  origLen: number;
+  canOpen: boolean;
+  canClose: boolean;
+  active: boolean;
+}
 
 const ENTITY_MAP: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
 const ASCII_PUNCT = /[!-/:-@[-`{-~]/;
+// markdown-it's isWhiteSpace (Unicode Zs plus tab / newline / vt / ff / cr).
+const MD_WHITESPACE = /^[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]$/;
+// markdown-it's isPunctChar: Unicode P (punctuation) or S (symbols); covers ASCII punctuation.
+const MD_PUNCT = /^[\p{P}\p{S}]$/u;
 
 function decodeEntity(body: string): string | null {
   if (body[0] === '#') {
@@ -95,27 +132,53 @@ function decodeEntity(body: string): string | null {
   return ENTITY_MAP[body.toLowerCase()] ?? null;
 }
 
-function isSpace(ch: string | undefined): boolean {
-  return ch === undefined || /\s/.test(ch);
+/** The (whole) character just before index `i`; start of the text counts as a space. */
+function charBefore(src: string, i: number): string {
+  if (i <= 0) return ' ';
+  const lo = src.charCodeAt(i - 1);
+  if (lo >= 0xdc00 && lo <= 0xdfff && i >= 2) {
+    const hi = src.charCodeAt(i - 2);
+    if (hi >= 0xd800 && hi <= 0xdbff) return src.slice(i - 2, i);
+  }
+  return src[i - 1];
 }
 
-function isWordChar(ch: string | undefined): boolean {
-  return ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+/** The (whole) character at index `i`; end of the text counts as a space. */
+function charAt(src: string, i: number): string {
+  if (i >= src.length) return ' ';
+  return String.fromCodePoint(src.codePointAt(i) as number);
 }
 
-function tokenize(src: string): Token[] {
-  const out: Token[] = [];
+/** markdown-it's scanDelims: can a run of `len` delimiter chars at `i` open / close? */
+function flanking(src: string, i: number, len: number, canSplitWord: boolean): { canOpen: boolean; canClose: boolean } {
+  const last = charBefore(src, i);
+  const next = charAt(src, i + len);
+  const lastPunct = MD_PUNCT.test(last);
+  const nextPunct = MD_PUNCT.test(next);
+  const lastSpace = MD_WHITESPACE.test(last);
+  const nextSpace = MD_WHITESPACE.test(next);
+  const left = !nextSpace && (!nextPunct || lastSpace || lastPunct);
+  const right = !lastSpace && (!lastPunct || nextSpace || nextPunct);
+  return {
+    canOpen: left && (canSplitWord || !right || lastPunct),
+    canClose: right && (canSplitWord || !left || nextPunct),
+  };
+}
+
+function tokenize(src: string): { nodes: InlineNode[]; delims: Delimiter[] } {
+  const nodes: InlineNode[] = [];
+  const delims: Delimiter[] = [];
   const text = (v: string) => {
-    const last = out[out.length - 1];
-    if (last && last.t === 'text') last.v += v;
-    else out.push({ t: 'text', v });
+    const last = nodes[nodes.length - 1];
+    if (last && last.k === 'text') last.v += v;
+    else nodes.push({ k: 'text', v });
   };
   let i = 0;
   while (i < src.length) {
     const ch = src[i];
     if (ch === '\\') {
       const next = src[i + 1];
-      if (next === '\n') { out.push({ t: 'br' }); i += 2; continue; }
+      if (next === '\n') { nodes.push({ k: 'br' }); i += 2; continue; }
       if (next !== undefined && ASCII_PUNCT.test(next)) { text(next); i += 2; continue; }
       text(ch); i += 1; continue;
     }
@@ -128,39 +191,87 @@ function tokenize(src: string): Token[] {
     }
     if (ch === '<') {
       const m = /^<(\/?)u>/i.exec(src.slice(i));
-      if (m) { out.push({ t: 'u', closing: m[1] === '/', raw: m[0] }); i += m[0].length; continue; }
+      if (m) { nodes.push({ k: 'u', closing: m[1] === '/', raw: m[0] }); i += m[0].length; continue; }
       text(ch); i += 1; continue;
     }
     if (ch === '*' || ch === '_' || ch === '~') {
       let len = 1;
       while (src[i + len] === ch) len++;
-      const before = src[i - 1];
-      const after = src[i + len];
-      let open = !isSpace(after);
-      let close = !isSpace(before);
-      // `_` never opens or closes inside a word (snake_case stays literal).
-      if (ch === '_') {
-        open = open && !isWordChar(before);
-        close = close && !isWordChar(after);
+      const { canOpen, canClose } = flanking(src, i, len, ch !== '_');
+      let count = len;
+      if (ch === '~') {
+        // Strike needs `~~`; an odd run keeps one literal `~` in front.
+        if (len < 2) { text(ch); i += len; continue; }
+        if (len % 2) { text(ch); count -= 1; }
       }
-      // A single `~` is plain text; strike needs `~~`.
-      if ((open || close) && !(ch === '~' && len < 2)) out.push({ t: 'run', ch, len, open, close });
-      else text(ch.repeat(len));
+      if (canOpen || canClose) {
+        const node: DelimNode = { k: 'delim', ch, count };
+        nodes.push(node);
+        delims.push({ node, ch, origLen: ch === '~' ? 0 : len, canOpen, canClose, active: true });
+      } else {
+        text(ch.repeat(count));
+      }
       i += len;
       continue;
     }
     text(ch);
     i += 1;
   }
-  return out;
+  return { nodes, delims };
 }
 
-interface Frame {
-  mark: MarkName | null;
-  /** The delimiter that opened it (`*`, `_`, `~`, `<u>`) and how many chars it took. */
-  ch: string;
-  size: number;
-  children: ReactNode[];
+function markFor(ch: DelimChar, n: number): MarkName {
+  if (ch === '~') return 'strike';
+  return n === 2 ? 'bold' : 'italic';
+}
+
+/** Move the nodes strictly between `open` and `close` into a new mark node. */
+function wrapBetween(nodes: InlineNode[], open: DelimNode, close: DelimNode | null, mark: MarkName): void {
+  const from = nodes.indexOf(open) + 1;
+  const to = close ? nodes.indexOf(close) : nodes.length;
+  const children = nodes.slice(from, to);
+  nodes.splice(from, to - from, { k: 'mark', mark, children });
+}
+
+/** CommonMark "process emphasis" over the delimiter list (all active delimiters stay top-level). */
+function processEmphasis(nodes: InlineNode[], delims: Delimiter[]): void {
+  for (let c = 0; c < delims.length; c++) {
+    const closer = delims[c];
+    if (!closer.active || !closer.canClose) continue;
+    while (closer.node.count > 0) {
+      let found = -1;
+      for (let o = c - 1; o >= 0; o--) {
+        const op = delims[o];
+        if (!op.active || op.ch !== closer.ch || !op.canOpen || op.node.count === 0) continue;
+        // Rule of 3: a run that can both open and close can't pair when the lengths sum to a multiple of 3.
+        if ((op.canClose || closer.canOpen) && (op.origLen + closer.origLen) % 3 === 0
+          && (op.origLen % 3 !== 0 || closer.origLen % 3 !== 0)) continue;
+        found = o;
+        break;
+      }
+      if (found < 0) break;
+      const op = delims[found];
+      const n = closer.ch === '~' ? 2 : (op.node.count >= 2 && closer.node.count >= 2 ? 2 : 1);
+      op.node.count -= n;
+      closer.node.count -= n;
+      wrapBetween(nodes, op.node, closer.node, markFor(closer.ch, n));
+      for (let d = found + 1; d < c; d++) delims[d].active = false;
+    }
+    if (closer.node.count === 0 || !closer.canOpen) closer.active = false;
+  }
+}
+
+/** A cut-off excerpt: marks still open at the cut apply to the rest (the full scene closes them). */
+function closeAtEnd(nodes: InlineNode[], delims: Delimiter[]): void {
+  for (let d = delims.length - 1; d >= 0; d--) {
+    const op = delims[d];
+    if (!op.active || !op.canOpen) continue;
+    while (op.node.count >= (op.ch === '~' ? 2 : 1)) {
+      const n = op.ch === '~' || op.node.count >= 2 ? 2 : 1;
+      op.node.count -= n;
+      wrapBetween(nodes, op.node, null, markFor(op.ch, n));
+    }
+  }
 }
 
 function wrap(mark: MarkName, children: ReactNode[], key: number): ReactNode {
@@ -172,60 +283,36 @@ function wrap(mark: MarkName, children: ReactNode[], key: number): ReactNode {
   }
 }
 
-/** Inline editor Markdown → React nodes. Unclosed marks (a truncated excerpt) still apply to the rest. */
-export function renderInlineMarkdown(src: string): ReactNode[] {
-  const stack: Frame[] = [{ mark: null, ch: '', size: 0, children: [] }];
+/**
+ * Inline editor Markdown → React nodes. `cutOff` marks text that was
+ * truncated mid-scene, so emphasis still open at the end applies to the rest.
+ */
+export function renderInlineMarkdown(src: string, { cutOff = false }: { cutOff?: boolean } = {}): ReactNode[] {
+  const { nodes, delims } = tokenize(src);
+  processEmphasis(nodes, delims);
+  if (cutOff) closeAtEnd(nodes, delims);
   let key = 0;
-  const top = () => stack[stack.length - 1];
-  const closeTop = () => {
-    const f = stack.pop() as Frame & { mark: MarkName };
-    top().children.push(wrap(f.mark, f.children, key++));
+  const render = (list: InlineNode[]): ReactNode[] => {
+    // `<u>…</u>` are inline HTML in the editor; pair them within one level.
+    const stack: ReactNode[][] = [[]];
+    const top = () => stack[stack.length - 1];
+    const closeU = () => {
+      const children = stack.pop() as ReactNode[];
+      top().push(wrap('underline', children, key++));
+    };
+    for (const n of list) {
+      if (n.k === 'text') top().push(n.v);
+      else if (n.k === 'br') top().push(<br key={key++} />);
+      else if (n.k === 'delim') { if (n.count > 0) top().push(n.ch.repeat(n.count)); }
+      else if (n.k === 'mark') top().push(wrap(n.mark, render(n.children), key++));
+      else if (n.closing && stack.length > 1) closeU();
+      else if (!n.closing) stack.push([]);
+      else top().push(n.raw);
+    }
+    while (stack.length > 1) closeU();
+    return stack[0];
   };
-  /** Index of the innermost open frame for this delimiter, or -1. */
-  const innermost = (ch: string) => {
-    for (let k = stack.length - 1; k > 0; k--) if (stack[k].ch === ch) return k;
-    return -1;
-  };
-  for (const tok of tokenize(src)) {
-    if (tok.t === 'text') { top().children.push(tok.v); continue; }
-    if (tok.t === 'br') { top().children.push(<br key={key++} />); continue; }
-    if (tok.t === 'u') {
-      const idx = innermost('<u>');
-      if (tok.closing && idx > 0) while (stack.length > idx) closeTop();
-      else if (!tok.closing && idx < 0) stack.push({ mark: 'underline', ch: '<u>', size: 0, children: [] });
-      else top().children.push(tok.raw);
-      continue;
-    }
-    let n = tok.len;
-    // Close inner-first: `***x***` closes the italic, then the bold.
-    if (tok.close) {
-      for (;;) {
-        const idx = innermost(tok.ch);
-        if (idx < 0 || stack[idx].size > n) break;
-        n -= stack[idx].size;
-        while (stack.length > idx) closeTop();
-      }
-    }
-    // Open outer-first, matching the serializer's bold → italic nesting.
-    if (tok.open) {
-      while (n > 0) {
-        if (tok.ch === '~') {
-          if (n < 2) break;
-          stack.push({ mark: 'strike', ch: '~', size: 2, children: [] });
-          n -= 2;
-        } else if (n >= 2) {
-          stack.push({ mark: 'bold', ch: tok.ch, size: 2, children: [] });
-          n -= 2;
-        } else {
-          stack.push({ mark: 'italic', ch: tok.ch, size: 1, children: [] });
-          n -= 1;
-        }
-      }
-    }
-    if (n > 0) top().children.push(tok.ch.repeat(n));
-  }
-  while (stack.length > 1) closeTop();
-  return stack[0].children;
+  return render(nodes);
 }
 
 type Align = 'center' | 'right' | 'justify';
@@ -254,6 +341,8 @@ export function excerptParagraphs(excerpt: string): { text: string; align?: Alig
 function Excerpt({ excerpt }: { excerpt: string }) {
   const paras = excerptParagraphs(excerpt);
   if (paras.length === 0) return null;
+  // Main cuts a long opening at a word boundary and appends "…".
+  const cutOff = excerpt.trimEnd().endsWith('…');
   return (
     <div className="import-excerpt" data-testid="import-excerpt">
       <p className="import-excerpt__label">How the opening will look</p>
@@ -266,7 +355,7 @@ function Excerpt({ excerpt }: { excerpt: string }) {
             p.align ? `import-excerpt__p--${p.align}` : '',
           ].filter(Boolean).join(' ')}
         >
-          {renderInlineMarkdown(p.text)}
+          {renderInlineMarkdown(p.text, { cutOff: cutOff && i === paras.length - 1 })}
         </p>
       ))}
     </div>
@@ -275,22 +364,34 @@ function Excerpt({ excerpt }: { excerpt: string }) {
 
 // ─── Section ─────────────────────────────────────────────────────────────────
 
+/** `vaultAtPreview`: the open vault when the preview was built ('' when not known yet). */
 type Phase =
   | { kind: 'idle' }
   | { kind: 'busy'; name: string | null }
-  | { kind: 'preview'; preview: ImportPreview }
-  | { kind: 'committing'; preview: ImportPreview }
-  | { kind: 'done'; result: Extract<ImportCommitResult, { ok: true }> };
+  | { kind: 'preview'; preview: ImportPreview; vaultAtPreview: string }
+  | { kind: 'committing'; preview: ImportPreview; vaultAtPreview: string }
+  | { kind: 'done'; result: Extract<ImportCommitResult, { ok: true }>; entityTypes: ImportEntityType[] };
 
 type Alert =
   | { kind: 'refused'; message: string }
   | { kind: 'error'; message: string }
   | { kind: 'commit-error'; message: string };
 
-function successLine(r: Extract<ImportCommitResult, { ok: true }>): string {
+/** "3 characters", "2 characters & places", "1 place", or the app's own word, "entities". */
+function entityPhrase(n: number, types: readonly ImportEntityType[]): string {
+  const kinds = new Set(types);
+  if (kinds.size === 1 && kinds.has('character')) return plural(n, 'character');
+  if (kinds.size === 1 && kinds.has('location')) return plural(n, 'place');
+  if (n > 1 && kinds.size === 2 && kinds.has('character') && kinds.has('location')) {
+    return `${n.toLocaleString()} characters & places`;
+  }
+  return plural(n, 'entity', 'entities');
+}
+
+function successLine(r: Extract<ImportCommitResult, { ok: true }>, entityTypes: readonly ImportEntityType[]): string {
   const extras: string[] = [];
   if (r.noteCount > 0) extras.push(plural(r.noteCount, 'note'));
-  if (r.entityCount > 0) extras.push(`${r.entityCount.toLocaleString()} characters & places`);
+  if (r.entityCount > 0) extras.push(entityPhrase(r.entityCount, entityTypes));
   if (r.storyTitle) {
     const head = `Imported “${r.storyTitle}” — ${plural(r.chapterCount, 'chapter')}, ${plural(r.sceneCount, 'scene')}`;
     return extras.length ? `${head}, ${extras.join(', ')}` : head;
@@ -324,6 +425,9 @@ function PreviewView({
   onConfirm,
   onCancel,
   headingRef,
+  destinationName,
+  vaultChanged,
+  vaultSwitched,
 }: {
   preview: ImportPreview;
   committing: boolean;
@@ -335,13 +439,22 @@ function PreviewView({
   onConfirm: () => void;
   onCancel: () => void;
   headingRef: RefObject<HTMLHeadingElement>;
+  /** The open vault's name, when known — where Import will write. */
+  destinationName?: string;
+  /** A vault was opened since the preview (main re-checks it at commit). */
+  vaultChanged: boolean;
+  /** …and a different vault was already open when the preview was built. */
+  vaultSwitched: boolean;
 }) {
   const { story, notes, entities } = preview;
   const hasStory = story !== null;
   const hasNotes = notes.length + entities.length > 0;
   const sceneCount = story ? story.chapters.reduce((n, c) => n + c.scenes.length, 0) : 0;
   const nothingSelected = (!hasStory || !includeStory) && (!hasNotes || !includeNotes);
-  const blocked = !preview.canCommit;
+  // canCommit is main's snapshot from preview time. Once a vault has been
+  // opened since, let the writer try: commit re-checks the vault and a
+  // "no vault" failure keeps the preview for another go.
+  const blocked = !preview.canCommit && !vaultChanged;
 
   const entityGroups = ENTITY_ORDER
     .map((type) => ({ type, titles: entities.filter((e) => e.type === type).map((e) => e.title) }))
@@ -355,6 +468,13 @@ function PreviewView({
       <p className="import-preview__source" data-testid="import-preview-source">
         {preview.source.label} · {preview.source.name}
       </p>
+      {destinationName && !blocked && (
+        <p className="settings-hint" data-testid="import-destination">
+          {vaultSwitched
+            ? `You switched vaults since this preview — it will go into “${destinationName}”.`
+            : `It will go into “${destinationName}”.`}
+        </p>
+      )}
 
       {story && (
         <div className="import-block" data-testid="import-preview-story">
@@ -484,7 +604,14 @@ function PreviewView({
   );
 }
 
-export default function ImportSection() {
+export interface ImportSectionProps {
+  /** The open vault's root (MythosVaultsSection's live activeRoot); '' / undefined while unknown. */
+  activeVaultRoot?: string;
+  /** Its display name, shown as the import destination. */
+  activeVaultName?: string;
+}
+
+export default function ImportSection({ activeVaultRoot, activeVaultName }: ImportSectionProps = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [alert, setAlert] = useState<Alert | null>(null);
   const [multiHint, setMultiHint] = useState(false);
@@ -498,6 +625,8 @@ export default function ImportSection() {
   const dragDepthRef = useRef(0);
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
+  const vaultRootRef = useRef(activeVaultRoot ?? '');
+  vaultRootRef.current = activeVaultRoot ?? '';
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
   const doneHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -536,7 +665,7 @@ export default function ImportSection() {
     if (result.ok) {
       setIncludeStory(true);
       setIncludeNotes(true);
-      setPhase({ kind: 'preview', preview: result.preview });
+      setPhase({ kind: 'preview', preview: result.preview, vaultAtPreview: vaultRootRef.current });
       return;
     }
     if ('cancelled' in result) {
@@ -548,6 +677,24 @@ export default function ImportSection() {
     setAlert(result.refused
       ? { kind: 'refused', message: result.reason }
       : { kind: 'error', message: result.error });
+  }, []);
+
+  // A file dropped anywhere outside the zone must not reach Chromium's default
+  // drop either: that navigates the window to the file (a near miss on this
+  // section, or on the rest of Settings, would replace the app with it). Only
+  // file drags are touched, and only when no real drop target took them.
+  useEffect(() => {
+    const guard = (e: globalThis.DragEvent) => {
+      if (e.defaultPrevented || !Array.from(e.dataTransfer?.types ?? []).includes('Files')) return;
+      e.preventDefault();
+      if (e.type === 'dragover' && e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+    };
+    window.addEventListener('dragover', guard);
+    window.addEventListener('drop', guard);
+    return () => {
+      window.removeEventListener('dragover', guard);
+      window.removeEventListener('drop', guard);
+    };
   }, []);
 
   const onPick = useCallback((mode: 'file' | 'folder') => {
@@ -597,7 +744,7 @@ export default function ImportSection() {
     const current = phaseRef.current;
     const bridge = getImportHub();
     if (current.kind !== 'preview' || !bridge) return;
-    const { preview } = current;
+    const { preview, vaultAtPreview } = current;
     const hasStory = preview.story !== null;
     const hasNotes = preview.notes.length + preview.entities.length > 0;
     const options: ImportCommitOptions = {
@@ -606,7 +753,7 @@ export default function ImportSection() {
     };
     const id = ++reqIdRef.current;
     setAlert(null);
-    setPhase({ kind: 'committing', preview });
+    setPhase({ kind: 'committing', preview, vaultAtPreview });
     let result: ImportCommitResult;
     try {
       result = await bridge.commit(preview.token, options);
@@ -615,12 +762,20 @@ export default function ImportSection() {
     }
     if (!mountedRef.current || id !== reqIdRef.current) return;
     if (!result.ok) {
-      // Keep the preview so the writer can retry.
-      setPhase({ kind: 'preview', preview });
-      setAlert({ kind: 'commit-error', message: result.error || 'The import did not finish.' });
+      const message = result.error || 'The import did not finish.';
+      if (SPENT_PREVIEW_ERRORS.includes(message)) {
+        // Main has forgotten this preview: a retry can't work, so start over.
+        setPhase({ kind: 'idle' });
+        setAlert({ kind: 'error', message });
+        return;
+      }
+      // Nothing was written and main kept the preview: the writer can retry.
+      setPhase({ kind: 'preview', preview, vaultAtPreview });
+      setAlert({ kind: 'commit-error', message });
       return;
     }
-    setPhase({ kind: 'done', result });
+    const entityTypes = options.notes ? preview.entities.map((e) => e.type) : [];
+    setPhase({ kind: 'done', result, entityTypes });
     showLnToast(result.storyTitle ? `Imported “${result.storyTitle}”` : 'Import finished');
   }, [includeStory, includeNotes]);
 
@@ -631,12 +786,30 @@ export default function ImportSection() {
     setPhase({ kind: 'idle' });
   }, []);
 
+  // Outside the zone a drop does nothing (the zone is the only place that starts a preview).
+  const onSectionDrag = useCallback((e: DragEvent<HTMLElement>) => {
+    if (e.isDefaultPrevented()) return;
+    e.preventDefault();
+    if (e.type === 'dragover' && e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+  }, []);
+
+  const shownVault = phase.kind === 'preview' || phase.kind === 'committing' ? phase.vaultAtPreview : '';
+  const currentVault = activeVaultRoot ?? '';
+  const vaultChanged = currentVault !== '' && currentVault !== shownVault;
+
   const statusText = busy
     ? (phase.name ? `Reading ${phase.name}…` : 'Reading your selection…')
     : '';
 
   return (
-    <section className="settings-section" aria-labelledby="section-import" data-settings-cat="vaults">
+    <section
+      className="settings-section"
+      aria-labelledby="section-import"
+      data-settings-cat="vaults"
+      data-testid="import-section"
+      onDragOver={onSectionDrag}
+      onDrop={onSectionDrag}
+    >
       <h3 className="settings-section-title" id="section-import">Import your writing</h3>
       <p className="settings-hint">
         Bring in a book or notes from Word, Google Docs, Markdown, Scrivener, ePub, RTF or plain text.
@@ -690,7 +863,9 @@ export default function ImportSection() {
 
       {alert?.kind === 'refused' && (
         <p className="settings-error-msg" role="alert" data-testid="import-refused">
-          {withStop(alert.message)} Mythos never opens programs, scripts or macro files.
+          {RUNNABLE_REFUSAL.test(alert.message)
+            ? `${withStop(alert.message)} Mythos never opens programs, scripts or macro files.`
+            : alert.message}
         </p>
       )}
       {alert?.kind === 'error' && (
@@ -709,12 +884,15 @@ export default function ImportSection() {
           onConfirm={() => { void onConfirm(); }}
           onCancel={reset}
           headingRef={previewHeadingRef}
+          destinationName={activeVaultName}
+          vaultChanged={vaultChanged}
+          vaultSwitched={vaultChanged && shownVault !== ''}
         />
       )}
 
       {phase.kind === 'done' && (
         <div className="import-done" data-testid="import-done" role="status" aria-live="polite">
-          <h4 className="import-done__heading" ref={doneHeadingRef} tabIndex={-1}>{successLine(phase.result)}</h4>
+          <h4 className="import-done__heading" ref={doneHeadingRef} tabIndex={-1}>{successLine(phase.result, phase.entityTypes)}</h4>
           {phase.result.planNotePath && (
             <p className="settings-hint" data-testid="import-plan-note">
               A Story Plan note was added to your Notes Vault ({phase.result.planNotePath}).

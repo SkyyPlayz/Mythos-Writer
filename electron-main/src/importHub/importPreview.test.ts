@@ -9,6 +9,9 @@ import {
   scrubAbsolutePaths,
   SOURCE_LABELS,
   takeImportSession,
+  claimImportSession,
+  finishImportSession,
+  releaseImportSession,
   _clearImportSessionsForTest,
   _importSessionCountForTest,
 } from './importPreview.js';
@@ -165,6 +168,29 @@ describe('import session store', () => {
     expect(first?.plan.story?.title).toBe('The Gate');
     expect(first?.source).toEqual(SOURCE);
     expect(takeImportSession(token)).toBeNull();
+  });
+
+  it('claim locks a session without forgetting it; release allows a retry, finish spends it', () => {
+    const { token } = createImportSession(plan(), SOURCE, CTX);
+    const claim = claimImportSession(token);
+    expect(claim.status).toBe('claimed');
+    if (claim.status === 'claimed') expect(claim.source).toEqual(SOURCE);
+    expect(claimImportSession(token)).toEqual({ status: 'busy' });
+    releaseImportSession(token);
+    expect(claimImportSession(token).status).toBe('claimed');
+    finishImportSession(token);
+    expect(claimImportSession(token)).toEqual({ status: 'missing' });
+    expect(takeImportSession(token)).toBeNull();
+  });
+
+  it('claim honours the TTL and rejects unknown tokens', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const { token } = createImportSession(plan(), SOURCE, CTX);
+    vi.setSystemTime(Date.now() + IMPORT_SESSION_TTL_MS + 1);
+    expect(claimImportSession(token)).toEqual({ status: 'missing' });
+    expect(claimImportSession('nope')).toEqual({ status: 'missing' });
+    expect(claimImportSession('')).toEqual({ status: 'missing' });
   });
 
   it('rejects unknown and non-string tokens', () => {

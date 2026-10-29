@@ -165,7 +165,60 @@ describe('parseDocxStory — (f) escaping literal text', () => {
   });
 });
 
+describe('parseDocxStory — headings that name parts and chapters', () => {
+  it('Heading 1 "Part …" over Heading 2 "Chapter …" gives parts over chapters, titled by the file name', async () => {
+    const buf = await buildManuscriptDocx([
+      { heading: 1, text: 'Part One' }, { heading: 2, text: 'Chapter 1' }, para('a'), { heading: 2, text: 'Chapter 2' }, para('b'),
+      { heading: 1, text: 'Part Two' }, { heading: 2, text: 'Chapter 3' }, para('c'),
+    ]);
+    const { story } = await parseDocxStory(buf, 'My Novel');
+    expect(story.partCount).toBe(2);
+    expect(outlineOf(story)).toEqual({
+      title: 'My Novel',
+      structure: 'headings',
+      chapters: [
+        { title: 'Part One · Chapter 1', scenes: ['Part One · Chapter 1'] },
+        { title: 'Part One · Chapter 2', scenes: ['Part One · Chapter 2'] },
+        { title: 'Part Two · Chapter 3', scenes: ['Part Two · Chapter 3'] },
+      ],
+    });
+  });
+
+  it('Heading 1 "Chapter One" chapters with no Title paragraph keep the file name as the story title', async () => {
+    const buf = await buildManuscriptDocx([{ heading: 1, text: 'Chapter One' }, para('a'), { heading: 1, text: 'Chapter Two' }, para('b')]);
+    const { story } = await parseDocxStory(buf, 'My Novel');
+    expect(story.title).toBe('My Novel');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Chapter One', 'Chapter Two']);
+  });
+});
+
 describe('parseDocxStory — real-world Word habits', () => {
+  it('one empty paragraph between scenes of a single-spaced manuscript is a scene break', async () => {
+    const buf = await buildManuscriptDocx([
+      para('Chapter 1'), para('A1.'), para('A2.'), para('A3.'), emptyPara(), para('B1.'), para('B2.'),
+      para('Chapter 2'), para('C1.'), para('C2.'),
+    ]);
+    const { story } = await parseDocxStory(buf, 'single');
+    expect(story.chapters.map((c) => c.scenes.map((s) => s.prose))).toEqual([
+      ['A1.\n\nA2.\n\nA3.', 'B1.\n\nB2.'],
+      ['C1.\n\nC2.'],
+    ]);
+  });
+
+  it('italics cut off by a dash, bold labels and blanks drawn with underscores read back correctly', async () => {
+    const buf = await buildManuscriptDocx([
+      para('It was ', { text: 'over—', italic: true }, 'and then it wasn’t.'),
+      para({ text: 'Chapter 1:', bold: true }, 'The Gate is a label here.'),
+      para('Mr. ______ and Mrs. ______ came.'),
+    ]);
+    const { story } = await parseDocxStory(buf, 'marks');
+    expect(story.chapters[0].scenes[0].prose).toBe([
+      'It was <em>over—</em>and then it wasn’t.',
+      '<strong>Chapter 1:</strong>The Gate is a label here.',
+      'Mr. \\_\\_\\_\\_\\_\\_ and Mrs. \\_\\_\\_\\_\\_\\_ came.',
+    ].join('\n\n'));
+  });
+
   it('(double spacing) an empty paragraph after every paragraph is spacing, not hundreds of scenes', async () => {
     const { story } = await parseDocxStory(await buildDoubleSpacedManuscriptDocx(), 'Double Spaced');
     expect(outlineOf(story)).toEqual(DOUBLE_SPACED_MANUSCRIPT_OUTLINE);

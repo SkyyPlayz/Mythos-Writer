@@ -48,6 +48,8 @@ interface ImportSession {
   plan: ImportPlan;
   source: ImportSessionSource;
   createdAt: number;
+  /** A commit is running on this session (claimImportSession). */
+  inFlight: boolean;
 }
 
 // Map preserves insertion order, so the first key is always the oldest.
@@ -208,6 +210,7 @@ export function createImportSession(
     plan,
     source: { realPath: source.realPath, size: source.size, mtimeMs: source.mtimeMs },
     createdAt: now,
+    inFlight: false,
   });
   return buildPreview(plan, token, ctx);
 }
@@ -221,6 +224,42 @@ export function takeImportSession(token: string): { plan: ImportPlan; source: Im
   sessions.delete(token);
   if (now - session.createdAt >= IMPORT_SESSION_TTL_MS) return null;
   return { plan: session.plan, source: session.source };
+}
+
+export type ImportSessionClaim =
+  | { status: 'claimed'; plan: ImportPlan; source: ImportSessionSource }
+  | { status: 'busy' }
+  | { status: 'missing' };
+
+/**
+ * Lock a session for one commit attempt without forgetting it, so a commit
+ * that fails before writing anything can be retried on the same preview.
+ * The caller must end the claim with finishImportSession (success, or an
+ * outcome a retry can't fix) or releaseImportSession (nothing was written).
+ * A second claim while one is running answers 'busy'.
+ */
+export function claimImportSession(token: string): ImportSessionClaim {
+  if (typeof token !== 'string' || token.length === 0) return { status: 'missing' };
+  const session = sessions.get(token);
+  if (!session) return { status: 'missing' };
+  if (Date.now() - session.createdAt >= IMPORT_SESSION_TTL_MS) {
+    if (!session.inFlight) sessions.delete(token);
+    return { status: 'missing' };
+  }
+  if (session.inFlight) return { status: 'busy' };
+  session.inFlight = true;
+  return { status: 'claimed', plan: session.plan, source: session.source };
+}
+
+/** End a claim and forget the session (the token is spent). */
+export function finishImportSession(token: string): void {
+  sessions.delete(token);
+}
+
+/** End a claim and keep the session for a retry (until its TTL). */
+export function releaseImportSession(token: string): void {
+  const session = sessions.get(token);
+  if (session) session.inFlight = false;
 }
 
 /** Test hook: forget every cached session. */
