@@ -40,6 +40,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 
 ### Added
+- **Import your writing** — Settings → Vault & Files has one drop zone (plus Choose a file… / Choose a folder…) for Word, Google Docs, Markdown files and folders (Obsidian, iA Writer and other Markdown apps), Scrivener, ePub, RTF and plain text. You see a preview of the chapters, scenes, notes and characters before anything is saved. Word imports keep chapters, scenes, bold, italics and breaks. Programs, scripts and macro files are refused. ([#1785](https://github.com/SkyyPlayz/Mythos-Writer/pull/1785))
 - **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
 
 ## [0.5.7] — 2026-10-03
