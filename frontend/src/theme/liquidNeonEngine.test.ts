@@ -20,6 +20,7 @@ import {
   matchWallpaperIndex,
   stepMatchWallpaper,
   classicStarfieldPickIndex,
+  resolveVaultLiquidNeonV2,
   LIQUID_NEON_V2_DEFAULTS,
   type LiquidNeonV2Settings,
 } from './liquidNeonEngine';
@@ -228,6 +229,25 @@ describe('Theme match wallpaper cycle (SKY-11589)', () => {
     for (const junk of [null, 'false', 0, 'off']) {
       expect(normalizeLiquidNeonV2({ accentBreathe: junk } as unknown as Partial<LiquidNeonV2Settings>).accentBreathe).toBe(true);
     }
+  });
+
+  it('#1774: a vault snapshot without accentBreathe inherits the global value', () => {
+    const vault = { setKey: 'cyber', intensity: 70 } as Partial<LiquidNeonV2Settings>;
+    // Pre-#1774 snapshot + global off → off; nothing else in the snapshot changes.
+    const off = resolveVaultLiquidNeonV2(vault, { accentBreathe: false });
+    expect(off).toEqual({ setKey: 'cyber', intensity: 70, accentBreathe: false });
+    expect(normalizeLiquidNeonV2(off).accentBreathe).toBe(false);
+    expect(vault).not.toHaveProperty('accentBreathe');
+    // An explicit vault value wins over the global one, either way.
+    expect(resolveVaultLiquidNeonV2({ ...vault, accentBreathe: true }, { accentBreathe: false })?.accentBreathe).toBe(true);
+    expect(resolveVaultLiquidNeonV2({ ...vault, accentBreathe: false }, { accentBreathe: true })?.accentBreathe).toBe(false);
+    // Fresh profile: no global key either → on.
+    expect(resolveVaultLiquidNeonV2(vault, {})?.accentBreathe).toBe(true);
+    expect(resolveVaultLiquidNeonV2(vault, undefined)?.accentBreathe).toBe(true);
+    // No vault snapshot → the global settings as they are.
+    const global = { accentBreathe: false } as Partial<LiquidNeonV2Settings>;
+    expect(resolveVaultLiquidNeonV2(undefined, global)).toBe(global);
+    expect(resolveVaultLiquidNeonV2(undefined, undefined)).toBeUndefined();
   });
 
   it('normalize drops garbage picks and keeps valid ones', () => {

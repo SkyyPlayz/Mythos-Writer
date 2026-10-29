@@ -3,7 +3,7 @@
 // prototype is the spec: card layouts, copy, and computed style strings are
 // ported verbatim; controls bind to settings.liquidNeonV2 and apply live via
 // the v2 token engine, persisting through the panel's normal Save flow.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   applyLiquidNeonV2Tokens,
   exportLiquidNeonPreset,
@@ -34,6 +34,7 @@ import {
   type LiquidNeonPresetKey,
 } from '../../../theme/presets';
 import { showLnToast } from '../../../theme/lnToast';
+import { accentBreatheBlock, subscribeAccentBreatheBlock } from '../../../theme/accentBreathe';
 import ColorWheel from '../ColorWheel';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 import './LiquidNeonAppearanceSection.css';
@@ -54,6 +55,14 @@ interface Props {
 export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, setSavedOk, navRailLabels, onNavRailLabelsChange }: Props) {
   const S = useMemo(() => normalizeLiquidNeonV2(liquidNeonV2), [liquidNeonV2]);
   const importFileRef = useRef<HTMLInputElement>(null);
+  // #1774: breathe can be forced off with the switch still showing "on"; say why.
+  const systemBlock = useSyncExternalStore(subscribeAccentBreatheBlock, () => accentBreatheBlock(), () => null);
+  const breatheHintId = useId();
+  const breatheHint = S.accentBreathe === false ? null
+    : S.reduceMotion ? 'Off while Reduce motion is on'
+    : systemBlock === 'reduced-motion' ? "Off while your system's reduced-motion setting is on"
+    : systemBlock === 'contrast' ? 'Off while high contrast is on'
+    : null;
   // F2#9: local drag preview so the thumb moves without committing React every tick.
   const [dragDens, setDragDens] = useState<number | null>(null);
   const displayDens = dragDens ?? (S.uiDens ?? 1);
@@ -560,6 +569,9 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
             {/* #1773 type-scale guard: new rows use the --text-* scale, not 11.5/10px. */}
             <div style={{ fontSize: 'var(--text-xs)', color: '#aebad0' }}>Accent breathe</div>
             <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 1 }}>{"Glow and border colors slowly drift through your theme's six colors. Pauses while the window is hidden or idle."}</div>
+            {breatheHint && (
+              <div id={breatheHintId} data-testid="lnas-accentbreathe-hint" style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 1 }}>{breatheHint}</div>
+            )}
           </div>
           <NeonToggle
             on={S.accentBreathe !== false}
@@ -570,6 +582,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
             }}
             testId="lnas-accentbreathe"
             ariaLabel="Accent breathe"
+            ariaDescribedBy={breatheHint ? breatheHintId : undefined}
           />
         </div>
       </Card>

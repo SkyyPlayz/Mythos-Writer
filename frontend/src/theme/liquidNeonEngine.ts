@@ -195,6 +195,23 @@ export function hexA(hex: string, a: number): string {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')';
 }
 
+/**
+ * #1774: the liquidNeonV2 to apply for a vault — its SKY-11237 per-vault
+ * snapshot when it has one, else the global settings. Accent breathe is a
+ * personal setting, and snapshots saved before #1774 have no accentBreathe
+ * key, so a missing key inherits the global value instead of normalizing to
+ * on (a fresh profile with no global key either still defaults on). Every
+ * other field of the snapshot is left as stored.
+ */
+export function resolveVaultLiquidNeonV2<T extends Partial<LiquidNeonV2Settings>>(
+  vaultLn: T | null | undefined,
+  globalLn: T | null | undefined,
+): T | undefined {
+  if (!vaultLn) return globalLn ?? undefined;
+  if (vaultLn.accentBreathe !== undefined) return vaultLn;
+  return { ...vaultLn, accentBreathe: globalLn?.accentBreathe !== false };
+}
+
 /** Merge a partial (persisted settings) over the defaults, depth-1 for the two nested cfgs. */
 export function normalizeLiquidNeonV2(partial?: Partial<LiquidNeonV2Settings> | null): LiquidNeonV2Settings {
   const d = LIQUID_NEON_V2_DEFAULTS;
@@ -356,6 +373,16 @@ export function vaultDefaultThemePatch(
   };
 }
 
+/**
+ * The six slot colors the tokens (and the #1774 breathe driver) are built
+ * from: an empty slot 4–6 falls back to the prototype's padding colors
+ * (short palettes). Slots 1–3 have no fallback. Shared so the driver can
+ * never blend a different palette than the one the tokens show.
+ */
+function tokenSlots(S: LiquidNeonV2Settings): string[] {
+  return [S.slots[0], S.slots[1], S.slots[2], S.slots[3] || '#ff9a3d', S.slots[4] || '#2fe6c8', S.slots[5] || '#3d9bff'];
+}
+
 /** Glow intensity factor I (prototype 3935): reduceGlow caps the contribution. */
 function glowIntensity(S: LiquidNeonV2Settings): number {
   return S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
@@ -373,9 +400,8 @@ export function computeLiquidNeonV2Tokens(
 ): Record<string, string> {
   const S = normalizeLiquidNeonV2(settings);
   const I = glowIntensity(S);
-  const [c1, c2, c3] = S.slots;
-  const c4 = S.slots[3] || '#ff9a3d', c5 = S.slots[4] || '#2fe6c8', c6 = S.slots[5] || '#3d9bff';
-  const allSlots = [c1, c2, c3, c4, c5, c6];
+  const allSlots = tokenSlots(S);
+  const [c1, c2, c3, c4, c5, c6] = allSlots;
   const tokens: Record<string, string> = {
     '--n1': c1, '--n2': c2, '--n3': c3,
     '--b1': hexA(c1, .3 + .4 * I), '--b2': hexA(c2, .3 + .4 * I), '--b3': hexA(c3, .3 + .4 * I),
@@ -588,7 +614,7 @@ export function applyLiquidNeonV2Tokens(
   // #1774 Accent breathe: hand the driver the raw alphas behind the 20
   // --b/--g/--gs/--bh/--glowH tokens written above (theme/accentBreathe.ts).
   const I = glowIntensity(S);
-  syncAccentBreathe({ enabled: S.accentBreathe && !S.reduceMotion, slots: S.slots,
+  syncAccentBreathe({ enabled: S.accentBreathe && !S.reduceMotion, slots: tokenSlots(S),
     aB: .3 + .4 * I, aG: .18 + .5 * I, aGs: .05 + .13 * I,
     glowRh: Math.round((S.glowR || 26) / 2) }, el);
   return tokens;

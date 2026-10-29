@@ -22,8 +22,9 @@
  *      transition (one running across a tick, one still pending at a tick).
  *   7. Perf: ON vs OFF in the same run against a populated DOM (a documented
  *      N-element proxy) — rAF frame deltas (animationFps.ts) plus CDP
- *      RecalcStyleDuration / LayoutCount; a tick's style work must stay within
- *      1.5× of one plain root-token change measured in the same run.
+ *      RecalcStyleDuration / LayoutCount, each mode judged by the better of two
+ *      sequential 4 s windows; a tick's style work must stay within 2× (a
+ *      coarse guard) of one plain root-token change measured in the same run.
  *
  * The app's 5 s idle pause would also freeze breathe, so each window gets a
  * synthetic pointermove keep-alive every second.
@@ -53,10 +54,12 @@ const TICK_MS = 250;
  * Coarse guard: max ratio of a tick's extra style work to one plain (unconsumed)
  * root custom-property change on the same populated DOM, measured in the same
  * run, so it holds on slower CI runners where an absolute ms budget would not.
- * A tick measured 1.31–1.57× under xvfb (it also recomputes the consumers'
- * colors); the retired global transition override measured ~2.7× (23 ms/tick
- * vs ~8.5 ms). Smaller costs are logged for review, not asserted — the metric
- * is too noisy for a tighter bound; test 6 pins the transition side exactly.
+ * A tick measured 1.03–1.57× under xvfb over a single window (it also
+ * recomputes the consumers' colors), with one 1.96× GC-spike outlier in ~14
+ * runs — hence the best-of-two windows; the retired global transition override
+ * measured ~2.7× (23 ms/tick vs ~8.5 ms). Smaller costs are logged for review,
+ * not asserted — the metric is too noisy for a tighter bound; test 6 pins the
+ * transition side exactly.
  */
 const PER_TICK_RECALC_RATIO_MAX = 2;
 
@@ -149,12 +152,13 @@ let app: ElectronApplication;
 let page: Page;
 let userData: string;
 let vaultDir: string;
+let notesVaultDir: string;
 
 test.describe.serial('#1774 Accent breathe', () => {
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-user-'));
     vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-vault-'));
-    const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-notes-'));
+    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-notes-'));
     seedUserData(userData, vaultDir, notesVaultDir);
     app = await launchApp(userData);
     page = await firstWindow(app);
@@ -162,7 +166,9 @@ test.describe.serial('#1774 Accent breathe', () => {
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
+    for (const dir of [userData, vaultDir, notesVaultDir]) {
+      if (dir) fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('fresh profile: Appearance > Motion > Accent breathe is on and drifts the border tokens', async () => {
@@ -267,9 +273,18 @@ test.describe.serial('#1774 Accent breathe', () => {
     // frame in between) when the first tick runs.
     // A: a 1 s user transition already running when the tick lands keeps running.
     // B: a change made just before the tick still starts its transition.
+    // The wait ends only when --b1 itself changes (resume re-writes the paused
+    // phase, which changes nothing), and a page-side sequence number orders B's
+    // change before that write. Every adjacent classic slot pair differs by
+    // ≥ 32 in some channel (≥ 1 per tick of a 32-tick hop), so the first tick
+    // after resume always changes --b1.
     await setVisibility(page, true);
     await expect.poll(() => readState(page), { timeout: 3_000 }).toBe('paused');
-    const after = await page.evaluate((tickMs) => new Promise<{ a: string[]; b: string[]; ticked: boolean }>((resolve) => {
+    const after = await page.evaluate((tickMs) => new Promise<{ a: string[]; b: string[]; bSeq: number; tickSeq: number }>((resolve) => {
+      const root = document.documentElement;
+      let seq = 0;
+      let bSeq = 0;
+      let settled = false;
       const mk = () => {
         const d = document.createElement('div');
         d.style.cssText = 'position:fixed;left:0;top:0;width:40px;height:40px;border:2px solid var(--b1);' +
@@ -283,22 +298,31 @@ test.describe.serial('#1774 Accent breathe', () => {
         .filter((x) => 'transitionProperty' in x && x.playState === 'running')
         .map((x) => (x as CSSTransition).transitionProperty).sort();
       const a = mk(), b = mk();
-      const done = (ticked: boolean) => {
+      const done = (tickSeq: number) => {
+        if (settled) return;
+        settled = true;
         mo.disconnect();
-        const out = { a: running(a), b: running(b), ticked };
+        window.clearTimeout(giveUp);
+        const out = { a: running(a), b: running(b), bSeq, tickSeq };
         a.remove(); b.remove();
         resolve(out);
       };
-      const mo = new MutationObserver(() => done(true));
+      const b1Paused = root.style.getPropertyValue('--b1');
+      const mo = new MutationObserver(() => {
+        if (root.style.getPropertyValue('--b1') !== b1Paused) done(++seq);
+      });
       change(a);
       void a.getAnimations();
-      window.setTimeout(() => change(b), tickMs);
-      mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+      window.setTimeout(() => { change(b); bSeq = ++seq; }, tickMs);
+      mo.observe(root, { attributes: true, attributeFilter: ['style'] });
       delete (document as unknown as Record<string, unknown>).visibilityState;
       document.dispatchEvent(new Event('visibilitychange'));
-      window.setTimeout(() => done(false), 3000);
+      const giveUp = window.setTimeout(() => done(0), 3000);
     }), TICK_MS);
-    expect(after.ticked).toBe(true);
+    // A tick really wrote --b1, and B's change ran before it.
+    expect(after.tickSeq).toBeGreaterThan(0);
+    expect(after.bSeq).toBeGreaterThan(0);
+    expect(after.bSeq).toBeLessThan(after.tickSeq);
     expect(after.a).toEqual(expect.arrayContaining(['border-top-color', 'opacity']));
     expect(after.b).toEqual(expect.arrayContaining(['border-top-color', 'opacity']));
     expect(await readState(page)).toBe('running');
@@ -327,6 +351,14 @@ test.describe.serial('#1774 Accent breathe', () => {
         layoutCount: after.LayoutCount - before.LayoutCount,
       };
     };
+    // A second sample in the same mode: each mode is judged by its better
+    // window (frames and style work alike), so a one-off stall (GC,
+    // compositor) in a single 4 s window can't decide the result; a per-tick
+    // cost shows up in both.
+    const best = (a: FrameStats, b: FrameStats) => ({
+      droppedFramePct: Math.min(a.droppedFramePct, b.droppedFramePct),
+      p95Fps: Math.max(a.p95Fps, b.p95Fps),
+    });
     const fmt = (s: FrameStats) =>
       `avg=${s.avgFps.toFixed(1)} p50=${s.p50Fps.toFixed(1)} floor(p5)=${s.p95Fps.toFixed(1)} ` +
       `dropped=${s.droppedFramePct.toFixed(1)}% n=${s.sampleCount}`;
@@ -360,6 +392,7 @@ test.describe.serial('#1774 Accent breathe', () => {
     await expect.poll(() => readState(page), { timeout: 3_000 }).toBe('running');
     await addProxy();
     const on = await measure();
+    const on2 = await measure();
     await removeProxy();
 
     // OFF, through the UI.
@@ -370,6 +403,7 @@ test.describe.serial('#1774 Accent breathe', () => {
     await expect.poll(() => readState(page), { timeout: 3_000 }).toBe('off');
     await addProxy();
     const off = await measure();
+    const off2 = await measure();
     // Baseline, still OFF with the proxy: the cost of one root custom-property
     // change at the tick rate, flushed the way the driver flushes its write.
     await page.evaluate((tickMs) => {
@@ -390,16 +424,18 @@ test.describe.serial('#1774 Accent breathe', () => {
     await removeProxy();
     await client.detach().catch(() => {});
     const ticks = 4000 / TICK_MS;
-    const perTickRecalcMs = (on.recalcStyleMs - off.recalcStyleMs) / ticks;
-    const perChangeRecalcMs = (probe.recalcStyleMs - off.recalcStyleMs) / ticks;
+    const onRecalcMs = Math.min(on.recalcStyleMs, on2.recalcStyleMs);
+    const offRecalcMs = Math.min(off.recalcStyleMs, off2.recalcStyleMs);
+    const perTickRecalcMs = (onRecalcMs - offRecalcMs) / ticks;
+    const perChangeRecalcMs = (probe.recalcStyleMs - offRecalcMs) / ticks;
 
     // eslint-disable-next-line no-console
     console.log(
-      `[#1774 perf] ON  ${fmt(on.stats)} distinct--b1=${on.distinct} ` +
-        `RecalcStyle=${on.recalcStyleMs.toFixed(1)}ms/${on.recalcStyleCount} Layout=${on.layoutCount}\n` +
-        `[#1774 perf] OFF ${fmt(off.stats)} distinct--b1=${off.distinct} ` +
-        `RecalcStyle=${off.recalcStyleMs.toFixed(1)}ms/${off.recalcStyleCount} Layout=${off.layoutCount}\n` +
-        `[#1774 perf] delta RecalcStyle=${(on.recalcStyleMs - off.recalcStyleMs).toFixed(1)}ms ` +
+      `[#1774 perf] ON  ${fmt(on.stats)} | 2nd ${fmt(on2.stats)} distinct--b1=${on.distinct}/${on2.distinct} ` +
+        `RecalcStyle=${on.recalcStyleMs.toFixed(1)}/${on2.recalcStyleMs.toFixed(1)}ms Layout=${on.layoutCount}\n` +
+        `[#1774 perf] OFF ${fmt(off.stats)} | 2nd ${fmt(off2.stats)} distinct--b1=${off.distinct}/${off2.distinct} ` +
+        `RecalcStyle=${off.recalcStyleMs.toFixed(1)}/${off2.recalcStyleMs.toFixed(1)}ms Layout=${off.layoutCount}\n` +
+        `[#1774 perf] delta RecalcStyle=${(onRecalcMs - offRecalcMs).toFixed(1)}ms (best windows) ` +
         `(${perTickRecalcMs.toFixed(2)}ms/tick over ${ticks} ticks, +${PROXY_N} proxy elements) ` +
         `Layout=${on.layoutCount - off.layoutCount}\n` +
         `[#1774 perf] baseline one root-token change=${perChangeRecalcMs.toFixed(2)}ms ` +
@@ -408,10 +444,23 @@ test.describe.serial('#1774 Accent breathe', () => {
 
     // The ON sample really breathed; the OFF sample really didn't.
     expect(on.distinct).toBeGreaterThanOrEqual(10);
+    expect(on2.distinct).toBeGreaterThanOrEqual(10);
     expect(off.distinct).toBe(1);
-    // Same tolerance as ui-runtime.spec.ts's STREAMING_DROP_TOLERANCE_PCT.
-    expect(on.stats.droppedFramePct).toBeLessThanOrEqual(off.stats.droppedFramePct + 5);
-    expect(on.stats.p95Fps).toBeGreaterThanOrEqual(off.stats.p95Fps - 3);
+    expect(off2.distinct).toBe(1);
+    // Best ON window within 2 points of the best OFF window. One point is ~2.4
+    // of the ~240 frames in 4 s, so +2 is ~4.8 frames over OFF: about one frame
+    // of headroom over the worst single ON window measured (local 1.7% = 4
+    // frames). ON and OFF are separate, sequential windows (a Settings round
+    // trip between them), so runner jank in only one of them does NOT cancel
+    // out; the best-of-2 per mode above is what absorbs a one-off stall, and
+    // being relative to OFF is what absorbs a uniformly slow runner. Measured:
+    // CI shard-1 ON 0.8% / OFF 0.0%; local ON 0.0–1.7% / OFF 0.0–0.8%. The
+    // pre-fix per-tick transition restarts measured 5–9% ON vs 0% OFF in every
+    // window, which this fails.
+    const onBest = best(on.stats, on2.stats);
+    const offBest = best(off.stats, off2.stats);
+    expect(onBest.droppedFramePct).toBeLessThanOrEqual(offBest.droppedFramePct + 2);
+    expect(onBest.p95Fps).toBeGreaterThanOrEqual(offBest.p95Fps - 3);
     // A tick costs about one root-token change: no extra whole-tree recalc.
     expect(perChangeRecalcMs).toBeGreaterThan(0);
     expect(perTickRecalcMs).toBeLessThanOrEqual(perChangeRecalcMs * PER_TICK_RECALC_RATIO_MAX);

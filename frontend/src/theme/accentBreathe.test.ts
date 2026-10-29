@@ -19,6 +19,7 @@ import {
   computeLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
   resetLiquidNeonV2Tokens,
+  resolveVaultLiquidNeonV2,
   type LiquidNeonV2Settings,
 } from './liquidNeonEngine';
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './presets';
@@ -81,6 +82,7 @@ const alphaOf = (v: string) => v.slice(v.lastIndexOf(',') + 1);
 const el = document.documentElement;
 const b1 = () => el.style.getPropertyValue('--b1');
 const breathe = () => el.getAttribute('data-ln-breathe');
+const snapAccent = () => Object.fromEntries(ACCENT_BREATHE_KEYS.map((k) => [k, el.style.getPropertyValue(k)]));
 const setVisibility = (value: DocumentVisibilityState) => {
   Object.defineProperty(document, 'visibilityState', { value, configurable: true });
 };
@@ -357,6 +359,82 @@ describe('driver via applyLiquidNeonV2Tokens', () => {
     }
   });
 
+  it('short palette (slots 4–6 empty) breathes through the padded colors the tokens show', async () => {
+    stubMatchMedia();
+    const short = { slots: ['#00f0ff', '#ff2bd6', '#8b5cff', '', '', ''] as LiquidNeonV2Settings['slots'] };
+    const b = base(short);
+    applyLiquidNeonV2Tokens(short, COSMIC, el);
+    expect(breathe()).toBe('running');
+    expect(snapAccent()).toEqual(pick(b));
+    await vi.advanceTimersByTimeAsync(TICK);
+    expect(b1()).not.toBe(b['--b1']);
+    // One hop on, each slot shows the next slot's static color — padding included.
+    await vi.advanceTimersByTimeAsync(LOOP / 6 - TICK);
+    expect(el.style.getPropertyValue('--b3')).toBe(b['--b4']);
+    expect(el.style.getPropertyValue('--b6')).toBe(b['--b1']);
+    await vi.advanceTimersByTimeAsync(LOOP - LOOP / 6);
+    expect(snapAccent()).toEqual(pick(b));
+  });
+
+  it('one empty slot among 4–6 still breathes, blending through its fallback color', async () => {
+    stubMatchMedia();
+    const gap = { slots: ['#00f0ff', '#ff2bd6', '#8b5cff', '#ffb020', '', '#3d9bff'] as LiquidNeonV2Settings['slots'] };
+    const b = base(gap);
+    applyLiquidNeonV2Tokens(gap, COSMIC, el);
+    expect(breathe()).toBe('running');
+    expect(snapAccent()).toEqual(pick(b));
+    // Halfway through the first hop slot 4 sits between #ffb020 and the
+    // engine's slot-5 fallback #2fe6c8; one hop on it is that fallback.
+    await vi.advanceTimersByTimeAsync(LOOP / 12);
+    expect(rgbOf(el.style.getPropertyValue('--b4'))).toEqual([
+      Math.round(0xff + (0x2f - 0xff) / 2), Math.round(0xb0 + (0xe6 - 0xb0) / 2), Math.round(0x20 + (0xc8 - 0x20) / 2),
+    ]);
+    await vi.advanceTimersByTimeAsync(LOOP / 12);
+    expect(rgbOf(el.style.getPropertyValue('--b4'))).toEqual([0x2f, 0xe6, 0xc8]);
+    expect(el.style.getPropertyValue('--b4')).toBe(b['--b5']);
+  });
+
+  it('data-ln-breathe is written only when the state changes', async () => {
+    const mm = stubMatchMedia();
+    const spy = vi.spyOn(el, 'setAttribute');
+    const writes = () => spy.mock.calls.filter(([n]) => n === 'data-ln-breathe').map(([, v]) => v);
+    // First reconcile of a new controller writes it.
+    applyLiquidNeonV2Tokens(undefined, COSMIC, el);
+    expect(writes()).toEqual(['running']);
+    // Re-applies, ticks, visibility/media/class signals with the state unchanged: no rewrite.
+    applyLiquidNeonV2Tokens(undefined, COSMIC, el);
+    applyLiquidNeonV2Tokens(preset('cyber'), COSMIC, el);
+    document.dispatchEvent(new Event('visibilitychange'));
+    mm.fire(REDUCE, false);
+    el.classList.add('ln-test-unrelated');
+    await vi.advanceTimersByTimeAsync(TICK * 4);
+    el.classList.remove('ln-test-unrelated');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writes()).toEqual(['running']);
+    // A real change still writes, once.
+    el.classList.add('ln-anim-paused');
+    await vi.advanceTimersByTimeAsync(0);
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(writes()).toEqual(['running', 'paused']);
+    expect(breathe()).toBe('paused');
+    el.classList.remove('ln-anim-paused');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(writes()).toEqual(['running', 'paused', 'running']);
+    // After reset removed it, the next apply writes it again.
+    resetLiquidNeonV2Tokens(el);
+    expect(el.hasAttribute('data-ln-breathe')).toBe(false);
+    applyLiquidNeonV2Tokens(undefined, COSMIC, el);
+    expect(breathe()).toBe('running');
+    // A different element gets it on its first apply.
+    const other = document.createElement('div');
+    applyLiquidNeonV2Tokens(undefined, COSMIC, other);
+    expect(other.getAttribute('data-ln-breathe')).toBe('running');
+    // Back on the root after the element change: written again (new controller).
+    applyLiquidNeonV2Tokens(undefined, COSMIC, el);
+    expect(writes().at(-1)).toBe('running');
+    expect(writes()).toHaveLength(5);
+  });
+
   it('perf structure', async () => {
     const mm = stubMatchMedia();
     const raf = vi.fn();
@@ -389,5 +467,28 @@ describe('driver via applyLiquidNeonV2Tokens', () => {
     mm.fire(REDUCE, true);
     expect(breathe()).toBe('off');
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('per-vault snapshots (SKY-11237) inherit the global toggle', () => {
+  const pre1774Vault = { ...preset('cyber'), intensity: 70 } as Partial<LiquidNeonV2Settings>;
+
+  it('global off + a vault snapshot with no accentBreathe key → off', () => {
+    stubMatchMedia();
+    applyLiquidNeonV2Tokens(resolveVaultLiquidNeonV2(pre1774Vault, { accentBreathe: false }), COSMIC, el);
+    expect(breathe()).toBe('off');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('an explicit vault true keeps running over a global off', () => {
+    stubMatchMedia();
+    applyLiquidNeonV2Tokens(resolveVaultLiquidNeonV2({ ...pre1774Vault, accentBreathe: true }, { accentBreathe: false }), COSMIC, el);
+    expect(breathe()).toBe('running');
+  });
+
+  it('no global key either (fresh profile) → on', () => {
+    stubMatchMedia();
+    applyLiquidNeonV2Tokens(resolveVaultLiquidNeonV2(pre1774Vault, {}), COSMIC, el);
+    expect(breathe()).toBe('running');
   });
 });

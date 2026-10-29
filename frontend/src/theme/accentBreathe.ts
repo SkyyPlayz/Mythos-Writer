@@ -34,10 +34,44 @@ export const ACCENT_BREATHE_KEYS = [
 
 export type AccentBreatheState = 'running' | 'paused' | 'off';
 
+/** A system signal that forces breathe off whatever the toggle says. */
+export type AccentBreatheBlock = 'reduced-motion' | 'contrast' | null;
+
+const REDUCE_QUERY = '(prefers-reduced-motion: reduce)';
+const CONTRAST_QUERY = '(prefers-contrast: more)';
+const FORCED_QUERY = '(forced-colors: active)';
+
+/**
+ * Why breathe is forced off right now (OS reduced motion; OS/app high
+ * contrast or forced colors), or null. The in-app Reduce motion switch is a
+ * setting, not a system signal, so callers that hold settings check it
+ * themselves. No matchMedia → null (nothing to report).
+ */
+export function accentBreatheBlock(doc: Document = document): AccentBreatheBlock {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
+  if (window.matchMedia(REDUCE_QUERY).matches) return 'reduced-motion';
+  if (window.matchMedia(CONTRAST_QUERY).matches || window.matchMedia(FORCED_QUERY).matches) return 'contrast';
+  if (doc.documentElement.dataset.contrast === 'high') return 'contrast';
+  return null;
+}
+
+/** Call `cb` whenever accentBreatheBlock() may have changed; returns unsubscribe. */
+export function subscribeAccentBreatheBlock(cb: () => void, doc: Document = document): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+  const mqs = [REDUCE_QUERY, CONTRAST_QUERY, FORCED_QUERY].map((q) => window.matchMedia(q));
+  for (const m of mqs) m.addEventListener('change', cb);
+  const observer = typeof MutationObserver === 'function' ? new MutationObserver(cb) : null;
+  observer?.observe(doc.documentElement, { attributes: true, attributeFilter: ['data-contrast'] });
+  return () => {
+    for (const m of mqs) m.removeEventListener('change', cb);
+    observer?.disconnect();
+  };
+}
+
 export interface AccentBreatheInput {
   /** S.accentBreathe && !S.reduceMotion */
   enabled: boolean;
-  /** S.slots (6 × #rrggbb) */
+  /** The six slot colors the tokens use (empty 4–6 padded; 6 × #rrggbb) */
   slots: readonly string[];
   /** RAW (unclamped) .3+.4I, .18+.5I, .05+.13I — clamped only when formatted. */
   aB: number;
@@ -114,7 +148,8 @@ interface Controller {
   mq: { reduce: MediaQueryList; contrast: MediaQueryList; forced: MediaQueryList } | null;
   observer: MutationObserver | null;
   onVis: (() => void) | null;
-  state: AccentBreatheState;
+  /** Last state written to data-ln-breathe; null until the first reconcile. */
+  state: AccentBreatheState | null;
 }
 
 let ctl: Controller | null = null;
@@ -199,8 +234,10 @@ function reconcile(): void {
   const c = ctl;
   if (!c) return;
   const state = computeState(c);
-  c.state = state;
-  c.el.setAttribute('data-ln-breathe', state);
+  if (state !== c.state) {
+    c.state = state;
+    c.el.setAttribute('data-ln-breathe', state);
+  }
   if (state === 'off') {
     c.elapsed = 0;
     write(c, tokensFor(c.input, c.rgb, 0));
@@ -218,13 +255,13 @@ function createController(el: HTMLElement): Controller {
   const doc = el.ownerDocument;
   const c: Controller = {
     el, input: { enabled: false, slots: [], aB: 0, aG: 0, aGs: 0, glowRh: 0 }, rgb: null,
-    elapsed: 0, timer: null, last: {}, mq: null, observer: null, onVis: null, state: 'off',
+    elapsed: 0, timer: null, last: {}, mq: null, observer: null, onVis: null, state: null,
   };
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return c;
   c.mq = {
-    reduce: window.matchMedia('(prefers-reduced-motion: reduce)'),
-    contrast: window.matchMedia('(prefers-contrast: more)'),
-    forced: window.matchMedia('(forced-colors: active)'),
+    reduce: window.matchMedia(REDUCE_QUERY),
+    contrast: window.matchMedia(CONTRAST_QUERY),
+    forced: window.matchMedia(FORCED_QUERY),
   };
   for (const m of Object.values(c.mq)) m.addEventListener('change', reconcile);
   if (typeof MutationObserver === 'function') {

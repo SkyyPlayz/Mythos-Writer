@@ -405,6 +405,128 @@ describe('#1774 — Motion card: Accent breathe', () => {
     expect(next.accentBreathe).toBe(false);
   });
 
+  describe('forced-off hint', () => {
+    const REDUCE = '(prefers-reduced-motion: reduce)';
+    const CONTRAST = '(prefers-contrast: more)';
+    const FORCED = '(forced-colors: active)';
+
+    /** Per-query MQL objects with real listeners, so a test can flip a query live. */
+    function stubMatchMedia(state: Record<string, boolean> = {}) {
+      const lists = new Map<string, { matches: boolean; media: string; listeners: Set<() => void> }>();
+      const get = (query: string) => {
+        let m = lists.get(query);
+        if (!m) {
+          m = { matches: state[query] === true, media: query, listeners: new Set() };
+          lists.set(query, m);
+        }
+        return m;
+      };
+      vi.stubGlobal('matchMedia', vi.fn((q: string) => {
+        const m = get(q);
+        return {
+          get matches() { return m.matches; },
+          media: q,
+          addEventListener: (_t: string, l: () => void) => { m.listeners.add(l); },
+          removeEventListener: (_t: string, l: () => void) => { m.listeners.delete(l); },
+        };
+      }));
+      return {
+        fire(query: string, matches: boolean) {
+          const m = get(query);
+          m.matches = matches;
+          act(() => { for (const l of [...m.listeners]) l(); });
+        },
+      };
+    }
+
+    // Still mounted here: the section's MutationObserver sees the removal, so flush it inside act.
+    afterEach(async () => {
+      await act(async () => { document.documentElement.removeAttribute('data-contrast'); });
+    });
+
+    const hint = () => screen.queryByTestId('lnas-accentbreathe-hint');
+    const expectDescribed = (text: string) => {
+      const toggle = screen.getByTestId('lnas-accentbreathe');
+      const h = hint();
+      expect(h).not.toBeNull();
+      expect(h).toHaveTextContent(text);
+      expect(toggle).toHaveAttribute('aria-describedby', h!.id);
+      expect(toggle).toHaveAttribute('aria-checked', 'true'); // still the saved setting
+    };
+
+    it('in-app Reduce motion: hint names it and the switch points at it', async () => {
+      stubMatchMedia();
+      await setup({ reduceMotion: true });
+      expectDescribed('Off while Reduce motion is on');
+    });
+
+    it('OS reduced motion: hint names the system setting', async () => {
+      stubMatchMedia({ [REDUCE]: true });
+      await setup();
+      expectDescribed("Off while your system's reduced-motion setting is on");
+    });
+
+    it.each([
+      ['prefers-contrast: more', CONTRAST],
+      ['forced-colors', FORCED],
+    ])('%s: hint names high contrast', async (_n, query) => {
+      stubMatchMedia({ [query]: true });
+      await setup();
+      expectDescribed('Off while high contrast is on');
+    });
+
+    it('the app high-contrast attribute: hint names high contrast', async () => {
+      stubMatchMedia();
+      document.documentElement.dataset.contrast = 'high';
+      await setup();
+      expectDescribed('Off while high contrast is on');
+    });
+
+    it('no hint and no aria-describedby when nothing forces it off', async () => {
+      stubMatchMedia();
+      await setup();
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('no hint while the setting itself is off, even under a system block', async () => {
+      stubMatchMedia({ [REDUCE]: true });
+      await setup({ accentBreathe: false });
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('the hint appears and disappears live as the system setting changes', async () => {
+      const mm = stubMatchMedia();
+      await setup();
+      expect(hint()).toBeNull();
+      mm.fire(REDUCE, true);
+      expectDescribed("Off while your system's reduced-motion setting is on");
+      mm.fire(REDUCE, false);
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('the hint follows the app high-contrast attribute live', async () => {
+      stubMatchMedia();
+      await setup();
+      expect(hint()).toBeNull();
+      await act(async () => { document.documentElement.dataset.contrast = 'high'; });
+      expectDescribed('Off while high contrast is on');
+      await act(async () => { document.documentElement.removeAttribute('data-contrast'); });
+      expect(hint()).toBeNull();
+      expect(screen.getByTestId('lnas-accentbreathe')).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('the Motion card has no axe violations with the hint visible', async () => {
+      stubMatchMedia({ [REDUCE]: true });
+      await setup();
+      expect(hint()).not.toBeNull();
+      const card = screen.getByTestId('lnas-accentbreathe').closest('.lnas-card') as HTMLElement;
+      expect(await axe(card)).toHaveNoViolations();
+    });
+  });
+
   it('the Motion card has no axe violations', async () => {
     await setup();
     const card = screen.getByTestId('lnas-accentbreathe').closest('.lnas-card') as HTMLElement;
