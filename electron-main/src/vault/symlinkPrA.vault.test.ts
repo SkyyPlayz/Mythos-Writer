@@ -1879,6 +1879,16 @@ describe('PR A symlink writes', () => {
 
         const oldFile = path.join(root, 'old-save.md');
 
+      // MUTATION-PROOF ONLY: inject >=2.5ms sync delay on the guarded save path.
+      const guardedSaveWithDelay = (vaultRoot: string, rel: string, data: Buffer): void => {
+        const until = performance.now() + 2.5;
+        while (performance.now() < until) {
+          /* busy-wait */
+        }
+        writeVaultFileAtomic(vaultRoot, rel, data);
+      };
+
+
         // One interleaved loop: alternate unguarded (old) and guarded (new) saves on the same payload.
         // The first 5 pairs are warmup and discarded; the next 120 pairs are kept.
         const saveWarmup = 5;
@@ -1888,7 +1898,7 @@ describe('PR A symlink writes', () => {
         const pairedSaveDiffs: number[] = [];
         for (let i = 0; i < saveWarmup + saveN; i++) {
           const oldMs = time(() => prePrWriteFileAtomic(oldFile, payload));
-          const newMs = time(() => writeVaultFileAtomic(root, 'new-save.md', payload));
+          const newMs = time(() => guardedSaveWithDelay(root, 'new-save.md', payload));
           if (i >= saveWarmup) {
             oldSaveSamples.push(oldMs);
             newSaveSamples.push(newMs);
