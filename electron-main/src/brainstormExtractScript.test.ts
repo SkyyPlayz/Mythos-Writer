@@ -3,7 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_MAX_PROPOSALS,
   MAX_EXTRACTION_CONFIDENCE,
@@ -207,6 +207,35 @@ describe('extractProposalsByScript — dedup and filters', () => {
     expect(extract(many).length).toBe(DEFAULT_MAX_PROPOSALS);
     expect(extract(many, { max: 3 }).length).toBe(3);
     expect(extract(many, { max: 0 })).toEqual([]);
+  });
+});
+
+describe('extractProposalsByScript — confidence floor', () => {
+  // One plain, uncued, single mention: the lowest score the script ships.
+  const AT_FLOOR = 'Later the crew argued about Zorvath and the broken compass.';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('keeps a candidate scored exactly at the floor', () => {
+    const proposals = extract(AT_FLOOR);
+    expect(proposals.map((p) => [p.title, p.kind, p.extractionConfidence])).toEqual([
+      ['Zorvath', 'inbox', MIN_EXTRACTION_CONFIDENCE],
+    ]);
+  });
+
+  it('drops a candidate scored just below the floor', () => {
+    // Shipped scores never start below the floor, so lower this candidate's
+    // final rounding (clamp's Math.round, the script's only one) by one step.
+    const round = Math.round;
+    const floorStep = round(MIN_EXTRACTION_CONFIDENCE * 100);
+    const spy = vi.spyOn(Math, 'round').mockImplementation((x: number) => {
+      const r = round(x);
+      return r === floorStep ? r - 1 : r;
+    });
+    expect(extract(AT_FLOOR)).toEqual([]);
+    expect(spy).toHaveBeenCalled();
   });
 });
 

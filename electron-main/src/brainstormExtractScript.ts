@@ -3,7 +3,8 @@
 // Replaces the Haiku side-call behind brainstorm:extractProposals. Same output
 // contract as runExtractionSideCall (brainstormAgent.ts) so the renderer's
 // ProposalCard and the suggestions table need no change, but no model, no
-// network, no key: it runs in every AI mode, offline included.
+// network, no key, so it works offline. Until M1 sets per-mode visibility, the
+// IPC handler still returns [] when AI is off or the Brainstorm agent is disabled.
 //
 // What counts as a name is wikiNameCandidates' job (capitalised runs, sentence-
 // start rule, stopwords, hygiene). This module adds the two brainstorm-specific
