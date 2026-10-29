@@ -300,6 +300,9 @@ import { registerPresetHandlers } from './presetIpc.js';
 import createJobWorker from './jobs/jobWorker?nodeWorker';
 import { initJobService, shutdownJobService, getJobQueue } from './jobs/jobService.js';
 import { registerJobsIpc } from './jobs/jobsIpc.js';
+// #1765: import hub — drop zone / pickers → safety check → preview → commit.
+import { registerImportHubIpc } from './importHub/importHubIpc.js';
+import { buildImportPlan } from './importHub/buildPlan.js';
 import {
   buildVaultSummary,
   truncateContext,
@@ -11960,6 +11963,53 @@ app.whenReady().then(async () => {
     } catch {
       return null;
     }
+  });
+  // #1765: Settings → Vault & Files → "Import your writing". Writes go
+  // through the same manifest wrapper as every other story edit (v2 vaults
+  // re-sync mythos.json + book.md), after the renderer's debounced manifest
+  // save is flushed so it cannot overwrite the import.
+  registerImportHubIpc({
+    getStoryVaultRoot: () => {
+      const root = getVaultRoot();
+      return root && fs.existsSync(root) ? root : null;
+    },
+    isV2StoryVault: (storyVaultRoot) => mythosRootForStoryVault(storyVaultRoot) !== null,
+    getManifestPath,
+    readManifest: (manifestPath) => readManifest(manifestPath),
+    writeManifest: (manifestPath, m) => { writeManifest(manifestPath, m); },
+    getNotesVaultRoot: () => getNotesVaultRoot() ?? null,
+    ensureNotesVaultDir,
+    notifyNotesWritten: (relPaths) => {
+      const notesRoot = getNotesVaultRoot();
+      for (const rel of relPaths) {
+        try {
+          handleNoteFileChanged(notesRoot, path.join(notesRoot, rel));
+        } catch {
+          /* the note already landed — the index catches up on the next scan */
+        }
+        notifyNotesVaultMutatedByApp(rel);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('vault:file-changed', { path: rel });
+        }
+      }
+    },
+    // Same push the floating navigator uses after it edits the manifest:
+    // every window re-reads the manifest and refreshes its story list.
+    notifyStoriesChanged: () => {
+      for (const [, state] of floatingPanelWindows) {
+        if (!state.win.isDestroyed()) state.win.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
+      }
+    },
+    flushRenderer: () => (mainWindow && !mainWindow.isDestroyed()
+      ? flushRendererManifestSave(mainWindow)
+      : Promise.resolve()),
+    showOpenDialog: (opts) => dialog.showOpenDialog(opts),
+    defaultImportDir: () => defaultFor('import'),
+    rememberImportDir: (picked) => rememberFrom('import', picked),
+    buildPlan: (realPath, kind, assessed) => buildImportPlan(realPath, kind, assessed),
   });
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();

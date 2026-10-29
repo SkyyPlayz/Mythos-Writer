@@ -222,6 +222,58 @@ describe('assessImportPath — ZIP containers', () => {
     if (!r.ok) expect(r.refused).toBe(true);
   });
 
+  // A ZIP whose central directory lies about sizes: mammoth/JSZip would inflate
+  // the whole entry before noticing, so the gate must check real sizes.
+  function patchSizes(bytes: Buffer, opts: { central?: number; local?: number }): Buffer {
+    for (let i = 0; i + 4 <= bytes.length; i++) {
+      const sig = bytes.readUInt32LE(i);
+      const nameAt = sig === 0x02014b50 ? i + 46 : sig === 0x04034b50 ? i + 30 : -1;
+      if (nameAt < 0 || bytes.toString('utf8', nameAt, nameAt + 17) !== 'word/document.xml') continue;
+      if (sig === 0x02014b50 && opts.central !== undefined) bytes.writeUInt32LE(opts.central, i + 24);
+      if (sig === 0x04034b50 && opts.local !== undefined) bytes.writeUInt32LE(opts.local, i + 22);
+    }
+    return bytes;
+  }
+
+  async function bombDocx(): Promise<Buffer> {
+    return zipOf({
+      '[Content_Types].xml': '<Types/>',
+      'word/document.xml': `<w:document>${'a'.repeat(8 * 1024 * 1024)}</w:document>`,
+    });
+  }
+
+  it('refuses a .docx whose entry inflates to far more than both headers claim (zip bomb)', async () => {
+    const bytes = patchSizes(await bombDocx(), { central: 1000, local: 1000 });
+    const r = assessImportPath(write('Bomb.docx', bytes));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.refused).toBe(true);
+      expect(r.reason).toMatch(/doesn't match its own table of contents/);
+    }
+  });
+
+  it('refuses a .docx whose central directory disagrees with the local header', async () => {
+    const bytes = patchSizes(await bombDocx(), { central: 1000 });
+    const r = assessImportPath(write('Lying.docx', bytes));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refused).toBe(true);
+  });
+
+  it('refuses a .docx whose entry inflates to less than it claims', async () => {
+    const bytes = await bombDocx();
+    const real = 8 * 1024 * 1024 + '<w:document></w:document>'.length;
+    patchSizes(bytes, { central: real + 10, local: real + 10 });
+    const r = assessImportPath(write('Short.docx', bytes));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refused).toBe(true);
+  });
+
+  it('still accepts a large honest deflated .docx', async () => {
+    const r = assessImportPath(write('Honest.docx', await bombDocx()));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.zip?.uncompressedBytes).toBeGreaterThan(8 * 1024 * 1024);
+  });
+
   it('calls a truncated ZIP damaged, not ok', () => {
     const r = assessImportPath(write('Broken.docx', Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(100)])));
     expect(r.ok).toBe(false);

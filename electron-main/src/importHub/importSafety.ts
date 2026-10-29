@@ -14,8 +14,13 @@
 //
 // The ZIP scan is a small hand-written central-directory reader rather than
 // JSZip: assessImportPath is synchronous, and reading the directory ourselves
-// lets the caps apply before anything is inflated. Only [Content_Types].xml and
-// the ePub `mimetype` entry are ever inflated here, each capped at 1 MB.
+// lets the entry/claimed-size caps apply before anything is inflated. The
+// claimed sizes can lie, though (mammoth/JSZip only notice a mismatch after
+// inflating the whole entry), so every entry is then inflated here with
+// maxOutputLength set to its claimed size + 1: an entry that inflates to more
+// or less than it claims, or whose local header disagrees with the central
+// directory, is refused. Peak memory is bounded by the largest claimed entry
+// (≤ ZIP_MAX_UNCOMPRESSED_BYTES), and nothing inflated here is kept.
 //
 // Pure Node — no Electron.
 
@@ -162,7 +167,7 @@ interface ZipEntry {
 }
 
 class ZipScanError extends Error {
-  constructor(readonly kindOf: 'damaged' | 'too-large') {
+  constructor(readonly kindOf: 'damaged' | 'too-large' | 'mismatch') {
     super(kindOf);
   }
 }
@@ -269,6 +274,60 @@ function readZipEntryText(buf: Buffer, entry: ZipEntry): string | null {
   }
 }
 
+/**
+ * Inflate every entry (output discarded) and check it really is the size the
+ * central directory claims, so a docx can't pass the claimed-size cap and then
+ * inflate to gigabytes inside mammoth. Throws ZipScanError.
+ */
+function verifyZipEntrySizes(buf: Buffer, entries: ZipEntry[]): void {
+  let actualTotal = 0;
+  for (const entry of entries) {
+    const off = entry.localOffset;
+    need(buf, off, 30);
+    if (buf.readUInt32LE(off) !== 0x04034b50) throw new ZipScanError('damaged');
+    const flags = buf.readUInt16LE(off + 6);
+    const localMethod = buf.readUInt16LE(off + 8);
+    const localCompressed = buf.readUInt32LE(off + 18);
+    const localUncompressed = buf.readUInt32LE(off + 22);
+    const nameLen = buf.readUInt16LE(off + 26);
+    const extraLen = buf.readUInt16LE(off + 28);
+    if (localMethod !== entry.method) throw new ZipScanError('mismatch');
+    // Bit 3: sizes live in a trailing data descriptor (local fields are 0).
+    // 0xffffffff: ZIP64, real sizes in the extra field (central values were decoded).
+    const localSizesPresent = (flags & 0x8) === 0 && localCompressed !== 0xffffffff && localUncompressed !== 0xffffffff;
+    if (localSizesPresent && (localCompressed !== entry.compressedSize || localUncompressed !== entry.uncompressedSize)) {
+      throw new ZipScanError('mismatch');
+    }
+    const start = off + 30 + nameLen + extraLen;
+    need(buf, start, entry.compressedSize);
+    const data = buf.subarray(start, start + entry.compressedSize);
+    let actual: number;
+    if (entry.method === 0) {
+      actual = data.length;
+    } else if (entry.method === 8) {
+      if (data.length === 0 && entry.uncompressedSize === 0) {
+        actual = 0;
+      } else {
+        try {
+          // +1 so "inflates to more than it claims" shows up as a length
+          // mismatch (or a RangeError past it) instead of passing silently.
+          actual = zlib.inflateRawSync(data, { maxOutputLength: entry.uncompressedSize + 1 }).length;
+        } catch (err) {
+          const code = (err as { code?: unknown }).code;
+          if (err instanceof RangeError || code === 'ERR_BUFFER_TOO_LARGE') throw new ZipScanError('mismatch');
+          throw new ZipScanError('damaged');
+        }
+      }
+    } else {
+      // Word and ePub only use stored/deflate; JSZip can't read anything else.
+      throw new ZipScanError('damaged');
+    }
+    if (actual !== entry.uncompressedSize) throw new ZipScanError('mismatch');
+    actualTotal += actual;
+    if (actualTotal > ZIP_MAX_UNCOMPRESSED_BYTES) throw new ZipScanError('too-large');
+  }
+}
+
 const MACRO_PART = /(^|\/)vbaProject\.bin$|(^|\/)vbaData\.xml$/i;
 
 type ZipVerdict =
@@ -279,7 +338,15 @@ function assessZip(buf: Buffer, ext: string): ZipVerdict {
   let entries: ZipEntry[];
   try {
     entries = readZipDirectory(buf);
+    verifyZipEntrySizes(buf, entries);
   } catch (err) {
+    if (err instanceof ZipScanError && err.kindOf === 'mismatch') {
+      return {
+        ok: false,
+        refused: true,
+        reason: 'The inside of this file doesn\'t match its own table of contents — it may be damaged, or built to crash apps that open it. Mythos won\'t open it.',
+      };
+    }
     if (err instanceof ZipScanError && err.kindOf === 'too-large') {
       return {
         ok: false,

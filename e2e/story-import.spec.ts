@@ -1,220 +1,149 @@
 /**
- * story-import.spec.ts — SKY-8002
+ * story-import.spec.ts — #1765 "Import before release" (import hub).
  *
- * REAL end-to-end coverage for Settings → Vault & Files → "Import a story"
- * (frontend/src/components/SettingsPanel/sections/ImportStorySection.tsx).
+ * REAL end-to-end coverage for Settings → Vault & Files → "Import your
+ * writing" (frontend/src/components/SettingsPanel/sections/ImportSection.tsx):
+ * click "Choose a file…" → window.api.importHub.pick → native dialog → the
+ * real import:pick handler (electron-main/src/importHub/importHubIpc.ts) →
+ * importSafety → importDetect → buildPlan (docx → mammoth → RichBlocks →
+ * chapters/scenes) → preview in the UI → click "Import" → import:commit →
+ * real v2 story files (book.md + Part 1/Chapter NN/Scene NN.md), the
+ * manifest cache, mythos.json, and a Story Plan note.
  *
- * Unlike electron-main/src/storyImport.test.ts (a Vitest unit test against a
- * mocked/tmp fs, no UI, no IPC, no real Electron app), this spec drives the
- * genuine app: UI click -> window.api.storyImportPickFile -> native dialog ->
- * window.api.storyImportRun -> the real STORY_IMPORT_RUN IPC handler in
- * electron-main/src/main.ts -> docxToStoryMarkdown / splitStoryMarkdown ->
- * writeImportedStoryToVault -> real .md scene files + manifest.json on disk.
+ * The only seam faked is the native file picker. The vault is created
+ * through the real vault-creation IPC (setup, not under test); the
+ * manuscript is synthesized at run time from
+ * electron-main/src/importHub/testFixtures/manuscriptDocx.ts — no binary
+ * manuscript is committed.
  *
- * Per COMPANY-STANDARDS §4a, the only seam faked is the native OS file-picker
- * dialog (Playwright cannot drive `dialog.showOpenDialog`) — same pattern as
- * e2e/export-formats.spec.ts's `patchSaveDialog`. Nothing else is stubbed:
- * storyImportPickFile / storyImportRun and every handler downstream of them
- * run for real.
+ * Set IMPORT_SHOTS_DIR=<dir> to also save screenshots of each step.
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
+import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { findMdFiles, openImportSection, setUpImportVault, stubOpenDialog } from './helpers/importHub';
 import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+  buildHeadedManuscriptDocx,
+  HEADED_MANUSCRIPT_OUTLINE,
+} from '../electron-main/src/importHub/testFixtures/manuscriptDocx';
 
-const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-const FIXTURE_DOCX = path.resolve(__dirname, 'fixtures/story-import.docx');
+const SHOTS_DIR = process.env.IMPORT_SHOTS_DIR;
 
-// Must match the real headings baked into e2e/fixtures/story-import.docx
-// (see e2e/fixtures/build-story-import-docx.cjs).
-const STORY_TITLE = 'The Story Import Chronicle';
-const CHAPTER_TITLES = ['The Story Import Chronicle', 'The Long Road'];
-const SCENE_TITLES = ['Opening Gambit', 'Turning Point'];
-const SCENE_PROSE_SNIPPETS = [
-  'first real bytes hit the disk',
-  'fresh heading and fresh prose',
-];
-
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
-  const agent = {
-    enabled: false, model: 'claude-sonnet-4-6', autoApply: false,
-    confidenceThreshold: 0.85, maxTokensPerHour: 100_000,
-    maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000,
-  };
-  const appSettings = {
-    apiKey: '',
-    onboardingComplete: true,
-    agents: {
-      writingAssistant: { ...agent, scanIntervalSeconds: 30 },
-      brainstorm: agent,
-      archive: { ...agent, continuityCheckIntervalSeconds: 60 },
-    },
-    theme: 'dark',
-    snapshots: { maxPerScene: 100, maxAgeDays: 30 },
-  };
-  fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify(appSettings, null, 2));
-  fs.writeFileSync(
-    path.join(userData, 'vault-settings.json'),
-    JSON.stringify({ vaultRoot: vaultDir, notesVaultRoot: notesVaultDir }, null, 2),
-  );
+async function shot(page: Page, name: string): Promise<void> {
+  if (!SHOTS_DIR) return;
+  fs.mkdirSync(SHOTS_DIR, { recursive: true });
+  await page.screenshot({ path: path.join(SHOTS_DIR, `${name}.png`) });
 }
 
-async function launchApp(userData: string): Promise<ElectronApplication> {
-  const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
-    ? ['--headless']
-    : [];
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
-    timeout: 60_000,
-  });
-  const proc = app.process();
-  proc.stdout?.on('data', (d: Buffer) => console.log('[main:out]', d.toString().trimEnd()));
-  proc.stderr?.on('data', (d: Buffer) => console.log('[main:err]', d.toString().trimEnd()));
-  return app;
-}
-
-async function firstWindow(app: ElectronApplication): Promise<Page> {
-  const pg = await app.firstWindow();
-  pg.on('console', (m) => console.log('[renderer:' + m.type() + ']', m.text()));
-  pg.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message));
-  await pg.waitForLoadState('domcontentloaded');
-  return pg;
-}
-
-/**
- * Patch ONLY dialog.showOpenDialog to resolve with `filePath` — the one
- * legitimate seam Playwright cannot drive natively. Everything downstream
- * (storyImportRun IPC handler, docx parsing, disk writes) runs for real.
- */
-async function stubOpenDialog(app: ElectronApplication, filePath: string): Promise<void> {
-  await app.evaluate(({ dialog }, { file }: { file: string }) => {
-    (dialog as unknown as Record<string, unknown>).showOpenDialog = async () => (
-      { canceled: false, filePaths: [file] }
-    );
-  }, { file: filePath });
-}
-
-/** Recursively collect all *.md files under `dir`. */
-function findMdFiles(dir: string): string[] {
-  if (!fs.existsSync(dir)) return [];
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...findMdFiles(full));
-    } else if (entry.name.endsWith('.md')) {
-      results.push(full);
-    }
-  }
-  return results;
-}
-
-let userData: string;
-let vaultDir: string;
-let notesVaultDir: string;
 let app: ElectronApplication | undefined;
 let page: Page;
+let userData: string;
+let workDir: string;
+let storyVaultPath: string;
+let notesVaultPath: string;
+
+test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-import-userdata-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-import-vault-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-import-notes-'));
-  seedUserData(userData, vaultDir, notesVaultDir);
-  app = await launchApp(userData);
-  page = await firstWindow(app);
+  ({ app, page, userData, workDir, storyVaultPath, notesVaultPath } = await setUpImportVault('import-hub'));
 });
 
 test.afterAll(async () => {
-  await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  await closeElectronApp(app);
+  removeTempDirs(userData, workDir);
 });
 
-// SKY-11154: ImportStorySection.tsx (the "#section-import-story" UI this
-// spec drove) was deleted — the Vault & Files page's "Add a Story Vault"
-// dialog (AddVaultDialog.tsx, kind='story', mode='import') is the only
-// import entry point now. That new path does not yet support .docx/.epub
-// (it currently only wires importObsidianToVaultDir), so this spec is
-// skipped rather than rewritten — the underlying STORY_IMPORT_RUN /
-// docxToStoryMarkadown pipeline this test exercised is untouched and still
-// unit-tested by electron-main/src/storyImport.test.ts. A follow-up ticket
-// owns either restoring a docx/epub import UI or retiring this pipeline.
-test.skip('Import a story (.docx) writes real scene/chapter files to the vault on disk', async () => {
-  expect(fs.existsSync(FIXTURE_DOCX), `missing fixture: ${FIXTURE_DOCX}`).toBe(true);
-  expect(app, 'app failed to launch').toBeTruthy();
+test('pick a multi-chapter .docx → preview → import writes chapters/scenes with bold + italics', async () => {
+  const outline = HEADED_MANUSCRIPT_OUTLINE;
+  const docxPath = path.join(workDir, `${outline.title}.docx`);
+  fs.writeFileSync(docxPath, await buildHeadedManuscriptDocx());
 
-  // Open Settings -> Vault & Files (same nav pattern as settings-vault-path.spec.ts).
-  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  await page.locator('.app-menu-gear-btn').click();
-  await page.getByRole('tab', { name: 'Vault & Files' }).click();
+  const section = await openImportSection(page);
+  await expect(section.getByText('Drop a file or folder here')).toBeVisible();
+  await shot(page, '01-import-idle');
 
-  const section = page.locator('#section-import-story').locator('..');
-  await expect(section).toBeVisible({ timeout: 8_000 });
+  await stubOpenDialog(app!, docxPath);
+  await section.getByRole('button', { name: 'Choose a file…' }).click();
 
-  // Format is docx by default, but select it explicitly for clarity/robustness.
-  await section.locator('[data-testid="import-story-format-docx"]').click();
+  // ── Preview: shown before anything is written ──
+  const preview = section.locator('[data-testid="import-preview"]');
+  await expect(preview).toBeVisible({ timeout: 20_000 });
+  await expect(preview).toContainText(outline.title);
+  await expect(preview).toContainText('Chapters found from your headings');
+  for (const ch of outline.chapters) await expect(preview).toContainText(ch.title);
+  const excerpt = preview.locator('[data-testid="import-excerpt"]');
+  await expect(excerpt.locator('strong', { hasText: 'iron gate' })).toBeVisible();
+  await expect(excerpt.locator('em', { hasText: 'lanterns' })).toBeVisible();
+  await expect(excerpt).not.toContainText('**');
+  await preview.scrollIntoViewIfNeeded();
+  await shot(page, '02-import-preview');
 
-  // Stub ONLY the native file picker to return our real fixture .docx.
-  await stubOpenDialog(app!, FIXTURE_DOCX);
+  const storyDir = path.join(storyVaultPath, outline.title);
+  expect(fs.existsSync(storyDir), 'preview must not write the story').toBe(false);
+  const mdBefore = findMdFiles(storyVaultPath).length;
 
-  // Click "Import story…" -> window.api.storyImportPickFile('docx') (fake
-  // dialog) -> window.api.storyImportRun('docx', FIXTURE_DOCX) (REAL IPC,
-  // REAL mammoth parse, REAL vault write) -> UI success state.
-  await section.locator('[data-testid="import-story-run"]').click();
-
-  const done = section.locator('[data-testid="import-story-done"]');
+  // ── Confirm ──
+  await section.locator('[data-testid="import-confirm"]').click();
+  const done = section.locator('[data-testid="import-done"]');
   await expect(done).toBeVisible({ timeout: 20_000 });
-  await expect(done).toContainText(STORY_TITLE);
-  await expect(done).toContainText('2 chapters');
-  await expect(done).toContainText('2 scenes');
+  const sceneTotal = outline.chapters.reduce((n, c) => n + c.scenes.length, 0);
+  await expect(done).toContainText(outline.title);
+  await expect(done).toContainText(`${outline.chapters.length} chapters`);
+  await expect(done).toContainText(`${sceneTotal} scenes`);
+  await shot(page, '03-import-done');
 
-  // ─── Load-bearing assertions: the REAL filesystem ───────────────────────
-  // Scope to Manuscript/ — a fresh vault boot seeds an unrelated "My First
-  // Story" sample outside Manuscript/ that would otherwise pollute the count.
-  const mdFiles = findMdFiles(path.join(vaultDir, 'Manuscript'));
-  expect(mdFiles.length, `expected 2 scene .md files under ${vaultDir}, found: ${mdFiles.join(', ')}`).toBe(2);
+  // ── Load-bearing: the REAL vault on disk ──
+  expect(fs.existsSync(path.join(storyDir, 'book.md')), 'book.md missing').toBe(true);
+  const sceneFiles = findMdFiles(path.join(storyDir, 'Part 1'));
+  expect(sceneFiles.length).toBe(sceneTotal);
+  expect(findMdFiles(storyVaultPath).length).toBe(mdBefore + sceneTotal + 1); // + book.md
 
-  const contents = mdFiles.map((f) => fs.readFileSync(f, 'utf-8'));
-  const allText = contents.join('\n---\n');
+  const arrival = fs.readFileSync(path.join(storyDir, 'Part 1', 'Chapter 01', 'Scene 01.md'), 'utf-8');
+  expect(arrival).toContain('Arrival');
+  expect(arrival).toContain('**iron gate**');
+  expect(arrival).toContain('*lanterns*');
+  const keeper = fs.readFileSync(path.join(storyDir, 'Part 1', 'Chapter 01', 'Scene 02.md'), 'utf-8');
+  expect(keeper).toContain('***Who goes there?***');
+  const allProse = sceneFiles.map((f) => fs.readFileSync(f, 'utf-8')).join('\n');
+  expect(allProse).toContain('<u>never</u>');
+  expect(allProse).toContain('~~closed~~');
+  expect(allProse, 'an in-run page break must not glue words together').not.toContain('lowand');
 
-  for (const title of SCENE_TITLES) {
-    expect(allText, `expected scene title "${title}" in written files`).toContain(title);
+  const book = fs.readFileSync(path.join(storyDir, 'book.md'), 'utf-8');
+  for (const ch of outline.chapters) expect(book).toContain(ch.title);
+  const mythosJson = fs.readFileSync(path.join(path.dirname(storyVaultPath), 'mythos.json'), 'utf-8');
+  expect(mythosJson).toContain(outline.title);
+  const plans = findMdFiles(path.join(notesVaultPath, 'Plans'));
+  expect(plans.some((p) => path.basename(p).includes(outline.title))).toBe(true);
+
+  // The open window sees the story without a restart.
+  const stories = await page.evaluate(async () => {
+    const m = await (window as unknown as { api: { readManifest: () => Promise<{ stories: { title: string }[] }> } })
+      .api.readManifest();
+    return m.stories.map((s) => s.title);
+  });
+  expect(stories).toContain(outline.title);
+});
+
+test('a dangerous file is refused before it is read, and nothing is written', async () => {
+  const exe = Buffer.concat([Buffer.from('MZ'), Buffer.alloc(512)]);
+  const doubleExt = path.join(workDir, 'Chapter 1.docx.exe');
+  const disguised = path.join(workDir, 'Notes.docx');
+  fs.writeFileSync(doubleExt, exe);
+  fs.writeFileSync(disguised, exe);
+
+  const section = await openImportSection(page);
+  const filesBefore = findMdFiles(storyVaultPath).length + findMdFiles(notesVaultPath).length;
+
+  for (const file of [doubleExt, disguised]) {
+    await stubOpenDialog(app!, file);
+    await section.getByRole('button', { name: 'Choose a file…' }).click();
+    await expect(section.locator('[data-testid="import-refused"]')).toBeVisible({ timeout: 10_000 });
+    await expect(section.locator('[data-testid="import-preview"]')).toHaveCount(0);
   }
-  for (const snippet of SCENE_PROSE_SNIPPETS) {
-    expect(allText, `expected prose snippet "${snippet}" in written files`).toContain(snippet);
-  }
+  await shot(page, '04-import-refused');
 
-  // Chapter directory names should reflect the real chapter titles parsed
-  // out of the docx (slugified by the vault writer).
-  for (const chTitle of CHAPTER_TITLES) {
-    const found = mdFiles.some((f) => {
-      const dir = path.dirname(f).toLowerCase();
-      return chTitle
-        .toLowerCase()
-        .split(/\s+/)
-        .every((word) => dir.includes(word.replace(/[^a-z0-9]/g, '')));
-    });
-    expect(found, `expected a chapter dir matching "${chTitle}" among: ${mdFiles.join(', ')}`).toBe(true);
-  }
-
-  // manifest.json on disk records the imported story + chapter/scene counts.
-  const manifestPath = path.join(vaultDir, 'manifest.json');
-  expect(fs.existsSync(manifestPath), 'manifest.json missing after import').toBe(true);
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  const story = manifest.stories.find((s: { title: string }) => s.title === STORY_TITLE);
-  expect(story, `story "${STORY_TITLE}" missing from manifest.json`).toBeTruthy();
-  expect(story.chapters.length).toBe(2);
-  expect(story.chapters.reduce((n: number, c: { scenes: unknown[] }) => n + c.scenes.length, 0)).toBe(2);
-
-  // A Story Plan note is also written to the Notes Vault.
-  const planFiles = findMdFiles(path.join(notesVaultDir, 'Plans'));
-  expect(planFiles.length, 'expected a Story Plan note under Plans/').toBeGreaterThan(0);
+  expect(findMdFiles(storyVaultPath).length + findMdFiles(notesVaultPath).length).toBe(filesBefore);
 });

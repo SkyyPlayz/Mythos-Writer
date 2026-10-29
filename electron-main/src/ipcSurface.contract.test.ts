@@ -61,8 +61,10 @@ const CENSUS = {
   // +1 notesBoard:writeRefused. The debounced sidecar flush runs after
   // notesBoard:patchLayout has already resolved, so a refusal cannot be the
   // invoke result. Main pushes it and preload listens. Not a new gap.
-  ipcChannelKeys: 407,
-  handlerChannels: 385,
+  // +3 import:pick / import:preview / import:commit (#1765 import hub,
+  // importHub/importHubIpc.ts). Paired handler + preload invoke — no new gap.
+  ipcChannelKeys: 410,
+  handlerChannels: 388,
   mainListenerChannels: 10,
   directSendChannels: 57,
   helperSendChannels: 59,
