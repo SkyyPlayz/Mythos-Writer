@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
@@ -9,6 +9,7 @@ import BlockEditor, { blocksToMarkdownBody } from './BlockEditor';
 import type { Block, Scene } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import { installActWarningGuard } from './testActWarningGuard';
+import { __resetPrismStoresForTests, prismLiveStore, prismSettingsStore } from './prism/store';
 
 installActWarningGuard();
 
@@ -842,5 +843,254 @@ describe('BlockEditor heading focus (GH #631)', () => {
       expect(screen.queryByRole('option', { name: 'H3' })).not.toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: /H3 section/ })).not.toBeInTheDocument();
+  });
+});
+
+// Prism (#1764): the scene editor feeds its book's Prism settings into the
+// PrismExtension and publishes findings for the sidebar checklist.
+describe('BlockEditor Prism wiring', () => {
+  beforeEach(() => {
+    __resetPrismStoresForTests();
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    // Unmount first: the reset notifies store subscribers.
+    cleanup();
+    __resetPrismStoresForTests();
+  });
+
+  it('publishes findings, draws flags once the book turns them on, and clears on unmount', async () => {
+    const scene = makeSceneWithBlocks([
+      { id: 'b1', type: 'prose', content: 'She walked slowly to the door.', order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+    ]);
+    const { unmount } = render(
+      <BlockEditor scene={scene} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+
+    await waitFor(() => {
+      const snap = prismLiveStore.get(scene.id);
+      expect(snap?.storyId).toBe('story-1');
+      expect(snap?.findings.some((f) => f.checkId === 'adverbs')).toBe(true);
+    });
+    // Flags default off: detected but not drawn.
+    expect(document.querySelector('.prism-flag')).toBeNull();
+
+    act(() => {
+      prismSettingsStore.update('story-1', { flags: true });
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.prism-flag--adverbs')?.textContent).toBe('slowly');
+    });
+
+    act(() => {
+      prismSettingsStore.update('story-1', { checks: { adverbs: false } });
+    });
+    await waitFor(() => expect(document.querySelector('.prism-flag--adverbs')).toBeNull());
+
+    // TipTap's React binding destroys the editor on a deferred tick.
+    unmount();
+    await waitFor(() => expect(prismLiveStore.get(scene.id)).toBeNull());
+  });
+});
+
+describe('BlockEditor Prism book fallback (scene without storyId)', () => {
+  beforeEach(() => {
+    __resetPrismStoresForTests();
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    __resetPrismStoresForTests();
+  });
+
+  function sceneWithoutStory(): Scene {
+    const scene = makeSceneWithBlocks([
+      { id: 'b1', type: 'prose', content: 'She walked slowly to the door.', order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+    ]);
+    delete scene.storyId;
+    return scene;
+  }
+
+  it('reads the selected book when the scene has no storyId', async () => {
+    const scene = sceneWithoutStory();
+    let release: () => void = () => {};
+    act(() => {
+      release = prismSettingsStore.claimCurrentBook('book-sel');
+    });
+    render(
+      <BlockEditor scene={scene} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get(scene.id)?.storyId).toBe('book-sel'));
+
+    // The sidebar writes by the selected book's id: the marks follow.
+    act(() => {
+      prismSettingsStore.update('book-sel', { flags: true });
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.prism-flag--adverbs')?.textContent).toBe('slowly');
+    });
+    act(() => release());
+  });
+
+  it('keeps the book it opened with when another book is selected', async () => {
+    const scene = sceneWithoutStory();
+    let releaseA: () => void = () => {};
+    let releaseB: () => void = () => {};
+    act(() => {
+      releaseA = prismSettingsStore.claimCurrentBook('book-a');
+    });
+    render(
+      <BlockEditor scene={scene} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get(scene.id)?.storyId).toBe('book-a'));
+
+    // The writer selects book B while A's scene stays open.
+    act(() => {
+      releaseA();
+      releaseB = prismSettingsStore.claimCurrentBook('book-b');
+      prismSettingsStore.update('book-b', { flags: true });
+    });
+    expect(prismSettingsStore.getCurrentBookId()).toBe('book-b');
+    // Give any re-render + republish a chance to land before asserting it did not.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(prismLiveStore.get(scene.id)?.storyId).toBe('book-a');
+    // B's switches do not draw on A's scene; A's still do.
+    expect(document.querySelector('.prism-flag')).toBeNull();
+    act(() => {
+      prismSettingsStore.update('book-a', { flags: true });
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.prism-flag--adverbs')?.textContent).toBe('slowly');
+    });
+    act(() => releaseB());
+  });
+
+  it('a different scene opened in the same editor takes the book selected now', async () => {
+    const sceneA = sceneWithoutStory();
+    let release: () => void = () => {};
+    act(() => {
+      release = prismSettingsStore.claimCurrentBook('book-a');
+    });
+    const { rerender } = render(
+      <BlockEditor scene={sceneA} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get(sceneA.id)?.storyId).toBe('book-a'));
+    act(() => {
+      release();
+      release = prismSettingsStore.claimCurrentBook('book-b');
+    });
+    const sceneB = { ...sceneWithoutStory(), id: 'scene-in-b' };
+    rerender(
+      <BlockEditor scene={sceneB} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get('scene-in-b')?.storyId).toBe('book-b'));
+    act(() => release());
+  });
+
+  it('a scene opened before any book is selected takes the first book selected', async () => {
+    const scene = sceneWithoutStory();
+    render(
+      <BlockEditor scene={scene} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get(scene.id)?.storyId).toBeNull());
+    let release: () => void = () => {};
+    act(() => {
+      release = prismSettingsStore.claimCurrentBook('book-late');
+    });
+    await waitFor(() => expect(prismLiveStore.get(scene.id)?.storyId).toBe('book-late'));
+    act(() => release());
+  });
+
+  it("prefers the host's storyId over the selected book", async () => {
+    const scene = sceneWithoutStory();
+    act(() => {
+      prismSettingsStore.claimCurrentBook('book-sel');
+      prismSettingsStore.update('book-sel', { flags: true });
+    });
+    render(
+      <BlockEditor scene={scene} storyId="book-pane" onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get(scene.id)?.storyId).toBe('book-pane'));
+    expect(document.querySelector('.prism-flag')).toBeNull();
+    act(() => {
+      prismSettingsStore.update('book-pane', { flags: true });
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.prism-flag--adverbs')?.textContent).toBe('slowly');
+    });
+  });
+
+  it("the scene's own storyId wins over both", async () => {
+    const scene = sceneWithoutStory();
+    scene.storyId = 'book-own';
+    act(() => {
+      prismSettingsStore.claimCurrentBook('book-sel');
+    });
+    render(
+      <BlockEditor scene={scene} storyId="book-pane" onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    await waitFor(() => expect(prismLiveStore.get(scene.id)?.storyId).toBe('book-own'));
+  });
+});
+
+describe('BlockEditor Prism "Go to" with heading focus', () => {
+  beforeEach(() => {
+    __resetPrismStoresForTests();
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    __resetPrismStoresForTests();
+  });
+
+  it('revealing a finding in a hidden section shows the whole scene and resets the control', async () => {
+    const scene = makeSceneWithBlocks([
+      {
+        id: 'b1',
+        type: 'prose',
+        content: ['## Chapter A', '', 'Alpha text.', '', '## Chapter B', '', 'She walked slowly.'].join('\n'),
+        order: 0,
+        updatedAt: '2026-07-02T00:00:00.000Z',
+      },
+    ]);
+    render(
+      <BlockEditor scene={scene} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} enableHeadingFocus autoFocus={false} />
+    );
+    await waitFor(() => expect(screen.getByTestId('heading-focus-group')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: '2' } });
+    });
+    await waitFor(() => expect(document.querySelectorAll('.heading-focus-hidden').length).toBeGreaterThan(0));
+
+    const snap = prismLiveStore.get(scene.id);
+    const adverb = snap?.findings.find((f) => f.checkId === 'adverbs');
+    if (!snap || !adverb) throw new Error('expected an adverb finding');
+    await act(async () => {
+      snap.reveal(adverb.docFrom, adverb.docTo);
+    });
+
+    await waitFor(() => expect(document.querySelectorAll('.heading-focus-hidden')).toHaveLength(0));
+    expect(screen.getByLabelText('Heading focus level')).toHaveValue('all');
+    expect(screen.queryByRole('button', { name: 'Next H2 section' })).not.toBeInTheDocument();
   });
 });
