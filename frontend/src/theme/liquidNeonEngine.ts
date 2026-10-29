@@ -10,6 +10,7 @@ import { scheduleTextBacking, textBackingToken } from './textBacking';
 // Resolves to frontend/src/theme.ts (file wins over this directory's index-less
 // folder). CF-6: the body-text contrast clamp is shared with the v1 engine.
 import { enforceContrastFloor } from '../theme';
+import { stopAccentBreathe, syncAccentBreathe } from './accentBreathe';
 
 export interface LiquidNeonPageCfg {
   /**
@@ -103,6 +104,8 @@ export interface LiquidNeonV2Settings {
   density: LiquidNeonDensity;
   /** Beta 4 M1 — Reduce motion: one switch stops motes + neon animation (§14.9 #9). */
   reduceMotion: boolean;
+  /** #1774 Accent breathe — personal; never part of LiquidNeonPresetFile. */
+  accentBreathe: boolean;
   /** App (UI chrome) text color — separate from manuscript txtCfg (prototype uiTextCol, 7189). */
   uiTextCol: string;
   /** Button/chip text color (prototype uiBtnCol, 7190). */
@@ -151,6 +154,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   ambColor: null,
   density: 'comfortable',
   reduceMotion: false,
+  accentBreathe: true,
   uiTextCol: '#c8d3e7',
   uiBtnCol: '#cdd8ea',
   uiDens: 1,
@@ -205,6 +209,7 @@ export function normalizeLiquidNeonV2(partial?: Partial<LiquidNeonV2Settings> | 
   return {
     ...d,
     ...partial,
+    accentBreathe: partial.accentBreathe !== false,
     slots,
     wp,
     wpPick: normalizeWpPick(partial.wpPick),
@@ -351,6 +356,11 @@ export function vaultDefaultThemePatch(
   };
 }
 
+/** Glow intensity factor I (prototype 3935): reduceGlow caps the contribution. */
+function glowIntensity(S: LiquidNeonV2Settings): number {
+  return S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
+}
+
 /**
  * Compute every Liquid Neon CSS custom property from settings — exact port of
  * the prototype's `themeStyle` (HTML 3948–3966) plus `--ln-scrim` (3967's
@@ -362,7 +372,7 @@ export function computeLiquidNeonV2Tokens(
   cosmicUrl: string,
 ): Record<string, string> {
   const S = normalizeLiquidNeonV2(settings);
-  const I = S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
+  const I = glowIntensity(S);
   const [c1, c2, c3] = S.slots;
   const c4 = S.slots[3] || '#ff9a3d', c5 = S.slots[4] || '#2fe6c8', c6 = S.slots[5] || '#3d9bff';
   const allSlots = [c1, c2, c3, c4, c5, c6];
@@ -575,6 +585,12 @@ export function applyLiquidNeonV2Tokens(
   // solve its text-backing; every re-apply after that is served from cache by
   // `textBackingToken` above.
   scheduleTextBacking(tokens['--wp'], S.scrim, S.glassA, el);
+  // #1774 Accent breathe: hand the driver the raw alphas behind the 20
+  // --b/--g/--gs/--bh/--glowH tokens written above (theme/accentBreathe.ts).
+  const I = glowIntensity(S);
+  syncAccentBreathe({ enabled: S.accentBreathe && !S.reduceMotion, slots: S.slots,
+    aB: .3 + .4 * I, aG: .18 + .5 * I, aGs: .05 + .13 * I,
+    glowRh: Math.round((S.glowR || 26) / 2) }, el);
   return tokens;
 }
 
@@ -587,4 +603,6 @@ export function resetLiquidNeonV2Tokens(el: HTMLElement = document.documentEleme
   el.removeAttribute('data-ln-btn-text');
   el.removeAttribute('data-ln-amb');
   el.classList.remove('ln-reduce-motion');
+  stopAccentBreathe();
+  el.removeAttribute('data-ln-breathe');
 }

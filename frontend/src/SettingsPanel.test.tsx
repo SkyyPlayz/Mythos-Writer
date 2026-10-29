@@ -2878,6 +2878,19 @@ describe('SKY-3218 nav-bar configuration', () => {
       expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 0 });
       expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
     });
+
+    it('#1774: Accent breathe off live-persists globally and per vault', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />);
+      await waitForModelKeys();
+
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      fireEvent.click(screen.getByTestId('lnas-accentbreathe'));
+      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+      const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+      expect(saved.liquidNeonV2?.accentBreathe).toBe(false);
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.accentBreathe).toBe(false);
+    });
   });
 
   // Critic H6 / TC-SKY-11048-01: no Settings remount on "Settings → this vault",

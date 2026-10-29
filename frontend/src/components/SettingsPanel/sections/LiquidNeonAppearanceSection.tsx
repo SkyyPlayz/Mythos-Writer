@@ -364,6 +364,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     ambColor: null,
     density: LIQUID_NEON_V2_DEFAULTS.density,
     reduceMotion: false,
+    accentBreathe: LIQUID_NEON_V2_DEFAULTS.accentBreathe,
     uiTextCol: LIQUID_NEON_V2_DEFAULTS.uiTextCol,
     uiBtnCol: LIQUID_NEON_V2_DEFAULTS.uiBtnCol,
   });
@@ -550,6 +551,27 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
             />
           </div>
         )}
+      </Card>
+
+      {/* #1774 — Motion: Accent breathe (driver in theme/accentBreathe.ts). */}
+      <Card title="Motion" sub="Slow ambient color movement. Reduce motion and your system's reduced-motion setting always turn it off.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            {/* #1773 type-scale guard: new rows use the --text-* scale, not 11.5/10px. */}
+            <div style={{ fontSize: 'var(--text-xs)', color: '#aebad0' }}>Accent breathe</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 1 }}>{"Glow and border colors slowly drift through your theme's six colors. Pauses while the window is hidden or idle."}</div>
+          </div>
+          <NeonToggle
+            on={S.accentBreathe !== false}
+            onClick={() => {
+              const on = S.accentBreathe === false;
+              patch({ accentBreathe: on });
+              showLnToast(on ? 'Accent breathe on' : 'Accent breathe off');
+            }}
+            testId="lnas-accentbreathe"
+            ariaLabel="Accent breathe"
+          />
+        </div>
       </Card>
 
       {/* A1 / 09 §2.5 — Interface density + text-size zoom */}
