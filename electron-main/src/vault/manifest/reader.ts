@@ -8,6 +8,7 @@ import { validateManifestV1, ManifestValidationError } from './schema.js';
 import { runMigrations, needsMigration, ManifestVersionError, ManifestMigrationError } from './migrationRunner.js';
 import { SCHEMA_VERSION } from './types.js';
 import { writeManifestV1 } from './writer.js';
+import { writeManifestBackup } from '../vaultFileWrite.js';
 
 export { ManifestVersionError, ManifestMigrationError, ManifestValidationError };
 
@@ -33,7 +34,7 @@ function writeBackup(vaultRoot: string, rawContent: string): string {
   }
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = path.join(backupDir, `manifest-v1-${timestamp}.json`);
-  fs.writeFileSync(backupPath, rawContent, 'utf-8');
+  writeManifestBackup(backupPath, rawContent, vaultRoot);
   return backupPath;
 }
 

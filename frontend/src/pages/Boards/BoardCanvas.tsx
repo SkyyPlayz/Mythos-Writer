@@ -91,6 +91,12 @@ export interface BoardCanvasProps {
   savedLayout: Record<string, ItemLayout>;
   /** Saved zoom/pan state */
   savedView: { zoom: number; panX: number; panY: number };
+  /**
+   * Incremented when a debounced board save is refused. Clears the optimistic
+   * drag/resize so the card shows `savedLayout` again instead of the pointer
+   * release point.
+   */
+  layoutEpoch?: number;
   /** Grid snap enabled */
   gridSnap?: boolean;
   /**
@@ -227,6 +233,7 @@ export default function BoardCanvas({
   items,
   savedLayout,
   savedView,
+  layoutEpoch = 0,
   gridSnap = true,
   minZoom: minZoomProp,
   onItemMove,
@@ -690,6 +697,11 @@ export default function BoardCanvas({
     latest: { w: number; h: number } | null;
   } | null>(null);
   const [localSizes, setLocalSizes] = useState<Record<string, { w: number; h: number }>>({});
+
+  useEffect(() => {
+    setLocalPositions({});
+    setLocalSizes({});
+  }, [layoutEpoch]);
 
   const handleResizeMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, path: string, rect: ItemRect) => {
     e.stopPropagation();

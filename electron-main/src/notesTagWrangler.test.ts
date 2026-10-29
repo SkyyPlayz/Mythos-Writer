@@ -3,6 +3,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { isRecentSelfWrite } from './vault.js';
+import { MAX_VAULT_FILE_BYTES } from './vault/limits.js';
+import { notesTagRefreshLog, resetNotesTagRefreshLog } from './notesTagRefresh.js';
 
 // ─── Helpers ───
 
@@ -195,5 +198,48 @@ describe('mergeNotesTags', () => {
     expect(entries.length).toBe(1);
     const backup = JSON.parse(fs.readFileSync(path.join(backupDir, entries[0]), 'utf8'));
     expect(backup.operation).toBe('merge');
+  });
+
+  it('renames a tag when the backup file is over the vault size cap', () => {
+    const prose = 'x'.repeat(Math.floor(MAX_VAULT_FILE_BYTES / 2) + 4096);
+    writeNote(root, 'a.md', ['lore'], prose);
+    writeNote(root, 'b.md', ['lore'], prose);
+    expect(fs.statSync(path.join(root, 'a.md')).size).toBeLessThanOrEqual(MAX_VAULT_FILE_BYTES);
+    expect(fs.statSync(path.join(root, 'b.md')).size).toBeLessThanOrEqual(MAX_VAULT_FILE_BYTES);
+
+    const result = renameNotesTag(root, 'lore', 'saga');
+    expect(result.affectedFiles).toBe(2);
+    expect(readTags(root, 'a.md')).toEqual(['saga']);
+
+    const backupDir = path.join(root, '.tag-wrangler', 'backups');
+    const entries = fs.readdirSync(backupDir).filter((name) => name.endsWith('.json'));
+    expect(entries).toHaveLength(1);
+    expect(fs.statSync(path.join(backupDir, entries[0])).size).toBeGreaterThan(MAX_VAULT_FILE_BYTES);
+  });
+});
+
+describe('tag rewrite index refresh', () => {
+  let root: string;
+
+  beforeEach(() => { root = tmpDir(); resetNotesTagRefreshLog(); });
+  afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); resetNotesTagRefreshLog(); });
+
+  it('refreshes the notes index after a tag rewrite and does not hide the note from the watcher', () => {
+    writeNote(root, 'a.md', ['lore']);
+    writeNote(root, 'b.md', ['lore']);
+    const renamed = renameNotesTag(root, 'lore', 'saga');
+    expect(renamed.affectedFiles).toBe(2);
+    expect(isRecentSelfWrite(path.join(root, 'a.md'))).toBe(false);
+    expect(isRecentSelfWrite(path.join(root, 'b.md'))).toBe(false);
+    expect(notesTagRefreshLog().map((batch) => [...batch].sort())).toEqual([['a.md', 'b.md']]);
+
+    resetNotesTagRefreshLog();
+    const merged = mergeNotesTags(root, 'saga', 'epic');
+    expect(merged.affectedFiles).toBe(2);
+    expect(isRecentSelfWrite(path.join(root, 'a.md'))).toBe(false);
+    expect(notesTagRefreshLog().map((batch) => [...batch].sort())).toEqual([['a.md', 'b.md']]);
+
+    const mainSrc = fs.readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+    expect(mainSrc).toContain('installNotesTagIndexFanout');
   });
 });

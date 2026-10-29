@@ -14,7 +14,7 @@ import {
   writeMythosFile,
   type MythosStoryRef,
 } from './mythosJson.js';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultOrSkip } from '../vault.js';
 import {
   chapterDirName,
   partDirName,
@@ -118,6 +118,7 @@ function writeNotesTree(
   notesRoot: string,
   nodes: SeedFolderNode[] | undefined,
   notes: Record<string, SeedNote> | undefined,
+  skipped: string[],
 ): void {
   if (!nodes) return;
   const walk = (list: SeedFolderNode[], parent: string): void => {
@@ -129,7 +130,10 @@ function writeNotesTree(
         const body = note?.md?.trim()
           || `# ${note?.title || f.label}\n\n`;
         const fileName = `${safeFolderName(note?.title || f.label)}.md`;
-        writeFileAtomic(path.join(dir, fileName), body.endsWith('\n') ? body : `${body}\n`);
+        const abs = path.join(dir, fileName);
+        const rel = path.relative(notesRoot, abs).split(path.sep).join('/');
+        const text = body.endsWith('\n') ? body : `${body}\n`;
+        writeVaultOrSkip(notesRoot, rel, text, skipped);
       }
       if (node.kids?.length) walk(node.kids, dir);
     }
@@ -137,7 +141,7 @@ function writeNotesTree(
   walk(nodes, notesRoot);
 }
 
-function writeStoryManuscript(storyVaultRoot: string, story: SeedStory): MythosStoryRef {
+function writeStoryManuscript(storyVaultRoot: string, story: SeedStory, skipped: string[]): MythosStoryRef {
   const folder = safeFolderName(story.name);
   const storyDir = path.join(storyVaultRoot, folder);
   fs.mkdirSync(storyDir, { recursive: true });
@@ -169,7 +173,12 @@ function writeStoryManuscript(storyVaultRoot: string, story: SeedStory): MythosS
           pov: sc.pov,
           prose,
         });
-        writeFileAtomic(path.join(chAbs, file), body);
+        writeVaultOrSkip(
+          storyVaultRoot,
+          path.relative(storyVaultRoot, path.join(chAbs, file)).split(path.sep).join('/'),
+          body,
+          skipped,
+        );
       });
       spineChapters.push({
         id: crypto.randomUUID(),
@@ -185,8 +194,9 @@ function writeStoryManuscript(storyVaultRoot: string, story: SeedStory): MythosS
       chapters: spineChapters,
     });
   });
-  writeFileAtomic(
-    path.join(storyDir, BOOK_FILENAME),
+  writeVaultOrSkip(
+    storyVaultRoot,
+    path.relative(storyVaultRoot, path.join(storyDir, BOOK_FILENAME)).split(path.sep).join('/'),
     serializeBookFile({
       id: storyId,
       title: story.name,
@@ -195,6 +205,7 @@ function writeStoryManuscript(storyVaultRoot: string, story: SeedStory): MythosS
       updatedAt: now,
       spine,
     }),
+    skipped,
   );
   return {
     id: storyId,
@@ -245,6 +256,7 @@ export type ApplySeedWorldResult =
       notesVaultPath: string;
       world: string;
       storyTitles: string[];
+      skippedSymlinks: string[];
     }
   | { ok: false; error: string };
 
@@ -278,7 +290,8 @@ export function applySeedPackToNewVault(
     if (!notesEntry) return { ok: false, error: 'Seed apply: missing notes vault entry' };
     const notesRoot = path.join(mythosRoot, notesEntry.dirName);
 
-    writeNotesTree(notesRoot, pack.vault, pack.notes);
+    const skippedSymlinks: string[] = [];
+    writeNotesTree(notesRoot, pack.vault, pack.notes, skippedSymlinks);
     // Private / extra notes vaults (e.g. Caerwyn private notes)
     if (pack.noteVaults) {
       for (const [nvKey, nv] of Object.entries(pack.noteVaults)) {
@@ -286,7 +299,7 @@ export function applySeedPackToNewVault(
         const dirName = `${NOTES_GROUP_DIRNAME}/${safeFolderName(nvKey === 'n2' ? 'Private Notes' : nvKey)}`;
         const abs = path.join(mythosRoot, dirName);
         fs.mkdirSync(abs, { recursive: true });
-        writeNotesTree(abs, nv.vault, pack.notes);
+        writeNotesTree(abs, nv.vault, pack.notes, skippedSymlinks);
         notesReg.vaults.push({
           id,
           displayName: nvKey === 'n2' ? 'Private Notes' : nvKey,
@@ -335,7 +348,7 @@ export function applySeedPackToNewVault(
         writeStoryVaultRegistry(mythosRoot, storyReg);
       }
       for (const st of stories) {
-        storyRefs.push(writeStoryManuscript(svAbs, st));
+        storyRefs.push(writeStoryManuscript(svAbs, st, skippedSymlinks));
       }
       firstStoryAbs = firstStoryAbs || svAbs;
     }
@@ -358,9 +371,11 @@ export function applySeedPackToNewVault(
 
     // World marker note so Probe/Soft-FAIL can distinguish vaults by DOM text.
     const world = pack.world ?? packId;
-    writeFileAtomic(
-      path.join(notesRoot, `World — ${safeFolderName(world)}.md`),
+    writeVaultOrSkip(
+      notesRoot,
+      `World — ${safeFolderName(world)}.md`,
       `# World: ${world}\n\nSeed pack world marker for Slice D vault separation.\n`,
+      skippedSymlinks,
     );
 
     return {
@@ -372,6 +387,7 @@ export function applySeedPackToNewVault(
       notesVaultPath: notesRoot,
       world,
       storyTitles: storyRefs.map((s) => s.title),
+      skippedSymlinks,
     };
   } catch (e) {
     return { ok: false, error: `Seed apply failed: ${(e as Error).message}` };

@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from './vault.js';
+import { writeVaultFileAtomic } from './vault.js';
 
 export const ICONS_DIR_NAME = '.mythos';
 export const ICONS_FILE_NAME = 'icons.json';
@@ -69,7 +69,7 @@ export function readIconMap(vaultRoot: string): VaultIconMap {
 }
 
 export function writeIconMap(vaultRoot: string, map: VaultIconMap): void {
-  writeFileAtomic(iconsFilePath(vaultRoot), JSON.stringify(map, null, 2));
+  writeVaultFileAtomic(vaultRoot, `${ICONS_DIR_NAME}/${ICONS_FILE_NAME}`, JSON.stringify(map, null, 2));
 }
 
 /**

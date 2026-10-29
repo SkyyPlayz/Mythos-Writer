@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { parseFrontmatter, serializeFrontmatter, writeFileAtomic } from '../vault.js';
+import { parseFrontmatter, serializeFrontmatter, vaultRelPath, writeVaultFileAtomic } from '../vault.js';
 import type { SceneVersion, VersionIntent, VersionRetention } from '../versions.js';
 
 export const DRAFTS_DIRNAME = 'drafts';
@@ -248,7 +248,7 @@ export function saveDraftForScene(vaultRoot: string, opts: SaveDraftOptions): Dr
     contentHash,
     ...(opts.label ? { label: opts.label } : {}),
   };
-  writeFileAtomic(filePath, serializeDraftFile(header, opts.content));
+  writeVaultFileAtomic(vaultRoot, vaultRelPath(vaultRoot, filePath), serializeDraftFile(header, opts.content));
   if (opts.retention) {
     pruneDraftsForScene(vaultRoot, opts.chapterRelPath, opts.sceneId, opts.retention);
   }
