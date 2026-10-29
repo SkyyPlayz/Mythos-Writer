@@ -11,6 +11,9 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
 
+### Added
+- **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
+
 ### Removed
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
