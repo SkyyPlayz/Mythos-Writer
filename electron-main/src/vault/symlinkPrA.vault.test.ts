@@ -1861,105 +1861,115 @@ describe('PR A symlink writes', () => {
   });
 
   it('measures the added save cost', () => {
-      const time = (run: () => void): number => {
-        const start = performance.now();
-        run();
-        return performance.now() - start;
-      };
-      const fmt = (n: number): string => (Number.isFinite(n) ? n.toFixed(3) : 'inf');
-      const payload = Buffer.from('hello');
+        const time = (run: () => void): number => {
+          const start = performance.now();
+          run();
+          return performance.now() - start;
+        };
+        const fmt = (n: number): string => (Number.isFinite(n) ? n.toFixed(3) : 'inf');
+        const payload = Buffer.from('hello');
 
-      resetVolumeProbeCache();
-      const probeCold = time(() => {
-        probeVolumeKind(root);
-      });
-      const probeWarm = time(() => {
-        probeVolumeKind(root);
-      });
+        resetVolumeProbeCache();
+        const probeCold = time(() => {
+          probeVolumeKind(root);
+        });
+        const probeWarm = time(() => {
+          probeVolumeKind(root);
+        });
 
-      const oldFile = path.join(root, 'old-save.md');
+        const oldFile = path.join(root, 'old-save.md');
 
-      // One interleaved loop: alternate unguarded (old) and guarded (new) saves on the same payload.
-      // The first 5 pairs are warmup and discarded; the next 60 pairs are kept.
-      const saveWarmup = 5;
-      const saveN = 60;
-      const oldSaveSamples: number[] = [];
-      const newSaveSamples: number[] = [];
-      for (let i = 0; i < saveWarmup + saveN; i++) {
-        const oldMs = time(() => prePrWriteFileAtomic(oldFile, payload));
-        const newMs = time(() => writeVaultFileAtomic(root, 'new-save.md', payload));
-        if (i >= saveWarmup) {
-          oldSaveSamples.push(oldMs);
-          newSaveSamples.push(newMs);
+        // One interleaved loop: alternate unguarded (old) and guarded (new) saves on the same payload.
+        // The first 5 pairs are warmup and discarded; the next 120 pairs are kept.
+        const saveWarmup = 5;
+        const saveN = 120;
+        const oldSaveSamples: number[] = [];
+        const newSaveSamples: number[] = [];
+        const pairedSaveDiffs: number[] = [];
+        for (let i = 0; i < saveWarmup + saveN; i++) {
+          const oldMs = time(() => prePrWriteFileAtomic(oldFile, payload));
+          const newMs = time(() => writeVaultFileAtomic(root, 'new-save.md', payload));
+          if (i >= saveWarmup) {
+            oldSaveSamples.push(oldMs);
+            newSaveSamples.push(newMs);
+            pairedSaveDiffs.push(newMs - oldMs);
+          }
         }
-      }
-      const oldSave = perfStats(oldSaveSamples);
-      const newSave = perfStats(newSaveSamples);
+        const oldSave = perfStats(oldSaveSamples);
+        const newSave = perfStats(newSaveSamples);
+        const pairedSave = perfStats(pairedSaveDiffs);
 
-      // One interleaved 5k join pass: alternate unguarded (old) and guarded writeMode (new).
-      const joinN = 5000;
-      const oldJoinSamples: number[] = [];
-      const newJoinSamples: number[] = [];
-      for (let i = 0; i < joinN; i++) {
-        const rel = `n${i}.md`;
-        oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
-        newJoinSamples.push(
-          time(() => {
-            safeVaultJoin(root, rel, { writeMode: true });
-          }),
+        // One interleaved 5k join pass: alternate unguarded (old) and guarded writeMode (new).
+        const joinN = 5000;
+        const oldJoinSamples: number[] = [];
+        const newJoinSamples: number[] = [];
+        for (let i = 0; i < joinN; i++) {
+          const rel = `n${i}.md`;
+          oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
+          newJoinSamples.push(
+            time(() => {
+              safeVaultJoin(root, rel, { writeMode: true });
+            }),
+          );
+        }
+        const oldJoin = perfStats(oldJoinSamples);
+        const newJoin = perfStats(newJoinSamples);
+
+        const profileN = 20;
+        const oldProfile = profileFsCalls(profileN, () => prePrWriteFileAtomic(oldFile, payload));
+        const newProfile = profileFsCalls(profileN, () => writeVaultFileAtomic(root, 'new-save.md', payload));
+        const bucketLine = (label: string, buckets: Map<string, ProfileBucket>): string => {
+          const rows = [...buckets.entries()].sort((a, b) => b[1].ms - a[1].ms);
+          return rows
+            .map(
+              ([name, bucket]) =>
+                `${label} ${name} calls=${bucket.calls} total_ms=${bucket.ms.toFixed(3)} per_save_ms=${(bucket.ms / profileN).toFixed(3)}`,
+            )
+            .join('\n');
+        };
+
+        // Save p50 delta is the median of the paired differences (guarded - unguarded per pair),
+        // not median(guarded) - median(unguarded).
+        const savePairedP50Delta = pairedSave.p50;
+        const savePairedP95 = pairedSave.p95;
+        // p95 delta stays on the absolute sample sets for continuity with prior runs.
+        const saveP95Delta = newSave.p95 - oldSave.p95;
+        const joinP50Delta = newJoin.p50 - oldJoin.p50;
+        console.log(
+          [
+            `PERF-SAVE unguarded(old)_p50=${fmt(oldSave.p50)} unguarded(old)_p95=${fmt(oldSave.p95)} guarded(new)_p50=${fmt(newSave.p50)} guarded(new)_p95=${fmt(newSave.p95)} samples=${saveN} warmup=${saveWarmup}`,
+            `PERF-SAVE-PAIRED diff_p50=${fmt(pairedSave.p50)} diff_p95=${fmt(pairedSave.p95)} pairs=${pairedSaveDiffs.length}`,
+            `PERF-JOIN unguarded(old)_p50=${fmt(oldJoin.p50)} unguarded(old)_p95=${fmt(oldJoin.p95)} guarded(new)_p50=${fmt(newJoin.p50)} guarded(new)_p95=${fmt(newJoin.p95)} samples=${joinN}`,
+            'PERF-TABLE-BEGIN',
+            `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
+            `| --- | ---: | ---: | ---: | ---: | ---: | ---: |`,
+            `| per-save overwrite | ${fmt(oldSave.p50)} | ${fmt(oldSave.p95)} | ${fmt(newSave.p50)} | ${fmt(newSave.p95)} | ${fmt(perfPct(oldSave.p50, newSave.p50))} | ${fmt(perfPct(oldSave.p95, newSave.p95))} |`,
+            `| 5k join per call | ${fmt(oldJoin.p50)} | ${fmt(oldJoin.p95)} | ${fmt(newJoin.p50)} | ${fmt(newJoin.p95)} | ${fmt(perfPct(oldJoin.p50, newJoin.p50))} | ${fmt(perfPct(oldJoin.p95, newJoin.p95))} |`,
+            'PERF-TABLE-END',
+            `PERF-DELTAS save_paired_p50=${fmt(savePairedP50Delta)} save_paired_p95=${fmt(savePairedP95)} save_p95=${fmt(saveP95Delta)} join_p50=${fmt(joinP50Delta)}`,
+            `PERF-PROBE cold_ms=${fmt(probeCold)} warm_ms=${fmt(probeWarm)}`,
+            'PERF-BREAKDOWN-BEGIN',
+            bucketLine('old', oldProfile),
+            bucketLine('new', newProfile),
+            'PERF-BREAKDOWN-END',
+          ].join('\n'),
         );
-      }
-      const oldJoin = perfStats(oldJoinSamples);
-      const newJoin = perfStats(newJoinSamples);
 
-      const profileN = 20;
-      const oldProfile = profileFsCalls(profileN, () => prePrWriteFileAtomic(oldFile, payload));
-      const newProfile = profileFsCalls(profileN, () => writeVaultFileAtomic(root, 'new-save.md', payload));
-      const bucketLine = (label: string, buckets: Map<string, ProfileBucket>): string => {
-        const rows = [...buckets.entries()].sort((a, b) => b[1].ms - a[1].ms);
-        return rows
-          .map(
-            ([name, bucket]) =>
-              `${label} ${name} calls=${bucket.calls} total_ms=${bucket.ms.toFixed(3)} per_save_ms=${(bucket.ms / profileN).toFixed(3)}`,
-          )
-          .join('\n');
-      };
+        expect(fs.readFileSync(oldFile).equals(payload)).toBe(true);
+        expect(fs.readFileSync(path.join(root, 'new-save.md')).equals(payload)).toBe(true);
+        const realRoot = fs.realpathSync.native(root);
+        expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
+        expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
 
-      const saveP50Delta = newSave.p50 - oldSave.p50;
-      const saveP95Delta = newSave.p95 - oldSave.p95;
-      const joinP50Delta = newJoin.p50 - oldJoin.p50;
-      console.log(
-        [
-          `PERF-SAVE unguarded(old)_p50=${fmt(oldSave.p50)} unguarded(old)_p95=${fmt(oldSave.p95)} guarded(new)_p50=${fmt(newSave.p50)} guarded(new)_p95=${fmt(newSave.p95)} samples=${saveN} warmup=${saveWarmup}`,
-          `PERF-JOIN unguarded(old)_p50=${fmt(oldJoin.p50)} unguarded(old)_p95=${fmt(oldJoin.p95)} guarded(new)_p50=${fmt(newJoin.p50)} guarded(new)_p95=${fmt(newJoin.p95)} samples=${joinN}`,
-          'PERF-TABLE-BEGIN',
-          `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
-          `| --- | ---: | ---: | ---: | ---: | ---: | ---: |`,
-          `| per-save overwrite | ${fmt(oldSave.p50)} | ${fmt(oldSave.p95)} | ${fmt(newSave.p50)} | ${fmt(newSave.p95)} | ${fmt(perfPct(oldSave.p50, newSave.p50))} | ${fmt(perfPct(oldSave.p95, newSave.p95))} |`,
-          `| 5k join per call | ${fmt(oldJoin.p50)} | ${fmt(oldJoin.p95)} | ${fmt(newJoin.p50)} | ${fmt(newJoin.p95)} | ${fmt(perfPct(oldJoin.p50, newJoin.p50))} | ${fmt(perfPct(oldJoin.p95, newJoin.p95))} |`,
-          'PERF-TABLE-END',
-          `PERF-DELTAS save_p50=${fmt(saveP50Delta)} save_p95=${fmt(saveP95Delta)} join_p50=${fmt(joinP50Delta)}`,
-          `PERF-PROBE cold_ms=${fmt(probeCold)} warm_ms=${fmt(probeWarm)}`,
-          'PERF-BREAKDOWN-BEGIN',
-          bucketLine('old', oldProfile),
-          bucketLine('new', newProfile),
-          'PERF-BREAKDOWN-END',
-        ].join('\n'),
-      );
-
-      expect(fs.readFileSync(oldFile).equals(payload)).toBe(true);
-      expect(fs.readFileSync(path.join(root, 'new-save.md')).equals(payload)).toBe(true);
-      const realRoot = fs.realpathSync.native(root);
-      expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
-      expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
-
-      // Owner ruling. Single interleaved pass (5 warmup pairs discarded, 60 paired save samples). Both platforms.
-      // per-save p50(guarded) - p50(unguarded) <= 1 ms.
-      // p95(guarded) - p95(unguarded) <= 3 ms on Linux, <= 8 ms on win32.
-      // join p50(guarded) - p50(unguarded) <= 0.05 ms per call (one interleaved 5k pass).
-      const saveP95Ceiling = process.platform === 'win32' ? 8 : 3;
-      expect(saveP50Delta).toBeLessThanOrEqual(1);
-      expect(saveP95Delta).toBeLessThanOrEqual(saveP95Ceiling);
-      expect(joinP50Delta).toBeLessThanOrEqual(0.05);
-    }, 60000);
+        // Owner ruling. Single interleaved pass (5 warmup pairs discarded, 120 paired save samples). Both platforms.
+        // per-save median of paired diffs (guarded - unguarded) <= 1 ms.
+        // p95(guarded) - p95(unguarded) <= 3 ms on Linux, <= 8 ms on win32.
+        // join p50(guarded) - p50(unguarded) <= 0.05 ms per call (one interleaved 5k pass).
+        // Note: win32 saveP50Ceiling may later be raised to at most 1.75 only if proven noisy; live value stays 1.
+        const saveP50Ceiling = 1;
+        const saveP95Ceiling = process.platform === 'win32' ? 8 : 3;
+        expect(savePairedP50Delta).toBeLessThanOrEqual(saveP50Ceiling);
+        expect(saveP95Delta).toBeLessThanOrEqual(saveP95Ceiling);
+        expect(joinP50Delta).toBeLessThanOrEqual(0.05);
+      }, 60000);
 });
