@@ -11924,8 +11924,9 @@ app.whenReady().then(async () => {
   // before any UI exists.
   setBoardWriteRefusalHandler((refusal) => {
     const win = mainWindow;
-    if (!win || win.isDestroyed()) return;
+    if (!win || win.isDestroyed()) return false;
     win.webContents.send(IPC_CHANNELS.NOTES_BOARD_WRITE_REFUSED, refusal);
+    return true;
   });
   try {
     setupIpcMain(handlers);

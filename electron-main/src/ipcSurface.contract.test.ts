@@ -8,8 +8,8 @@
 //
 // Push counter: unique channels among resolved `.send` arguments in main
 // (string literal, same-file const, or imported CONST.PROP). That is the
-// 56-count. Following a same-file helper that `.send`s its parameter
-// (ai-activity update/terminal) is the other method and yields 58. Listeners
+// 57-count. Following a same-file helper that `.send`s its parameter
+// (ai-activity update/terminal) is the other method and yields 59. Listeners
 // for those two helper channels are matched. push-without-listener walks the
 // combined set (direct sends ∪ helper sends), so dropping either listener is
 // a new gap.
@@ -58,11 +58,14 @@ const ALLOWLIST: readonly Gap[] = [
 
 const CENSUS = {
   pushCounter: PUSH_COUNTER,
-  ipcChannelKeys: 406,
+  // +1 notesBoard:writeRefused. The debounced sidecar flush runs after
+  // notesBoard:patchLayout has already resolved, so a refusal cannot be the
+  // invoke result. Main pushes it and preload listens. Not a new gap.
+  ipcChannelKeys: 407,
   handlerChannels: 385,
   mainListenerChannels: 10,
-  directSendChannels: 56,
-  helperSendChannels: 58,
+  directSendChannels: 57,
+  helperSendChannels: 59,
   allowlist: 9,
 } as const;
 
@@ -881,7 +884,7 @@ describe('ipc surface contract', () => {
     expect(() => scanSources([{ rel: 'db.ts', text: "ipcRenderer.invoke('nope')" }])).toThrow(/must not open db\.ts/);
   });
 
-  it('counts resolved .send arguments (56), not the helper-following count (58)', () => {
+  it('counts resolved .send arguments (57), not the helper-following count (59)', () => {
     expect(surface.census).toEqual(CENSUS);
   });
 
@@ -916,7 +919,7 @@ describe('ipc surface contract', () => {
     expect(surface.names.handlers).toHaveLength(surface.census.handlerChannels);
     expect(surface.names.mainListeners).toHaveLength(surface.census.mainListenerChannels);
     expect(surface.names.pushChannels).toHaveLength(surface.census.helperSendChannels);
-    expect(surface.census.directSendChannels).toBe(56);
+    expect(surface.census.directSendChannels).toBe(57);
     expect(surface.exposed.filter((line) => line.endsWith(` ${NON_IPC}`))).toEqual(['api isPackaged NON_IPC']);
   });
 

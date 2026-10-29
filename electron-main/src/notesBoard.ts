@@ -536,7 +536,8 @@ export interface BoardWriteRefusal {
   message: string;
 }
 
-type BoardWriteRefusalHandler = (refusal: BoardWriteRefusal) => void;
+/** Return false when the renderer was not told. Undefined counts as delivered. */
+type BoardWriteRefusalHandler = (refusal: BoardWriteRefusal) => boolean | void;
 let boardWriteRefusalHandler: BoardWriteRefusalHandler | null = null;
 
 /** Main registers this so a debounced board save can tell the renderer. */
@@ -544,7 +545,12 @@ export function setBoardWriteRefusalHandler(handler: BoardWriteRefusalHandler | 
   boardWriteRefusalHandler = handler;
 }
 
-function reportBoardWriteRefusal(folderRelPath: string, err: unknown): void {
+/**
+ * @returns true when a handler accepted the refusal. False when there is no
+ * handler, the handler returns false, or the handler throws — the pending
+ * edit must stay queued in those cases so it is not dropped unseen.
+ */
+function reportBoardWriteRefusal(folderRelPath: string, err: unknown): boolean {
   const rel = boardSidecarRel(folderRelPath);
   const mapped = mapVaultWriteError(err, rel);
   const refusal: BoardWriteRefusal = mapped
@@ -554,10 +560,35 @@ function reportBoardWriteRefusal(folderRelPath: string, err: unknown): void {
       : { folderRelPath, code: 'WRITE_FAILED', message: "Couldn't save the board." };
   // Code and the vault-relative sidecar only. err.message can carry an absolute path.
   console.error(`[notesBoard] board save refused: ${refusal.code} ${rel}`);
+  if (!boardWriteRefusalHandler) return false;
   try {
-    boardWriteRefusalHandler?.(refusal);
+    return boardWriteRefusalHandler(refusal) !== false;
   } catch {
     console.error('[notesBoard] board refusal handler failed');
+    return false;
+  }
+}
+
+function retainRefusedBoardWrite(folderAbs: string, entry: PendingBoardWrite): void {
+  const newer = pendingWrites.get(folderAbs);
+  if (!newer) {
+    pendingWrites.set(folderAbs, {
+      timer: entry.timer,
+      pendingLayout: entry.pendingLayout,
+      pendingColors: entry.pendingColors,
+      vaultRoot: entry.vaultRoot,
+      folderRelPath: entry.folderRelPath,
+    });
+    return;
+  }
+  // A newer gesture landed while the failed write was being reported.
+  // Keep the refused patches underneath it. The newer fields win.
+  for (const [key, patch] of Object.entries(entry.pendingLayout)) {
+    const current = newer.pendingLayout[key];
+    newer.pendingLayout[key] = current ? { ...patch, ...current } : patch;
+  }
+  for (const [key, color] of Object.entries(entry.pendingColors)) {
+    if (!(key in newer.pendingColors)) newer.pendingColors[key] = color;
   }
 }
 
@@ -627,9 +658,12 @@ function flushBoardWrite(folderAbs: string): void {
     }
   } catch (err) {
     // The debounce timer is not an IPC handler. A symlink sidecar throws here,
-    // and an uncaught throw in the main process takes the app down. The
-    // pending buffer is already dropped; the renderer hears the refusal.
-    reportBoardWriteRefusal(entry.folderRelPath, err);
+    // and an uncaught throw in the main process takes the app down.
+    // patchLayout already resolved, so this refusal is a push, not that
+    // invoke's result. Drop the patches only after a handler accepts the
+    // refusal. Otherwise the edit is still pending and is not a saved board.
+    const delivered = reportBoardWriteRefusal(entry.folderRelPath, err);
+    if (!delivered) retainRefusedBoardWrite(folderAbs, entry);
   }
 }
 

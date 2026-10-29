@@ -801,7 +801,9 @@ describe('debounced board save when the sidecar is a symlink', () => {
   it('reports a refusal and does not throw or write the link target', () => {
     linkSidecar();
     const seen: Array<{ folderRelPath: string; code: string; message: string }> = [];
-    setBoardWriteRefusalHandler((info) => seen.push(info));
+    setBoardWriteRefusalHandler((info) => {
+      seen.push(info);
+    });
     patchLayout(root, '', 'Idea.md', { x: 4, y: 5 });
 
     expect(() => flushPendingNotesBoardWrites(root)).not.toThrow();
@@ -812,12 +814,37 @@ describe('debounced board save when the sidecar is a symlink', () => {
     expect(seen[0].message).not.toContain(root);
     expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
     expect(fs.lstatSync(path.join(root, BOARD_SIDECAR_FILE_NAME)).isSymbolicLink()).toBe(true);
+    // Delivered, so the refused edit is not still queued as a successful save.
+    flushPendingNotesBoardWrites(root);
+    expect(seen).toHaveLength(1);
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+  });
+
+  it('keeps the edit queued when the refusal is not delivered', () => {
+    linkSidecar();
+    setBoardWriteRefusalHandler(() => false);
+    patchLayout(root, '', 'Idea.md', { x: 4, y: 5 });
+
+    expect(() => flushPendingNotesBoardWrites(root)).not.toThrow();
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+
+    const seen: Array<{ code: string; message: string }> = [];
+    setBoardWriteRefusalHandler((info) => {
+      seen.push(info);
+      return true;
+    });
+    flushPendingNotesBoardWrites(root);
+    expect(seen.map((info) => info.code)).toEqual(['LEAF_LINK']);
+    expect(seen[0].message).toContain('shortcut');
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
   });
 
   it('the debounce timer reports the refusal instead of throwing', () => {
     linkSidecar();
     const seen: Array<{ code: string }> = [];
-    setBoardWriteRefusalHandler((info) => seen.push(info));
+    setBoardWriteRefusalHandler((info) => {
+      seen.push(info);
+    });
     vi.useFakeTimers();
     patchLayout(root, '', 'Idea.md', { x: 1, y: 2 });
 
