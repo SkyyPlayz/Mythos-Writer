@@ -8,6 +8,7 @@ import {
   writeVaultFileAtomic,
 } from './vault.js';
 import { SafeIpcError } from './ipcErrors.js';
+import { isSymlinkWriteRefusal, symlinkSkipLine } from './vault/writeErrors.js';
 import {
   rewriteWikiLinksForRename,
   type WikiLinkRewriteMode,
@@ -199,6 +200,7 @@ export function undoVaultTransaction(opts: UndoVaultTransactionOptions): VaultTr
 
   let filesRestored = 0;
   let filesSkipped = 0;
+  const skippedSymlinks: string[] = [];
   const restoredNotesPaths: string[] = [];
   const restoredStoryPaths: string[] = [];
   const conflicts: VaultUndoConflict[] = [];
@@ -209,8 +211,10 @@ export function undoVaultTransaction(opts: UndoVaultTransactionOptions): VaultTr
     let current: string | null = null;
     try {
       current = readVaultFile(root, relPath).content;
-    } catch {
-      /* deleted since — skip */
+    } catch (err) {
+      if (err instanceof Error && /Path traversal denied|\(symlink/.test(err.message)) {
+        skippedSymlinks.push(symlinkSkipLine(relPath));
+      }
     }
     if (current === null) {
       filesSkipped++;
@@ -249,7 +253,8 @@ export function undoVaultTransaction(opts: UndoVaultTransactionOptions): VaultTr
       write(root, relPath, restoredContent);
       filesRestored++;
       (file.side === 'notes' ? restoredNotesPaths : restoredStoryPaths).push(relPath);
-    } catch {
+    } catch (err) {
+      if (isSymlinkWriteRefusal(err)) skippedSymlinks.push(symlinkSkipLine(relPath));
       filesSkipped++;
       conflicts.push({ side: file.side, relPath });
     }
@@ -266,6 +271,7 @@ export function undoVaultTransaction(opts: UndoVaultTransactionOptions): VaultTr
       newStem: tx.newStem,
       restoredNotesPaths,
       restoredStoryPaths,
+      ...(skippedSymlinks.length > 0 ? { skippedSymlinks } : {}),
     },
     conflicts,
   };

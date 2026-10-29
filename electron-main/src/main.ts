@@ -275,6 +275,7 @@ import {
 } from './sceneCrafterSuggestions.js';
 import { generateSceneCrafterSuggestions } from './archiveSceneCrafterGenerator.js';
 import { wrapIpcHandler, sanitizeIpcError, SafeIpcError } from './ipcErrors.js';
+import { exportFailureText, isNoFollowExportFailure, mapVaultWriteError } from './vault/writeErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
 import { isUnderRoot } from './pathSecurity.js';
@@ -393,7 +394,8 @@ import {
   readVaultFile,
   readVaultFileWithRetry,
   writeVaultFileAtomic,
-  writeFileAtomic,
+  writeExportFileAtomic,
+  commitEpubTargetExport,
   listVaultFiles,
   deleteVaultFile,
   moveVaultFile,
@@ -450,6 +452,7 @@ import {
   itemRenameNotify as notesBoardItemRenameNotify,
   itemDeleteStub as notesBoardItemDeleteStub,
   flushPendingNotesBoardWrites,
+  setBoardWriteRefusalHandler,
   // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5).
   createBoardItem as notesBoardCreateItem,
   boardItemRenameTarget as notesBoardRenameTarget,
@@ -834,6 +837,7 @@ import {
 import { assertBrainstormPayloadValid } from './brainstormIpcSecurity.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { installNotesTagIndexFanout } from './notesTagRefresh.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
 import { getGraphNodes, getGraphEdges, handleNoteFileChanged, invalidateNoteGraphIndex } from './vaultGraph.js';
 import { renameNoteWithCascade, undoLastRenameCascade } from './renameCascade.js';
@@ -1782,7 +1786,7 @@ function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveRespo
  * the Notes tab reflects a canvas create or rename IMMEDIATELY.
  *
  * The notes watcher cannot be relied on for this. A canvas create writes
- * through writeFileAtomic + markSelfWrite, and startNotesVaultWatcher drops
+ * through writeVaultFileAtomic + markSelfWrite, and startNotesVaultWatcher drops
  * self-written `add` events outright — so a note created on the board would
  * never reach the tree at all. A rename does emit (via `unlink`), but only
  * after chokidar's 300 ms awaitWriteFinish window, and on Windows only after
@@ -1796,6 +1800,20 @@ function notifyNotesVaultMutatedByApp(relPath: string): void {
     mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
   }
 }
+
+// Tag rewrites do not mark self-writes, and they also notify here so search,
+// entity refresh, and note metadata do not wait on the watcher.
+installNotesTagIndexFanout((notesRoot, rel) => {
+  try {
+    handleNoteFileChanged(notesRoot, path.join(notesRoot, rel));
+  } catch {
+    /* the rewrite already landed */
+  }
+  notifyNotesVaultMutatedByApp(rel);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:file-changed', { path: rel });
+  }
+});
 
 function scheduleReindex(changedRelPath?: string) {
   if (changedRelPath === undefined) {
@@ -2129,6 +2147,27 @@ function toGuidedMoveError(err: unknown): unknown {
   return err;
 }
 
+function writeDialogExport(filePath: string, data: Buffer | string): void {
+  try {
+    writeExportFileAtomic(filePath, data);
+  } catch (err) {
+    if (isNoFollowExportFailure(err)) throw new SafeIpcError(exportFailureText(filePath));
+    throw err;
+  }
+}
+
+function writeVaultForIpc(root: string, rel: string, content: string): import('./ipc.js').VaultWriteResponse {
+  try {
+    safeVaultIpcJoin(root, rel, true);
+    const written = writeVaultFileAtomic(root, rel, content);
+    return { path: written.path, bytes: written.bytes };
+  } catch (err) {
+    const mapped = mapVaultWriteError(err, rel);
+    if (mapped) return { path: rel, bytes: 0, error: mapped.error, code: mapped.code };
+    throw err;
+  }
+}
+
 // ─── IPC Handlers ───
 export const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
@@ -2141,8 +2180,7 @@ export const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
-    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
-    return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
+    return writeVaultForIpc(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
@@ -2958,6 +2996,7 @@ export const handlers: IpcHandlers = {
       targetRoot: report.targetRoot,
       counts: report.counts,
       verified: report.verified,
+      ...(report.skippedSymlinks ? { skippedSymlinks: report.skippedSymlinks } : {}),
     };
   },
   [IPC_CHANNELS.MYTHOS_MIGRATION_CONFIRM]: async (): Promise<import('./ipc.js').MythosMigrationConfirmResponse> => {
@@ -5443,12 +5482,10 @@ export const handlers: IpcHandlers = {
     const story = manifest.stories.find((s) => s.id === payload.storyId);
     if (!story) throw new Error(`Story not found: ${payload.storyId}`);
 
-    let filePath: string;
+    let dialogPath: string | null = null;
     if (payload.targetPath) {
-      // MYT-675: the headless targetPath escape hatch must stay inside the vault.
-      // resolveEpubExportPath rejects absolute paths, "../" traversal, symlink
-      // escapes, and non-.epub targets before any bytes are written.
-      filePath = resolveEpubExportPath(getVaultRoot(), payload.targetPath);
+      // Shape check only (non-empty, .epub). Containment is the vault writer.
+      resolveEpubExportPath(getVaultRoot(), payload.targetPath);
     } else {
       const result = await dialog.showSaveDialog({
         title: 'Export EPUB',
@@ -5456,7 +5493,7 @@ export const handlers: IpcHandlers = {
         filters: [{ name: 'EPUB', extensions: ['epub'] }],
       });
       if (result.canceled || !result.filePath) return { path: null, cancelled: true };
-      filePath = result.filePath;
+      dialogPath = result.filePath;
     }
 
     // Build chapter/scene structure, reading prose from vault
@@ -5491,9 +5528,20 @@ export const handlers: IpcHandlers = {
         } catch { /* missing scene — skip */ }
       }
     }
-    writeFileAtomic(filePath, buffer);
-    lastExportPath = filePath;
-    return { path: filePath, cancelled: false, bytes: buffer.length, missingSceneIds: [...missingEpub] };
+    if (payload.targetPath) {
+      try {
+        const written = commitEpubTargetExport(getVaultRoot(), payload.targetPath, buffer);
+        lastExportPath = written.absPath;
+        return { path: written.absPath, cancelled: false, bytes: buffer.length, missingSceneIds: [...missingEpub] };
+      } catch (err) {
+        const mapped = mapVaultWriteError(err, payload.targetPath);
+        if (mapped) throw new SafeIpcError(mapped.error);
+        throw err;
+      }
+    }
+    writeDialogExport(dialogPath as string, buffer);
+    lastExportPath = dialogPath as string;
+    return { path: dialogPath, cancelled: false, bytes: buffer.length, missingSceneIds: [...missingEpub] };
   },
 
   // ─── DOCX export (MYT-252, extended SKY-153; options Beta 4 M14) ───
@@ -5523,7 +5571,7 @@ export const handlers: IpcHandlers = {
         if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionDocx, 'Pre-export snapshot');
       }
     }
-    writeFileAtomic(result.filePath, buffer);
+    writeDialogExport(result.filePath, buffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: buffer.length, missingSceneIds: docxMissing };
   },
@@ -5556,7 +5604,7 @@ export const handlers: IpcHandlers = {
         if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionPdf, 'Pre-export snapshot');
       }
     }
-    writeFileAtomic(result.filePath, buffer);
+    writeDialogExport(result.filePath, buffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: buffer.length, missingSceneIds: pdfMissing };
   },
@@ -5581,7 +5629,7 @@ export const handlers: IpcHandlers = {
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
     const mdBuffer = Buffer.from(content, 'utf-8');
-    writeFileAtomic(result.filePath, mdBuffer);
+    writeDialogExport(result.filePath, mdBuffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: mdBuffer.length, missingSceneIds: mdMissing };
   },
@@ -5597,7 +5645,7 @@ export const handlers: IpcHandlers = {
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
     const txtBuffer = Buffer.from(content, 'utf-8');
-    writeFileAtomic(result.filePath, txtBuffer);
+    writeDialogExport(result.filePath, txtBuffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: txtBuffer.length, missingSceneIds: txtMissing };
   },
@@ -6786,9 +6834,7 @@ export const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureNotesVaultDir();
-    const root = getNotesVaultRoot();
-    safeVaultIpcJoin(root, payload.path, true);
-    return writeVaultFileAtomic(root, payload.path, payload.content);
+    return writeVaultForIpc(getNotesVaultRoot(), payload.path, payload.content);
   },
   // SKY-11360: brainstorm/idea board is agent state → Agent Vault, never the
   // Notes Vault. The main process owns the fixed relpath; the renderer only
@@ -11825,6 +11871,12 @@ app.whenReady().then(async () => {
   // harness or plugin registering a handler first) is logged loudly and boot
   // proceeds to create the window instead of dying as an unhandled rejection
   // before any UI exists.
+  setBoardWriteRefusalHandler((refusal) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return false;
+    win.webContents.send(IPC_CHANNELS.NOTES_BOARD_WRITE_REFUSED, refusal);
+    return true;
+  });
   try {
     setupIpcMain(handlers);
   } catch (e) {

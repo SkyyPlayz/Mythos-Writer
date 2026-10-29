@@ -2,6 +2,7 @@
 // No Electron dependency; fully testable in Node.
 import fs from 'fs';
 import path from 'path';
+import { writeManifestBackup, writeManifestBytes } from './vault/vaultFileWrite.js';
 import crypto from 'crypto';
 import type { Manifest, StoryEntry, PartEntry, SceneEntry, ChapterEntry, BlockEntry } from './ipc.js';
 import { computeSceneBodyLayout } from './sceneBody.js';
@@ -136,7 +137,7 @@ function writeBackup(vaultRoot: string, rawContent: string): string {
   }
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupPath = path.join(backupDir, `manifest-${timestamp}.json`);
-  fs.writeFileSync(backupPath, rawContent, 'utf-8');
+  writeManifestBackup(backupPath, rawContent, vaultRoot);
   return backupPath;
 }
 
@@ -295,7 +296,6 @@ export function stripEmbeddedProseForPersist(manifest: Manifest): Manifest {
  * to re-serialize the manifest a second time just to measure it (SKY-6195).
  */
 export function writeManifestAtomic(manifestPath: string, manifest: Manifest): number {
-  const tmp = `${manifestPath}.tmp`;
   // Compact, structure-only serialization (SKY-6596): scene prose is stripped
   // (see stripEmbeddedProseForPersist) so this write is O(structure), not
   // O(vault) — safe to run on every save. Compact (non-pretty) formatting is
@@ -304,9 +304,7 @@ export function writeManifestAtomic(manifestPath: string, manifest: Manifest): n
   // large story count even without embedded prose.
   const persisted = stripEmbeddedProseForPersist(manifest);
   const json = JSON.stringify(persisted);
-  fs.writeFileSync(tmp, json, 'utf-8');
-  fs.renameSync(tmp, manifestPath);
-  return Buffer.byteLength(json, 'utf-8');
+  return writeManifestBytes(manifestPath, json);
 }
 
 /**
