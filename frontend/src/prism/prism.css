@@ -1,0 +1,153 @@
+/* Prism (#1764) — manuscript marks drawn by prism/PrismExtension.ts.
+ *
+ * Flags are text-decoration underlines (wavy / dotted / dashed), so they never
+ * collide with comment anchors, which use a solid border-bottom and a soft
+ * background. Each check gets its own colour AND a line style family, so the
+ * marks stay distinguishable without relying on colour alone:
+ *   - wavy:   word-level checks (overused, crutch, adverbs, filter, tags)
+ *   - dotted: sentence-level checks (passive, long, repeated starts)
+ *   - dashed: punctuation consistency
+ * Tints are a subtle colour shift on the text itself (never a background), so
+ * they read as a voice layer under the flags rather than a highlight.
+ *
+ * Every mark is its own nested <span> (the decorations set nodeName), so a
+ * word flag inside a flagged phrase inside a long sentence draws all three
+ * underlines. Each scope sits at its own depth below the text so the lines
+ * stack instead of painting over each other:
+ *   - word:     --prism-flag-offset
+ *   - phrase:   --prism-flag-offset-phrase   (passive voice, dialogue tags)
+ *   - sentence: --prism-flag-offset-sentence (long sentences)
+ *
+ * Nothing here animates, so prefers-reduced-motion needs no override.
+ */
+
+:root {
+  --prism-flag-overused-words: var(--n4, rgb(255, 154, 61));
+  --prism-flag-crutch-words: var(--n3, rgb(255, 77, 255));
+  --prism-flag-adverbs: var(--n5, rgb(47, 230, 200));
+  --prism-flag-passive-voice: var(--n2, rgb(155, 95, 255));
+  --prism-flag-long-sentences: var(--n6, rgb(61, 155, 255));
+  --prism-flag-filter-words: var(--n1, rgb(0, 240, 255));
+  --prism-flag-dialogue-tags: rgb(255, 209, 64);
+  --prism-flag-repeated-starts: rgb(255, 99, 112);
+  --prism-flag-punctuation-consistency: rgb(150, 226, 92);
+
+  --prism-tint-dialogue: rgb(255, 176, 102);
+  --prism-tint-inner-monologue: rgb(186, 150, 255);
+  --prism-tint-narrator: rgb(150, 170, 200);
+  /* How far a tint pulls the text colour toward its hue. */
+  --prism-tint-strength: 40%;
+  --prism-tint-narrator-strength: 22%;
+
+  /* Offsets are in em so the stacked lines scale with the page font size
+     (3px / 7px / 10px at the 16px default) and stay tucked under their own
+     line instead of drifting toward the next one. */
+  --prism-flag-thickness: 1.5px;
+  --prism-flag-offset: 0.19em;
+  --prism-flag-offset-phrase: 0.44em;
+  --prism-flag-offset-sentence: 0.63em;
+}
+
+/* Light theme: the neon hues are too pale on paper — darken them so the
+   underlines and tints keep their contrast against a light page. */
+[data-theme='light'] {
+  --prism-flag-overused-words: rgb(184, 92, 0);
+  --prism-flag-crutch-words: rgb(176, 30, 176);
+  --prism-flag-adverbs: rgb(0, 128, 110);
+  --prism-flag-passive-voice: rgb(104, 52, 210);
+  --prism-flag-long-sentences: rgb(20, 96, 200);
+  --prism-flag-filter-words: rgb(0, 120, 150);
+  --prism-flag-dialogue-tags: rgb(150, 110, 0);
+  --prism-flag-repeated-starts: rgb(196, 30, 52);
+  --prism-flag-punctuation-consistency: rgb(56, 128, 20);
+
+  --prism-tint-dialogue: rgb(156, 72, 0);
+  --prism-tint-inner-monologue: rgb(96, 50, 190);
+  --prism-tint-narrator: rgb(50, 70, 100);
+}
+
+.prism-flag {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: var(--prism-flag-thickness);
+  text-underline-offset: var(--prism-flag-offset);
+  text-decoration-skip-ink: none;
+}
+
+.prism-flag--overused-words {
+  text-decoration-color: var(--prism-flag-overused-words);
+}
+.prism-flag--crutch-words {
+  text-decoration-color: var(--prism-flag-crutch-words);
+}
+.prism-flag--adverbs {
+  text-decoration-color: var(--prism-flag-adverbs);
+}
+.prism-flag--filter-words {
+  text-decoration-color: var(--prism-flag-filter-words);
+}
+.prism-flag--dialogue-tags {
+  text-decoration-color: var(--prism-flag-dialogue-tags);
+}
+
+/* Phrase- and sentence-scope marks can contain word-scope ones: drop their
+   lines lower so the nested underlines stay visible. */
+.prism-flag--passive-voice,
+.prism-flag--dialogue-tags {
+  text-underline-offset: var(--prism-flag-offset-phrase);
+}
+.prism-flag--long-sentences {
+  text-underline-offset: var(--prism-flag-offset-sentence);
+}
+
+.prism-flag--passive-voice {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--prism-flag-passive-voice);
+}
+.prism-flag--long-sentences {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--prism-flag-long-sentences);
+}
+.prism-flag--repeated-starts {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--prism-flag-repeated-starts);
+}
+.prism-flag--punctuation-consistency {
+  text-decoration-style: dashed;
+  text-decoration-color: var(--prism-flag-punctuation-consistency);
+}
+
+.prism-tint--dialogue {
+  color: color-mix(in srgb, var(--prism-tint-dialogue) var(--prism-tint-strength), currentColor);
+}
+.prism-tint--inner-monologue {
+  color: color-mix(
+    in srgb,
+    var(--prism-tint-inner-monologue) var(--prism-tint-strength),
+    currentColor
+  );
+}
+.prism-tint--narrator {
+  color: color-mix(
+    in srgb,
+    var(--prism-tint-narrator) var(--prism-tint-narrator-strength),
+    currentColor
+  );
+}
+
+/* High contrast: heavier, solid underlines and full-strength flag colours;
+   tints step back so text keeps the theme's maximum contrast. */
+:root[data-contrast='high'] {
+  /* Heavier lines, but the stack keeps the default depth: deeper offsets put
+     the sentence line closer to the next line's capitals than to its own
+     text. 2.5px lines with ~1px gaps fit 0.15em / 0.38em / 0.6em at 16px. */
+  --prism-flag-thickness: 2.5px;
+  --prism-flag-offset: 0.15em;
+  --prism-flag-offset-phrase: 0.38em;
+  --prism-flag-offset-sentence: 0.6em;
+  --prism-tint-strength: 25%;
+  --prism-tint-narrator-strength: 12%;
+}
+:root[data-contrast='high'] .prism-flag {
+  text-decoration-style: solid;
+}

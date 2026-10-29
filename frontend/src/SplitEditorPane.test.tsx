@@ -3,14 +3,15 @@
  * Covers: pane label, empty state, focus indicator, click-to-focus, scene selector.
  */
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Scene, Chapter, Story } from './types';
+import { __resetPrismStoresForTests, prismSettingsStore } from './prism/store';
 
 // ── Mock BlockEditor — avoid TipTap initialization in jsdom ──────────────────
 
 vi.mock('./BlockEditor', () => ({
-  default: ({ scene }: { scene: Scene }) => (
-    <div data-testid="mock-block-editor" data-scene-id={scene.id} />
+  default: ({ scene, storyId }: { scene: Scene; storyId?: string | null }) => (
+    <div data-testid="mock-block-editor" data-scene-id={scene.id} data-story-id={storyId ?? ''} />
   ),
 }));
 
@@ -400,5 +401,42 @@ describe('Entity Browser tab', () => {
     fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
     fireEvent.click(screen.getByTestId('wtb-new-tab-menu-item-entities'));
     expect(onOpenEntityBrowser).toHaveBeenCalledOnce();
+  });
+});
+
+// ── Prism (#1764): the pane loads its own book's settings ────────────────────
+
+describe('Prism book for this pane', () => {
+  const readVault = vi.fn();
+
+  beforeEach(() => {
+    __resetPrismStoresForTests();
+    readVault.mockReset();
+    readVault.mockRejectedValue(new Error('ENOENT'));
+    Object.defineProperty(window, 'api', {
+      value: { readVault, writeVault: vi.fn() },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    __resetPrismStoresForTests();
+    delete (window as { api?: unknown }).api;
+  });
+
+  it("opens the pane's book prism.json without making it the selected book", () => {
+    const scene = makeScene();
+    const story = { ...makeStory([makeChapter([scene])]), id: 'st-2', path: 'stories/st-2' } as Story;
+    render(<SplitEditorPane {...defaultProps({ scene, story, stories: [story] })} />);
+    expect(readVault).toHaveBeenCalledWith('stories/st-2/prism.json');
+    expect(prismSettingsStore.getCurrentBookId()).toBeNull();
+  });
+
+  it("passes the pane's story id to the editor for scenes without a storyId", () => {
+    const scene = makeScene();
+    const story = { ...makeStory([makeChapter([scene])]), id: 'st-2', path: 'stories/st-2' } as Story;
+    render(<SplitEditorPane {...defaultProps({ scene, story, stories: [story] })} />);
+    expect(screen.getByTestId('mock-block-editor')).toHaveAttribute('data-story-id', 'st-2');
   });
 });

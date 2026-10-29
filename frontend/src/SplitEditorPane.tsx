@@ -16,6 +16,7 @@ import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 import WorkspaceTabBar from './WorkspaceTabBar';
 import EntityBrowser from './EntityBrowser';
+import { usePrismOpenBook } from './prism/usePrism';
 import './SplitEditorPane.css';
 
 // ─── Compact per-pane scene selector ───
@@ -221,6 +222,7 @@ export default function SplitEditorPane({
   paneNumber,
   isFocused,
   scene,
+  story,
   stories,
   onFocus,
   onSelectScene,
@@ -262,6 +264,10 @@ export default function SplitEditorPane({
     [stories],
   );
   const paneLabel = `Pane ${paneNumber}`;
+  // Prism (#1764): this pane may show a book other than the one selected in
+  // the sidebar (or the sidebar may be hidden): load that book's prism.json so
+  // its scene editor follows the book's saved settings.
+  usePrismOpenBook(story);
   const sceneSelectorRef = useRef<PaneSceneSelectorHandle>(null);
 
   // ── SKY-9342: per-pane ⋮ menu ─────────────────────────────────────────────
@@ -425,6 +431,7 @@ export default function SplitEditorPane({
           <BlockEditor
             key={`${scene.id}-${editorRemountKey}`}
             scene={scene}
+            storyId={story?.id ?? null}
             onBlocksChange={onBlocksChange}
             onDraftStateChange={() => {}}
             onEditorReady={onEditorReady}

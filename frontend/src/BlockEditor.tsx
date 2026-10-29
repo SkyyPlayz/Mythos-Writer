@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
+import type { Transaction } from '@tiptap/pm/state';
 import type { Block, Scene, DraftState, EntityEntry } from './types';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
@@ -13,8 +14,10 @@ import {
 import { getEditorMarkdown } from './lib/useRichEditor';
 import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
-import { HeadingFocusExtension } from './HeadingFocusExtension';
+import { HeadingFocusExtension, headingFocusKey } from './HeadingFocusExtension';
 import { levelsPresent, focusState, stepFocus, headingsAtLevel, reconcileFocusLevel } from './lib/headingFocus';
+import { PrismExtension, PRISM_META, type PrismEditorConfig } from './prism/PrismExtension';
+import { usePrismCurrentBookId, usePrismSettingsById } from './prism/usePrism';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -77,6 +80,12 @@ interface Props {
   /** SKY-10925: reports the live Tiptap editor instance so a chromeless host
    *  (ManuscriptView's unified toolbar) can drive real formatting commands. */
   onLiveEditorChange?: (editor: Editor | null) => void;
+  /**
+   * Prism (#1764): the id of the book the host shows this scene for. Used
+   * when `scene.storyId` is missing (optional in older frontmatter); without
+   * either, the editor follows the book the writer has selected.
+   */
+  storyId?: string | null;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -86,7 +95,7 @@ const DRAFT_STATE_LABELS: Record<DraftState, string> = {
 };
 
 /** Story-only extensions layered onto the shared RichTextEditor core. */
-const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension, HeadingFocusExtension];
+const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension, HeadingFocusExtension, PrismExtension];
 
 // Block.type === 'heading' carries no dedicated level field — a heading's level
 // (H1–H6) lives in its own leading `#` run inside `content` (e.g. "## Chapter Two"),
@@ -118,7 +127,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start writing…', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions, chromeless = false, onLiveEditorChange }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start writing…', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions, chromeless = false, onLiveEditorChange, storyId: hostStoryId = null }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   // Beta 4 M2: the toolbar word-count badge is gone — the app status bar is
@@ -335,6 +344,32 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     );
   }, [editor, autoLinkerEntities, autoLinkerMode]);
 
+  // Prism (#1764): push the book's Prism settings + this scene's identity into
+  // the Prism plugin. Until this first lands the plugin is inert. A scene
+  // without a storyId reads its host's book, else the selected book, so the
+  // sidebar's switches (which write by book id) still reach its marks.
+  // The selected-book fallback is pinned to the first book seen for this
+  // scene: selecting another book while this scene stays open must not
+  // relabel its findings as that book's.
+  const currentBookId = usePrismCurrentBookId();
+  const [prismBookLatch, setPrismBookLatch] = useState<{ sceneId: string; bookId: string | null }>(
+    () => ({ sceneId: scene.id, bookId: currentBookId })
+  );
+  const latchedBookId =
+    prismBookLatch.sceneId === scene.id && prismBookLatch.bookId !== null
+      ? prismBookLatch.bookId
+      : currentBookId;
+  if (prismBookLatch.sceneId !== scene.id || prismBookLatch.bookId !== latchedBookId) {
+    setPrismBookLatch({ sceneId: scene.id, bookId: latchedBookId });
+  }
+  const prismStoryId = scene.storyId ?? hostStoryId ?? latchedBookId;
+  const prismSettings = usePrismSettingsById(prismStoryId);
+  useEffect(() => {
+    if (!editor) return;
+    const config: PrismEditorConfig = { storyId: prismStoryId, sceneId: scene.id, settings: prismSettings };
+    editor.view.dispatch(editor.state.tr.setMeta(PRISM_META, config));
+  }, [editor, scene.id, prismStoryId, prismSettings]);
+
   // SKY-130 / SKY-5087: the shared core flushes the pending content debounce on
   // unmount; clear the wrapper-owned cursor + word-count debounces here.
   useEffect(() => {
@@ -374,6 +409,20 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   // level list and step state are derived per render — the doc-revision
   // debounce already re-renders during typing, keeping them fresh.
   const [hf, setHf] = useState<{ level: number | null; index: number }>({ level: null, index: 0 });
+  // Other plugins may change heading focus too (Prism's "Go to" shows the
+  // whole scene to reveal a finding in a hidden section): keep the control in
+  // step with the plugin.
+  useEffect(() => {
+    if (!editor) return;
+    const onTransaction = ({ transaction }: { transaction: Transaction }) => {
+      if (transaction.getMeta(headingFocusKey) === undefined) return;
+      const focus = headingFocusKey.getState(editor.state);
+      if (!focus) return;
+      setHf((prev) => (prev.level === focus.level && prev.index === focus.index ? prev : { level: focus.level, index: focus.index }));
+    };
+    editor.on('transaction', onTransaction);
+    return () => { editor.off('transaction', onTransaction); };
+  }, [editor]);
   const headingLevelOptions = enableHeadingFocus && editor ? levelsPresent(editor.state.doc) : [];
   const hfStep = enableHeadingFocus && editor && hf.level !== null
     ? focusState(editor.state.doc, hf.level, hf.index)
