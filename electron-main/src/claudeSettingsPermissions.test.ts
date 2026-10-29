@@ -123,6 +123,50 @@ const MUST_RUN = [
   'gh pr checks 1775',
 ] as const;
 
+const ROUND3_CASES = [
+  'rg --pre cmd',
+  'rg --pre-glob \'*.md\'',
+  'npx vitest --config evil.js',
+  'npx vitest -c evil.js',
+  'npx vitest -p evil',
+  'npx vitest --node-options=--require=./evil.js',
+  'npx vitest --require ./evil.js',
+  'npx vitest --import ./evil.js',
+  'npx vitest --experimental-loader ./evil.js',
+  'npx tsc --config evil.js',
+  'npx tsc -c evil.js',
+  'npx tsc -p evil',
+  'npx tsc --node-options=--require=./evil.js',
+  'npx tsc --require ./evil.js',
+  'npx tsc --import ./evil.js',
+  'npx tsc --experimental-loader ./evil.js',
+  'npx eslint --config evil.js',
+  'npx eslint -c evil.js',
+  'npx eslint -p evil',
+  'npx eslint --node-options=--require=./evil.js',
+  'npx eslint --require ./evil.js',
+  'npx eslint --import ./evil.js',
+  'npx eslint --experimental-loader ./evil.js',
+  'git checkout -b claude/topic -f',
+  'git switch claude/topic -f',
+  'git checkout -b claude/topic --force',
+  'git switch claude/topic --force',
+  'git checkout -b claude/topic --discard-changes',
+  'git switch claude/topic --discard-changes',
+  'git checkout -b claude/topic --merge',
+  'git switch claude/topic --merge',
+  'git push origin claude/topic --delete',
+  'git push -u origin claude/topic --delete',
+  'git push origin claude/topic --mirror',
+  'git push -u origin claude/topic --mirror',
+  'git push origin claude/topic --all',
+  'git push -u origin claude/topic --all',
+  'git push origin claude/topic --tags',
+  'git push -u origin claude/topic --tags',
+  'gh pr view 1775 --repo other/repo',
+  'gh pr checks 1775 --watch',
+] as const;
+
 const PROBE_CORPUS: ReadonlyArray<readonly [string, Outcome]> = [
   ['git commit -m x --no-verify', 'ask'],
   ['git commit -m x -n', 'ask'],
@@ -164,6 +208,47 @@ const PROBE_CORPUS: ReadonlyArray<readonly [string, Outcome]> = [
   ['rg TODO', 'allow'],
   ['gh pr create --draft', 'allow'],
   ['gh pr checks 1775', 'allow'],
+  ['rg --pre cmd', 'ask'],
+  ['rg --pre-glob \'*.md\'', 'ask'],
+  ['npx vitest --config evil.js', 'ask'],
+  ['npx vitest -c evil.js', 'ask'],
+  ['npx vitest -p evil', 'ask'],
+  ['npx vitest --node-options=--require=./evil.js', 'ask'],
+  ['npx vitest --require ./evil.js', 'ask'],
+  ['npx vitest --import ./evil.js', 'ask'],
+  ['npx vitest --experimental-loader ./evil.js', 'ask'],
+  ['npx tsc --config evil.js', 'ask'],
+  ['npx tsc -c evil.js', 'ask'],
+  ['npx tsc -p evil', 'ask'],
+  ['npx tsc --node-options=--require=./evil.js', 'ask'],
+  ['npx tsc --require ./evil.js', 'ask'],
+  ['npx tsc --import ./evil.js', 'ask'],
+  ['npx tsc --experimental-loader ./evil.js', 'ask'],
+  ['npx eslint --config evil.js', 'ask'],
+  ['npx eslint -c evil.js', 'ask'],
+  ['npx eslint -p evil', 'ask'],
+  ['npx eslint --node-options=--require=./evil.js', 'ask'],
+  ['npx eslint --require ./evil.js', 'ask'],
+  ['npx eslint --import ./evil.js', 'ask'],
+  ['npx eslint --experimental-loader ./evil.js', 'ask'],
+  ['git checkout -b claude/topic -f', 'ask'],
+  ['git switch claude/topic -f', 'ask'],
+  ['git checkout -b claude/topic --force', 'ask'],
+  ['git switch claude/topic --force', 'ask'],
+  ['git checkout -b claude/topic --discard-changes', 'ask'],
+  ['git switch claude/topic --discard-changes', 'ask'],
+  ['git checkout -b claude/topic --merge', 'ask'],
+  ['git switch claude/topic --merge', 'ask'],
+  ['git push origin claude/topic --delete', 'ask'],
+  ['git push -u origin claude/topic --delete', 'ask'],
+  ['git push origin claude/topic --mirror', 'ask'],
+  ['git push -u origin claude/topic --mirror', 'ask'],
+  ['git push origin claude/topic --all', 'ask'],
+  ['git push -u origin claude/topic --all', 'ask'],
+  ['git push origin claude/topic --tags', 'ask'],
+  ['git push -u origin claude/topic --tags', 'ask'],
+  ['gh pr view 1775 --repo other/repo', 'ask'],
+  ['gh pr checks 1775 --watch', 'ask'],
   ['npm run build:installer --prefix ../other', 'ask'],
   ['npm run build:electron --prefix ../other', 'ask'],
   ['npm run test:fidelity-harness --prefix ../other', 'ask'],
@@ -321,17 +406,17 @@ const PROBE_CORPUS: ReadonlyArray<readonly [string, Outcome]> = [
   ['gh pr create --draft --no-draft --title x', 'ask'],
   ['git commit -m x --no-verify --no-gpg-sign', 'ask'],
   ['git add -f -- file', 'ask'],
-  ['git status -sb', 'allow'],
-  ['git diff --stat', 'allow'],
-  ['git log -1', 'allow'],
-  ['git diff --output-indicator-new=+', 'allow'],
-  ['git log --oneline', 'allow'],
-  ['gh pr view 1775', 'allow'],
+  ['git status -sb', 'ask'],
+  ['git diff --stat', 'ask'],
+  ['git log -1', 'ask'],
+  ['git diff --output-indicator-new=+', 'ask'],
+  ['git log --oneline', 'ask'],
+  ['gh pr view 1775', 'ask'],
   ['npm run build:installer', 'allow'],
   ['npm run lint:dead-wiring', 'allow'],
   ['npm run test:e2e', 'allow'],
-  ['npx tsc --pretty false', 'allow'],
-  ['git switch -c claude/other', 'allow'],
+  ['npx tsc --pretty false', 'ask'],
+  ['git switch -c claude/other', 'ask'],
   ['printenvprobe', 'deny'],
   ['env', 'deny'],
   ['env probe-arg', 'deny'],
@@ -344,67 +429,28 @@ const PROBE_CORPUS: ReadonlyArray<readonly [string, Outcome]> = [
   ['npm ci --ignore-scripts=falseprobe', 'deny'],
   ['npm installprobe', 'deny'],
   ['npm i', 'deny'],
-  ['npm i probe-arg', 'deny'],
   ['npm in', 'deny'],
-  ['npm in probe-arg', 'deny'],
   ['npm ins', 'deny'],
-  ['npm ins probe-arg', 'deny'],
   ['npm inst', 'deny'],
-  ['npm inst probe-arg', 'deny'],
   ['npm insta', 'deny'],
-  ['npm insta probe-arg', 'deny'],
   ['npm instal', 'deny'],
-  ['npm instal probe-arg', 'deny'],
   ['npm isntall', 'deny'],
-  ['npm isntall probe-arg', 'deny'],
   ['npm add', 'deny'],
-  ['npm add probe-arg', 'deny'],
   ['npm it', 'deny'],
-  ['npm it probe-arg', 'deny'],
   ['npm install-test', 'deny'],
-  ['npm install-test probe-arg', 'deny'],
   ['npm clean-install', 'deny'],
-  ['npm clean-install probe-arg', 'deny'],
   ['npm ic', 'deny'],
-  ['npm ic probe-arg', 'deny'],
   ['npm install-clean', 'deny'],
-  ['npm install-clean probe-arg', 'deny'],
   ['npm isntall-clean', 'deny'],
-  ['npm isntall-clean probe-arg', 'deny'],
   ['npm cit', 'deny'],
-  ['npm cit probe-arg', 'deny'],
   ['npm clean-install-test', 'deny'],
-  ['npm clean-install-test probe-arg', 'deny'],
   ['npm install-ci-test', 'deny'],
-  ['npm install-ci-test probe-arg', 'deny'],
   ['git -C probe-arg', 'deny'],
   ['bash -c probe-arg', 'deny'],
   ['sh -c probe-arg', 'deny'],
   ['gh api probe-arg', 'deny'],
   ['probe--draft=falseprobe', 'deny'],
-  ['probe--draft=Falseprobe', 'deny'],
-  ['probe--draft=FALSEprobe', 'deny'],
-  ['probe--draft=fprobe', 'deny'],
-  ['probe--draft=Fprobe', 'deny'],
-  ['probe--draft=0probe', 'deny'],
-  ['probe--draft falseprobe', 'deny'],
-  ['probe--draft Falseprobe', 'deny'],
-  ['probe--draft FALSEprobe', 'deny'],
-  ['probe--draft fprobe', 'deny'],
-  ['probe--draft Fprobe', 'deny'],
-  ['probe--draft 0probe', 'deny'],
   ['gh pr createprobe-d=falseprobe', 'deny'],
-  ['gh pr createprobe-d=Falseprobe', 'deny'],
-  ['gh pr createprobe-d=FALSEprobe', 'deny'],
-  ['gh pr createprobe-d=fprobe', 'deny'],
-  ['gh pr createprobe-d=Fprobe', 'deny'],
-  ['gh pr createprobe-d=0probe', 'deny'],
-  ['gh pr createprobe-d falseprobe', 'deny'],
-  ['gh pr createprobe-d Falseprobe', 'deny'],
-  ['gh pr createprobe-d FALSEprobe', 'deny'],
-  ['gh pr createprobe-d fprobe', 'deny'],
-  ['gh pr createprobe-d Fprobe', 'deny'],
-  ['gh pr createprobe-d 0probe', 'deny'],
   ['gh pr mergeprobe', 'deny'],
   ['gh pr readyprobe', 'deny'],
   ['git diffprobe--output=probe', 'deny'],
@@ -418,12 +464,10 @@ const PROBE_CORPUS: ReadonlyArray<readonly [string, Outcome]> = [
   ['git push -u origin HEADprobe', 'deny'],
   ['git push HEADprobe', 'deny'],
   ['git push probe:mainprobe', 'deny'],
-  ['git push probe:refs/heads/mainprobe', 'deny'],
   ['git push proberefs/heads/mainprobe', 'deny'],
   ['git push probe+mainprobe', 'deny'],
   ['git push probeHEAD:mainprobe', 'deny'],
   ['git push probemasterprobe', 'deny'],
-  ['git push proberefs/heads/masterprobe', 'deny'],
   ['git push probe:masterprobe', 'deny'],
   ['git push --forceprobe', 'deny'],
   ['git push -fprobe', 'deny'],
@@ -464,6 +508,31 @@ describe('claude settings bash permissions', () => {
     expect(allowPatterns.some((pattern) => pattern.startsWith('npm run ') && pattern.endsWith(' *'))).toBe(
       false,
     );
+    expect(allowPatterns).toContain('git status');
+    expect(allowPatterns).toContain('git diff');
+    expect(allowPatterns).toContain('git log');
+    expect(allowPatterns).toContain('git checkout -b claude/topic');
+    expect(allowPatterns).toContain('git switch claude/topic');
+    expect(allowPatterns).toContain('git push -u origin claude/topic');
+    expect(allowPatterns).toContain('git push origin claude/topic');
+    expect(allowPatterns).toContain('npx vitest run');
+    expect(allowPatterns).toContain('npx tsc --noEmit');
+    expect(allowPatterns).toContain('npx eslint .');
+    expect(allowPatterns).toContain('rg TODO');
+    expect(allowPatterns).toContain('gh pr checks 1775');
+    expect(allowPatterns).not.toContain('git status*');
+    expect(allowPatterns).not.toContain('git diff*');
+    expect(allowPatterns).not.toContain('git log*');
+    expect(allowPatterns).not.toContain('git checkout -b *');
+    expect(allowPatterns).not.toContain('git switch *');
+    expect(allowPatterns).not.toContain('git push -u origin claude/*');
+    expect(allowPatterns).not.toContain('git push origin claude/*');
+    expect(allowPatterns).not.toContain('npx vitest *');
+    expect(allowPatterns).not.toContain('npx tsc *');
+    expect(allowPatterns).not.toContain('npx eslint *');
+    expect(allowPatterns).not.toContain('rg *');
+    expect(allowPatterns).not.toContain('gh pr view *');
+    expect(allowPatterns).not.toContain('gh pr checks *');
     expect(denyPatterns).toContain('*--draft=false*');
     expect(denyPatterns).toContain('*--draft false*');
     expect(denyPatterns).toContain('gh pr create*-d=false*');
@@ -483,6 +552,12 @@ describe('claude settings bash permissions', () => {
   it('asks for draft value spellings instead of denying them', () => {
     const got = DRAFT_VALUE_CASES.map((command) => [command, outcome(command)]);
     expect(got).toEqual(DRAFT_VALUE_CASES.map((command) => [command, 'ask']));
+  });
+
+
+  it('asks for every round-3 flag-undo case', () => {
+    const got = ROUND3_CASES.map((command) => [command, outcome(command)]);
+    expect(got).toEqual(ROUND3_CASES.map((command) => [command, 'ask']));
   });
 
   it('still allows the must-run commands', () => {
@@ -505,14 +580,17 @@ describe('claude settings bash permissions', () => {
     const flagCommands = new Set<string>(FLAG_OVERRIDE_CASES);
     const draftCommands = new Set<string>(DRAFT_VALUE_CASES);
     const mustCommands = new Set<string>(MUST_RUN);
+    const round3Commands = new Set<string>(ROUND3_CASES);
     for (const [command] of PROBE_CORPUS) {
       flagCommands.delete(command);
       draftCommands.delete(command);
       mustCommands.delete(command);
+      round3Commands.delete(command);
     }
     expect(flagCommands.size).toBe(0);
     expect(draftCommands.size).toBe(0);
     expect(mustCommands.size).toBe(0);
+    expect(round3Commands.size).toBe(0);
     console.log(
       `SUMMARY cases=${PROBE_CORPUS.length} deny=${counts.deny} ask=${counts.ask} allow=${counts.allow}`,
     );

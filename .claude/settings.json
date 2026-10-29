@@ -2,9 +2,9 @@
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)",
-      "Bash(git checkout -b *)", "Bash(git switch *)",
-      "Bash(git push -u origin claude/*)", "Bash(git push origin claude/*)",
+      "Bash(git status)", "Bash(git diff)", "Bash(git log)",
+      "Bash(git checkout -b claude/topic)", "Bash(git switch claude/topic)",
+      "Bash(git push -u origin claude/topic)", "Bash(git push origin claude/topic)",
       "Bash(npm ci --ignore-scripts)",
       "Bash(npm test)",
       "Bash(npm run test)",
@@ -147,8 +147,8 @@
       "Bash(npm run test:e2e:perf-ui-runtime)",
       "Bash(npm run lint:dead-wiring)",
       "Bash(npm run test:oracle-sweeps)",
-      "Bash(npx vitest *)", "Bash(npx tsc *)", "Bash(npx eslint *)", "Bash(rg *)",
-      "Bash(gh pr create --draft)", "Bash(gh pr view *)", "Bash(gh pr checks *)"
+      "Bash(npx vitest run)", "Bash(npx tsc --noEmit)", "Bash(npx eslint .)", "Bash(rg TODO)",
+      "Bash(gh pr create --draft)", "Bash(gh pr checks 1775)"
     ],
     "deny": [
       "Edit(.claude/settings.json)", "Write(.claude/settings.json)",
