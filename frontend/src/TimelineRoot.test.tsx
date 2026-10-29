@@ -275,7 +275,21 @@ describe('TimelineRoot — view switcher', () => {
   });
 });
 
-const HIDDEN_STORED_MODES = ['plot', 'spreadsheet', 'tension', 'relations', 'subway', 'track'] as const;
+describe('TimelineRoot — stored plot mode', () => {
+  it('stored timeline:viewMode plot opens Plotlines and is not rewritten', async () => {
+    localStorage.setItem('timeline:viewMode', 'plot');
+    await renderRoot();
+    expect(screen.getByTestId('mock-plotlines')).toBeInTheDocument();
+    expect(screen.getByTestId('view-mode-plot')).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('timeline:viewMode')).toBe('plot');
+    const viewOptions = Array.from(
+      screen.getByTestId('tl-view-filter').querySelectorAll('option'),
+    ).map((option) => option.textContent);
+    expect(viewOptions).toEqual(['Story Structure']);
+  });
+});
+
+const HIDDEN_STORED_MODES = ['spreadsheet', 'tension', 'relations', 'subway', 'track'] as const;
 
 describe('TimelineRoot — hidden modes fall back to Structure', () => {
   it.each(HIDDEN_STORED_MODES)(
@@ -290,8 +304,8 @@ describe('TimelineRoot — hidden modes fall back to Structure', () => {
       const labels = Array.from(
         screen.getByTestId('view-mode-toggle').querySelectorAll('button'),
       ).map((button) => button.textContent);
-      expect(labels).toEqual(['Structure', 'Progress']);
-      for (const mode of ['plot', 'spreadsheet', 'tension', 'relations', 'subway'] as const) {
+      expect(labels).toEqual(['Structure', 'Progress', 'Plotlines']);
+      for (const mode of ['spreadsheet', 'tension', 'relations', 'subway'] as const) {
         expect(screen.queryByTestId(`view-mode-${mode}`)).toBeNull();
       }
 
