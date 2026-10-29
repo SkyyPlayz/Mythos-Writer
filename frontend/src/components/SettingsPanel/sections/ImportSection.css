@@ -1,0 +1,318 @@
+/* #1765 — Settings → Vault & Files "Import your writing": drop zone, inline
+   preview and result. Liquid Neon v2 slot vars with prototype fallbacks;
+   text colours come from the token layer (tokens.css) so high-contrast and
+   any future light theme follow automatically. Every font size is a
+   --text-* step (typeScale.guard.test.ts). */
+
+/* Drop zone — Liquid Neon dashed rim (SceneCard.css / ListView.css recipe). */
+.import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 16px;
+  margin-top: 10px;
+  border-radius: 15px;
+  border: 1.5px dashed var(--b1, rgba(0, 240, 255, .6));
+  background: transparent;
+  text-align: center;
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+
+.import-dropzone--active {
+  background: var(--gs1, var(--bg-drag-over, rgba(0, 240, 255, .06)));
+  box-shadow: 0 0 18px -6px var(--g1, rgba(0, 240, 255, .4));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .import-dropzone {
+    transition: none;
+  }
+}
+
+.import-dropzone__title {
+  margin: 0;
+  font-size: var(--text-sm, 14px);
+  font-weight: 600;
+  color: var(--text-header, #edecf6);
+}
+
+.import-dropzone__formats {
+  margin: 0;
+  font-size: var(--text-xs, 12px);
+  line-height: 1.5;
+  color: var(--text-muted, #8a9bb0);
+  max-width: 46ch;
+}
+
+.import-dropzone__actions,
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.import-actions {
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+/* Live status line; empty when idle so it takes no room. */
+.import-status {
+  margin: 6px 0 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-body, #bfd6e8);
+}
+
+.import-status:empty {
+  margin: 0;
+}
+
+/* Preview + done cards (avd-preview look). */
+.import-preview,
+.import-done {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px 15px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .03);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, .2));
+  min-width: 0;
+}
+
+.import-done {
+  background: var(--gs1, rgba(0, 240, 255, .06));
+  border-color: var(--b1, rgba(0, 240, 255, .45));
+}
+
+.import-preview__heading,
+.import-done__heading {
+  margin: 0;
+  font-size: var(--text-xs, 12px);
+  font-weight: 700;
+  color: var(--text-header, #edecf6);
+  overflow-wrap: anywhere;
+}
+
+.import-preview__heading:focus-visible,
+.import-done__heading:focus-visible {
+  outline: 2px solid var(--focus-ring, rgba(0, 240, 255, .7));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.import-preview__heading:focus:not(:focus-visible),
+.import-done__heading:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.import-preview__source {
+  margin: 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, #8a9bb0);
+  overflow-wrap: anywhere;
+}
+
+.import-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border, rgba(255, 255, 255, .07));
+  min-width: 0;
+}
+
+.import-block__title {
+  margin: 0;
+  font-size: var(--text-xs, 12px);
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a9bb0);
+}
+
+.import-story-title {
+  margin: 0;
+  font-size: var(--text-sm, 14px);
+  font-weight: 600;
+  color: var(--text-header, #edecf6);
+  overflow-wrap: anywhere;
+}
+
+.import-totals {
+  margin: 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-body, #bfd6e8);
+}
+
+/* Scrollable chapter list — native <details>/<summary> rows. */
+.import-chapters {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 9px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, .07));
+}
+
+.import-chapter + .import-chapter {
+  border-top: 1px solid var(--glass-border, rgba(255, 255, 255, .07));
+}
+
+.import-chapter summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-body, #bfd6e8);
+}
+
+.import-chapter summary:focus-visible {
+  outline: 2px solid var(--focus-ring, rgba(0, 240, 255, .7));
+  outline-offset: -2px;
+}
+
+.import-chapter__title {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-header, #edecf6);
+}
+
+.import-chapter__meta {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, #8a9bb0);
+  white-space: nowrap;
+}
+
+.import-scenes {
+  margin: 0;
+  padding: 0 10px 8px 26px;
+  list-style: disc;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-body, #bfd6e8);
+}
+
+.import-scenes li {
+  padding: 2px 0;
+}
+
+.import-scene__title {
+  margin-right: 8px;
+  overflow-wrap: anywhere;
+}
+
+/* Excerpt — the opening of the first scene with its formatting rendered. */
+.import-excerpt {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg-inset, rgba(0, 0, 0, .18));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, .07));
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.import-excerpt__label {
+  margin: 0 0 6px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a9bb0);
+}
+
+.import-excerpt__p {
+  margin: 0 0 8px;
+  font-size: var(--text-xs, 12px);
+  line-height: 1.6;
+  color: var(--text-body, #bfd6e8);
+  overflow-wrap: anywhere;
+}
+
+.import-excerpt__p:last-child {
+  margin-bottom: 0;
+}
+
+.import-excerpt__p--heading {
+  font-weight: 700;
+  color: var(--text-header, #edecf6);
+}
+
+.import-excerpt__p--center { text-align: center; }
+.import-excerpt__p--right { text-align: right; }
+.import-excerpt__p--justify { text-align: justify; }
+
+.import-list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  font-size: var(--text-xs, 12px);
+  line-height: 1.55;
+  color: var(--text-body, #bfd6e8);
+  overflow-wrap: anywhere;
+}
+
+.import-entity__label {
+  font-weight: 600;
+  color: var(--text-header, #edecf6);
+}
+
+.import-entity__names {
+  color: var(--text-muted, #8a9bb0);
+}
+
+/* Warnings — visually distinct, no ARIA role needed. */
+.import-warnings {
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--state-warning, #f0a040) 45%, transparent);
+  background: color-mix(in srgb, var(--state-warning, #f0a040) 8%, transparent);
+  font-size: var(--text-xs, 12px);
+  line-height: 1.5;
+  color: var(--state-warning, #f0a040);
+  overflow-wrap: anywhere;
+}
+
+.import-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 8px 0 0;
+  border: none;
+  border-top: 1px solid var(--glass-border, rgba(255, 255, 255, .07));
+  min-width: 0;
+}
+
+.import-options__legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a9bb0);
+}
+
+.import-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-body, #bfd6e8);
+  cursor: pointer;
+}
+
+.import-option input {
+  accent-color: var(--n1, #00f0ff);
+}
