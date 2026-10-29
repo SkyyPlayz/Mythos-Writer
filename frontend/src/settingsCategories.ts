@@ -60,6 +60,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
       'section-vaults-folder', // SKY-11154: "Vaults folder" row — Open folder + Move…
       'section-mythos-vaults', // PLAN-058 L1b: Mythos vault boxes + nested notes/story
+      'section-import', // #1765: Import your writing — right after Mythos vaults (FULL-SPEC.md:204)
       'section-vault-templates', // SKY-1303 / SKY-11352: Save-as-Template + Your templates
       'section-agents-vault',
       'section-vault-health',

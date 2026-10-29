@@ -29,6 +29,7 @@ import { useVaultIcons } from '../../../hooks/useVaultIcons';
 import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
 import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
 import VaultOverflowMenu from './VaultOverflowMenu';
+import ImportSection from './ImportSection';
 import Dialog, { DialogBody, DialogFooter, DialogHeader } from '../../ui/Dialog';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 import { enqueueSettingsWrite } from '../../../settingsWriteSerial';
@@ -538,7 +539,14 @@ export default function MythosVaultsSection({
     window.api?.vaultSurfaceRevealMythos?.(mythosRoot).catch(() => { /* non-fatal */ });
   }, []);
 
+  // #1765: "Import your writing" is a sibling section right after the Mythos
+  // vaults cards (FULL-SPEC.md:204 — Mythos vaults → import → vault actions).
+  // It follows the live active vault so a preview built before a vault was
+  // created / switched can still commit, and it names the destination.
+  const activeVaultEntry = vaults.find((v) => v.vaultRoot === activeRoot);
+  const activeVaultName = activeVaultEntry ? displayNameFor(activeVaultEntry) : undefined;
   return (
+    <>
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
       <div className="settings-section-header-row" style={{ justifyContent: 'space-between' }}>
         <h3 className="settings-section-title" id="section-mythos-vaults">Mythos vaults</h3>
@@ -939,5 +947,10 @@ export default function MythosVaultsSection({
         </div>
       )}
     </section>
+    <ImportSection
+      activeVaultRoot={activeRoot || undefined}
+      activeVaultName={activeVaultName}
+    />
+    </>
   );
 }

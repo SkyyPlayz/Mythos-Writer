@@ -271,6 +271,11 @@ export const IPC_CHANNELS = {
   VAULT_IMPORT_RUN: 'vault:import-run',
   STORY_IMPORT_PICK: 'story:import-pick',
   STORY_IMPORT_RUN: 'story:import-run',
+  // #1765 import hub: one drop zone / picker → safety check → preview → commit
+  // (electron-main/src/importHub/importHubIpc.ts).
+  IMPORT_PICK: 'import:pick',
+  IMPORT_PREVIEW: 'import:preview',
+  IMPORT_COMMIT: 'import:commit',
   // Opens folder picker but does NOT save vault settings (used by wizard before dry-run)
   VAULT_PICK_FOLDER: 'vault:pick-folder',
   // First-run onboarding: load bundled sample project (MYT-242)

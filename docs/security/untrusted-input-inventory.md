@@ -41,6 +41,15 @@ testing status for each.
 | `bgLoad.ts:1-end` | parser | Background vault file loader | semi-trusted | none |
 | `noteBacklinks.ts:1-end` | parser | `[[wikilink]]` backlink scanner | semi-trusted (reads on-disk files) | example-only |
 | `notesTagWrangler.ts:1-end` | parser | Tag extraction from frontmatter | semi-trusted | example-only |
+| `importHub/importSafety.ts:1-end` | validator / security boundary | `assessImportPath` — #1765 import gate for every dropped/picked path: path shape (NUL, relative, ADS, UNC/device), realpath, extension deny-list, 50 MB cap, 4 KB content sniff (PE/ELF/Mach-O/shebang/OLE), bounded ZIP central-directory scan + real-size inflate check (zip bombs, macro parts) | **untrusted** (renderer-supplied path; attacker-controlled file) | example-only (extensive) |
+| `importHub/importHubIpc.ts:1-end` | boundary | `import:pick` / `import:preview` / `import:commit` — top-frame check, path re-validated in main, single-use preview tokens bound to the source's size + mtime, no paths or stacks in replies | **untrusted** (renderer payloads) | example-only |
+| `importHub/htmlBlocks.ts:1-end` | parser | `htmlToBlocks` — tag tokenizer for mammoth output, Google Docs HTML exports (class style sheet) and ePub XHTML | **untrusted** (user-chosen document) | example-only (incl. pathological-input timing tests) |
+| `importHub/docx.ts:1-end` | parser | `docxToBlocks` — mammoth (styleMap + transform) → `htmlToBlocks`; images dropped | **untrusted** | example-only |
+| `importHub/epub.ts:1-end` | parser | `epubToBlocks` — container.xml → OPF → spine; entry-count and streamed inflate caps | **untrusted** | example-only |
+| `importHub/rtf.ts:1-end` | parser | `rtfToBlocks` — RTF group/state machine (group-depth cap, codepage escapes, stylesheet heading levels) | **untrusted** | example-only |
+| `importHub/scrivener.ts:1-end` | parser/importer | `scrivenerToPlan` — .scrivx binder + per-document RTF; binder ids validated before any path join, item/size caps | **untrusted** (user-chosen project folder) | example-only |
+| `importHub/markdownImport.ts:1-end` | parser/importer | `markdownFolderToPlan` — folder walk (no symlink following, file/size/depth caps, deny-listed files skipped), frontmatter, fences | **untrusted** (user-chosen folder) | example-only |
+| `importHub/importCommit.ts:1-end` | writer | `commitImportPlan` — writes the previewed plan; every path segment sanitized, containment-checked, never overwrites, rolls back a failed story write | internal (plan built from untrusted input) | example-only |
 
 ---
 

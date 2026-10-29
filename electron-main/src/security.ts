@@ -141,3 +141,39 @@ export function createWindowOpenHandler(
     return { action: 'deny' };
   };
 }
+
+/**
+ * #1765: may a window that holds the preload bridge navigate in place to
+ * `url`? Only to its own renderer — the dev server in development, or the
+ * bundled `index.html` itself (any hash/query). Any other `file://` page is
+ * refused: a document dropped on the window (Blink's default drop action) or
+ * a link a compromised renderer follows must never load with `window.api`.
+ */
+export function isAllowedRendererNavigation(
+  url: string,
+  opts: { devServerUrl?: string; rendererIndexPath: string; platform?: NodeJS.Platform },
+): boolean {
+  if (opts.devServerUrl && url.startsWith(opts.devServerUrl)) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'file:') return false;
+  let target: string;
+  try {
+    target = decodeURIComponent(parsed.pathname);
+  } catch {
+    return false;
+  }
+  const platform = opts.platform ?? process.platform;
+  const norm = (p: string) => {
+    let s = p.replace(/\\/g, '/');
+    // file:///C:/x → "/C:/x" on Windows
+    if (platform === 'win32' && /^\/[A-Za-z]:\//.test(s)) s = s.slice(1);
+    s = s.replace(/\/{2,}/g, '/');
+    return platform === 'win32' || platform === 'darwin' ? s.toLowerCase() : s;
+  };
+  return parsed.host === '' && norm(target) === norm(opts.rendererIndexPath);
+}

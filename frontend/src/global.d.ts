@@ -1758,6 +1758,12 @@ interface Window {
     vaultImportRun: (payload: { kind: SettingsVaultImportKind; srcPath: string; into: 'second' | 'new'; targetPath?: string }) => Promise<{ ok: boolean; error?: string; targetPath?: string; imported?: number; skipped?: number; errors?: string[]; sourceCount?: number; dropWarning?: string }>;
     storyImportPickFile: (format: SettingsStoryImportFormat) => Promise<{ filePath: string | null; cancelled: boolean }>;
     storyImportRun: (format: SettingsStoryImportFormat, filePath: string) => Promise<{ ok: boolean; error?: string; storyTitle?: string; chapterCount?: number; sceneCount?: number; partCount?: number; planNotePath?: string; firstSceneId?: string; firstScenePath?: string; warnings?: string[] }>;
+    // #1765 import hub — drop zone / pickers → safety check → preview → commit.
+    importHub?: {
+      pick: (mode: 'file' | 'folder') => Promise<import('./importHubTypes').ImportPreviewResult>;
+      previewDropped: (file: File) => Promise<import('./importHubTypes').ImportPreviewResult>;
+      commit: (token: string, options?: import('./importHubTypes').ImportCommitOptions) => Promise<import('./importHubTypes').ImportCommitResult>;
+    };
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
