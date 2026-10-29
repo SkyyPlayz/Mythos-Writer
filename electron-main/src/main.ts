@@ -1,6 +1,6 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
-import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy, isAllowedRendererNavigation } from './security.js';
 import { defaultFor, rememberFrom, vaultOpenDefaultPath } from './dialogDefaults.js';
 import {
   registerAiActivityIpcHandlers,
@@ -928,28 +928,42 @@ app.on('before-quit', () => {
 const QUIT_WATCHDOG_MS = 8000;
 const quitWatchdog = createQuitWatchdog(QUIT_WATCHDOG_MS, () => app.exit(0));
 
+// Block in-place navigations to anything other than this app's renderer
+// (security.ts isAllowedRendererNavigation). Every preload-bearing window gets it.
+function guardRendererNavigation(win: BrowserWindow): void {
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedRendererNavigation(url, {
+      devServerUrl: process.env.VITE_DEV_SERVER_URL,
+      rendererIndexPath: path.join(__dirname, '../renderer/index.html'),
+    })) {
+      event.preventDefault();
+    }
+  });
+}
+
 // SKY-9973: before the window actually closes, ask the renderer to flush any
 // pending debounced manifest save (scheduleManifestSave's 900ms timer) and
 // await its ack — otherwise an edit made just before quit is silently lost.
 // Bounded by a timeout so a wedged/unresponsive renderer never hangs quit.
-function flushRendererManifestSave(win: BrowserWindow): Promise<void> {
+// Resolves true once the renderer acks, false on timeout / send failure.
+function flushRendererManifestSave(win: BrowserWindow, timeoutMs = 1500): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
     let timeoutId: NodeJS.Timeout;
-    const finish = () => {
+    const finish = (acked: boolean) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
       ipcMain.removeListener(IPC_CHANNELS.APP_FLUSH_BEFORE_QUIT_DONE, onDone);
-      resolve();
+      resolve(acked);
     };
-    const onDone = () => finish();
+    const onDone = () => finish(true);
     ipcMain.once(IPC_CHANNELS.APP_FLUSH_BEFORE_QUIT_DONE, onDone);
-    timeoutId = setTimeout(finish, 1500);
+    timeoutId = setTimeout(() => finish(false), timeoutMs);
     try {
       win.webContents.send(IPC_CHANNELS.APP_FLUSH_BEFORE_QUIT);
     } catch {
-      finish();
+      finish(false);
     }
   });
 }
@@ -8894,6 +8908,7 @@ function registerPanelPopoutHandler(): void {
     });
 
     popoutWindows.set(panelId, win);
+    guardRendererNavigation(win);
 
     const baseUrl = process.env.VITE_DEV_SERVER_URL
       ? `${process.env.VITE_DEV_SERVER_URL}#/popout/${panelId}${sceneId ? `?sceneId=${sceneId}` : ''}`
@@ -9000,6 +9015,7 @@ function registerFloatingPanelHandlers(): void {
 
     const state: FloatingWindowState = { win, dockBack: false, boundsDebounce: null };
     floatingPanelWindows.set(panelId, state);
+    guardRendererNavigation(win);
 
     // Load the floating panel renderer route.
     const encodedId = encodeURIComponent(panelId);
@@ -9163,13 +9179,9 @@ function createWindow() {
   // Block in-place navigations to anything other than the loaded renderer —
   // protects against a compromised renderer redirecting to a remote origin
   // that would then inherit the preload bridge.
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    const devServer = process.env.VITE_DEV_SERVER_URL;
-    const isAllowed =
-      (devServer && url.startsWith(devServer)) ||
-      url.startsWith('file://');
-    if (!isAllowed) event.preventDefault();
-  });
+  // #1765: only the renderer's own index.html — not any file:// page (a
+  // document dropped on the window would otherwise load with the bridge).
+  guardRendererNavigation(mainWindow);
 
   // SKY-10916: Windows-native mouse X1/X2 side buttons surface as a
   // BrowserWindow-level `app-command` event (not `mousedown`, and not on
@@ -12003,9 +12015,15 @@ app.whenReady().then(async () => {
         mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
       }
     },
-    flushRenderer: () => (mainWindow && !mainWindow.isDestroyed()
-      ? flushRendererManifestSave(mainWindow)
-      : Promise.resolve()),
+    // Unlike quit, an import must not go ahead on a timeout: a pending save
+    // landing after the import would write the old story list back. A
+    // rejection keeps the preview so the writer can try again.
+    flushRenderer: async () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!(await flushRendererManifestSave(mainWindow, 5000))) {
+        throw new Error('renderer did not confirm its pending save');
+      }
+    },
     showOpenDialog: (opts) => dialog.showOpenDialog(opts),
     defaultImportDir: () => defaultFor('import'),
     rememberImportDir: (picked) => rememberFrom('import', picked),

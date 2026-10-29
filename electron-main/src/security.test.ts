@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy, clientCertHost, HEADER_CSP } from './security.js';
+import { secureWebPreferences, createWindowOpenHandler, installCspHeaders, installClientCertPolicy, clientCertHost, HEADER_CSP, isAllowedRendererNavigation } from './security.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ELECTRON_MAIN_DIR = path.resolve(HERE, '..');
@@ -112,6 +112,15 @@ describe('main.ts wiring — secureWebPreferences is the source of truth for all
     const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
     expect(mainSrc).toMatch(/'will-navigate'/);
     expect(mainSrc).toMatch(/event\.preventDefault\(\)/);
+  });
+
+  it('every preload-bearing window gets the renderer-only navigation guard (#1765)', () => {
+    const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+    const preloadWindows = mainSrc.match(/secureWebPreferences\(\{\s*preloadPath\s*\}\)/g) ?? [];
+    const guarded = mainSrc.match(/guardRendererNavigation\((?:mainWindow|win)\);/g) ?? [];
+    expect(preloadWindows.length).toBeGreaterThan(0);
+    expect(guarded.length).toBe(preloadWindows.length);
+    expect(mainSrc).not.toMatch(/url\.startsWith\('file:\/\/'\)/);
   });
 
   it('main.ts wires the context-menu handler for spell-check suggestions (SKY-114)', () => {
@@ -462,5 +471,33 @@ describe('installClientCertPolicy — decline, never auto-pick', () => {
     expect(readyAt).toBeGreaterThan(callAt);
     const registrations = mainSrc.match(/select-client-certificate/g) ?? [];
     expect(registrations).toHaveLength(0);
+  });
+});
+
+describe('isAllowedRendererNavigation (#1765)', () => {
+  const posix = { rendererIndexPath: '/opt/Mythos/resources/app/out/renderer/index.html', platform: 'linux' as const };
+  const win = { rendererIndexPath: 'C:\\Program Files\\Mythos\\resources\\app\\out\\renderer\\index.html', platform: 'win32' as const };
+
+  it('allows the renderer itself, with any hash or query', () => {
+    expect(isAllowedRendererNavigation('file:///opt/Mythos/resources/app/out/renderer/index.html', posix)).toBe(true);
+    expect(isAllowedRendererNavigation('file:///opt/Mythos/resources/app/out/renderer/index.html#/popout/x?sceneId=1', posix)).toBe(true);
+    expect(isAllowedRendererNavigation('file:///C:/Program%20Files/Mythos/resources/app/out/renderer/index.html#/x', win)).toBe(true);
+    expect(isAllowedRendererNavigation('file:///c:/program files/mythos/resources/app/out/renderer/INDEX.html', win)).toBe(true);
+  });
+
+  it('refuses any other file:// page — e.g. a document dropped on the window', () => {
+    expect(isAllowedRendererNavigation('file:///home/me/Downloads/export.html', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('file:///opt/Mythos/resources/app/out/renderer/other.html', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('file:///opt/Mythos/resources/app/out/renderer/index.html/../../evil.html', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('file://server/share/opt/Mythos/resources/app/out/renderer/index.html', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('file:///C:/Users/me/Desktop/story.html', win)).toBe(false);
+  });
+
+  it('refuses remote and odd schemes; allows only the configured dev server', () => {
+    expect(isAllowedRendererNavigation('https://evil.example/', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('javascript:alert(1)', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('not a url', posix)).toBe(false);
+    expect(isAllowedRendererNavigation('http://localhost:5173/#/x', { ...posix, devServerUrl: 'http://localhost:5173' })).toBe(true);
+    expect(isAllowedRendererNavigation('http://localhost:5173/#/x', posix)).toBe(false);
   });
 });

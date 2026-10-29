@@ -142,6 +142,25 @@ test('pick a multi-chapter .docx → preview → import writes chapters/scenes w
   await shot(page, '05-imported-scene-in-editor');
 });
 
+test('a later layout save from the open window keeps the imported book (no stale-manifest overwrite)', async () => {
+  const title = HEADED_MANUSCRIPT_OUTLINE.title;
+  const cachePath = path.join(storyVaultPath, '.mythos', 'manifest-cache.json');
+  const readCache = () => JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as {
+    stories: { title: string }[]; layout?: { writingMode?: string };
+  };
+  expect(readCache().stories.map((s) => s.title)).toContain(title);
+
+  // Writing-mode switches persist the layout through the renderer's own
+  // manifest copy — the save that used to drop a book imported from main.
+  await page.locator('[data-testid="writing-mode-focus"]').click();
+  await expect.poll(() => readCache().layout?.writingMode, { timeout: 10_000 }).toBe('focus');
+  await page.locator('[data-testid="writing-mode-normal"]').click();
+  await expect.poll(() => readCache().layout?.writingMode, { timeout: 10_000 }).toBe('normal');
+
+  expect(readCache().stories.map((s) => s.title)).toContain(title);
+  expect(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8')).toContain(title);
+});
+
 test('a dangerous file is refused before it is read, and nothing is written', async () => {
   const exe = Buffer.concat([Buffer.from('MZ'), Buffer.alloc(512)]);
   const doubleExt = path.join(workDir, 'Chapter 1.docx.exe');
