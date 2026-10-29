@@ -18,8 +18,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { autoUpdater } from 'electron-updater';
-// Anthropic SDK used directly for extraction side-calls (non-streaming). All streaming calls use streamFromProvider.
-import Anthropic from '@anthropic-ai/sdk';
 import {
   setupIpcMain,
   IPC_CHANNELS,
@@ -762,7 +760,8 @@ import {
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
 import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
-import { streamFromProvider, validateBaseUrl, listModels, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, verifyOpenRouterKey, setAiMasterGate, type ProviderConfig } from './provider.js';
+import { probeConnection, resolveGlobalStoredApiKey, resolveStoredApiKey } from './connectionProbe.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -821,11 +820,11 @@ import {
   parseFacts,
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
-  runExtractionSideCall,
-  buildExtractionSystemPrompt,
 } from './brainstormAgent.js';
+import { extractProposalsByScript } from './brainstormExtractScript.js';
 import {
   collectNotesVaultNoteNames,
+  collectNotesVaultNoteNamesAsync,
   findExplicitMentions,
   renderRelationshipsBlock,
   sanitizeWikilinks,
@@ -4592,45 +4591,22 @@ export const handlers: IpcHandlers = {
   [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => { setDailyGoal(payload.dailyGoal); return { ok: true as const }; },
   [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
-  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
-    // SSRF guard: validate before any network call (SKY-739).
-    if (payload.provider.baseUrl) {
-      const urlError = validateBaseUrl(payload.provider.baseUrl);
-      if (urlError) return { ok: false, latencyMs: 0, error: 'Invalid provider URL.' };
-    }
-    const t0 = Date.now();
-    try {
-      const ac = new AbortController();
-      // Liveness probe: opt out of the reasoning-token reserve (SKY-11276) so a
-      // local reasoning model gets a 1-token budget and returns immediately,
-      // instead of a multi-thousand-token thinking session for a quick ping.
-      for await (const _ of streamFromProvider(
-        { kind: payload.provider.kind, apiKey: payload.provider.apiKey, baseUrl: payload.provider.baseUrl, model: payload.provider.model },
-        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal, reserveThinkingTokens: false },
-      )) {
-        ac.abort();
-        break;
-      }
-      return { ok: true, latencyMs: Date.now() - t0 };
-    } catch (e: unknown) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        return { ok: true, latencyMs: Date.now() - t0 };
-      }
-      // A budget-exhausted error means the server was reachable and a model
-      // responded — it just ran out of the 1-token probe budget while thinking.
-      // That is a *successful* connection for the purposes of the test (SKY-11276).
-      if (e instanceof TokenBudgetExhaustedError) {
-        return { ok: true, latencyMs: Date.now() - t0 };
-      }
-      const category = categorizeStreamError(e);
-      return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category, e) };
-    }
-  },
+  // PLAN-AI-MODES M-1: a no-AI key/reachability probe (one GET, OpenRouter at
+  // its key endpoint). A masked or empty key resolves to the key global chat
+  // would send: the global provider's, same kind + host, with the legacy/env
+  // fallback for anthropic only when no provider block is saved.
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) =>
+    probeConnection(payload.provider, {
+      listModels,
+      verifyOpenRouterKey,
+      storedKey: (kind, baseUrl) => resolveGlobalStoredApiKey(loadAppSettings(), kind, baseUrl),
+    }),
 
-  // SKY-1501: list models from provider endpoint; uses stored API key to avoid masked-key leakage
+  // SKY-1501: list models from provider endpoint; the renderer never sends a key
+  // (masked-key leakage), and the stored key is sent only to the same kind and
+  // host it was saved for. No match lists keyless (OpenRouter's catalog is public).
   [IPC_CHANNELS.PROVIDER_LIST_MODELS]: async (payload: ProviderListModelsPayload) => {
-    const stored = loadAppSettings();
-    const apiKey = stored.provider?.apiKey ?? stored.apiKey;
+    const apiKey = resolveStoredApiKey(loadAppSettings(), payload.kind, payload.baseUrl);
     return listModels({ kind: payload.kind, apiKey, baseUrl: payload.baseUrl });
   },
 
@@ -9583,46 +9559,26 @@ function registerBrainstormExtractionHandlers(): void {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
         assertBrainstormPayloadValid(payload);
 
-        // M11a: master off beats the per-agent enable — this direct Anthropic
-        // side-call is the one AI egress that bypasses provider.ts's gate.
+        // M11a: master off beats the per-agent enable. The extract script
+        // (PLAN-AI-MODES M-1) makes no model or network call; these gates stay
+        // until M1 sets per-mode visibility.
         if (!isAiMasterEnabled()) return { proposals: [] };
         const agentSettings = loadAppSettings().agents.brainstorm;
         if (!agentSettings.enabled) return { proposals: [] };
 
-        const apiKey = (() => {
-          const settings = loadAppSettings();
-          return settings.apiKey || process.env.ANTHROPIC_API_KEY || '';
-        })();
-        if (!apiKey) return { proposals: [] };
-
+        // The vault's own note names join the renderer's list, so a name filed
+        // in an earlier turn is not proposed again on every later mention.
         const existingEntityNames = new Set<string>(payload.existingEntityNames ?? []);
-        const turnId = payload.turnId;
-
-        const callLlm = async (userPrompt: string): Promise<string> => {
-          const client = new Anthropic({ apiKey });
-          const model = agentSettings.model || 'claude-haiku-4-5-20251001';
-          const response = await client.messages.create({
-            model,
-            // 1024 gives entity-dense turns room for the whole JSON array —
-            // parseExtractionResponse is all-or-nothing, so a truncated array
-            // loses every proposal, not just the tail.
-            max_tokens: 1024,
-            // Structured-output side-call: keep thinking off so the budget
-            // stays available for the JSON array itself.
-            ...anthropicThinkingParam(model, undefined),
-            system: buildExtractionSystemPrompt([...existingEntityNames]),
-            messages: [{ role: 'user', content: userPrompt }],
-          });
-          const block = response.content[0];
-          return block?.type === 'text' ? block.text : '';
-        };
-
-        const proposals = await runExtractionSideCall(
+        try {
+          for (const name of (await collectNotesVaultNoteNamesAsync(getNotesVaultRoot())).values()) {
+            existingEntityNames.add(name);
+          }
+        } catch { /* vault unreadable — fall back to the renderer's names; proposals still run */ }
+        const proposals = extractProposalsByScript(
           payload.turnText,
           existingEntityNames,
           sessionRejectionLog,
-          turnId,
-          { callLlm },
+          payload.turnId,
         );
 
         const now = new Date().toISOString();

@@ -5,12 +5,14 @@
 // All providers emit tokens via the same AsyncIterable<string> interface so
 // streaming.ts and agents can stay provider-unaware.
 
+import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
+import { isIP, type LookupFunction } from 'node:net';
 import Anthropic from '@anthropic-ai/sdk';
 // Electron's global fetch routes through Chromium's networking layer (proxy, session) and can
 // fail for plain-HTTP localhost calls (e.g. LM Studio on 127.0.0.1:1234) even when Node's
 // undici stack reaches the same URL without issue (SKY-11225). Import undici's fetch explicitly
 // to keep all main-process HTTP calls on Node's networking path.
-import { fetch as nodeFetch } from 'undici';
+import { Agent, fetch as nodeFetch } from 'undici';
 import {
   excludeGoogleModelIds,
   isOpenRouterEndpoint,
@@ -92,7 +94,10 @@ export const REASONING_TOKEN_RESERVE = 8192;
  */
 const ALWAYS_LOCAL_PROVIDER_KINDS = new Set<ProviderKind>(['ollama', 'lmstudio', 'llamacpp']);
 
-/** True when the URL targets loopback (127.0.0.0/8, ::1, localhost). */
+/**
+ * True when the URL targets loopback: an IPv4 literal in 127.0.0.0/8, ::1, or
+ * localhost. A hostname that only starts with "127." (127.example.com) is not.
+ */
 export function isLoopbackUrl(url: string | undefined): boolean {
   if (!url) return false;
   let parsed: URL;
@@ -103,7 +108,7 @@ export function isLoopbackUrl(url: string | undefined): boolean {
   }
   const raw = parsed.hostname.toLowerCase();
   const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
-  return host === 'localhost' || host === '::1' || /^127\./.test(host);
+  return host === 'localhost' || host === '::1' || (isIP(host) === 4 && host.startsWith('127.'));
 }
 
 /**
@@ -127,10 +132,11 @@ export function isLocalReserveEligible(kind: ProviderKind, baseUrl: string | und
  *
  * Eligible local runtimes (see isLocalReserveEligible) get
  * `answerBudget + REASONING_TOKEN_RESERVE` so thinking tokens don't consume the
- * answer budget (SKY-11276). `applyReserve=false` opts out entirely — used by
- * liveness probes (the connection test) that deliberately request a 1-token
- * budget and abort on the first token, where the reserve would turn a quick
- * ping into a multi-thousand-token thinking session.
+ * answer budget (SKY-11276). `applyReserve=false` opts out entirely — for a
+ * liveness probe that deliberately requests a 1-token budget and aborts on the
+ * first token, where the reserve would turn a quick ping into a
+ * multi-thousand-token thinking session. (Settings "Test connection" no longer
+ * streams; it is a GET /models probe, PLAN-AI-MODES M-1.)
  */
 export function effectiveMaxTokens(
   kind: ProviderKind,
@@ -211,6 +217,243 @@ export function validateBaseUrl(url: string): string | null {
   return null;
 }
 
+/**
+ * A URL as safe text for an error message: origin + path only, so userinfo
+ * (user:pass@), a query (?token=) or a hash never reaches the renderer. An
+ * unparsable input is never echoed.
+ */
+export function displayUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return '<invalid URL>';
+  }
+  // Non-http(s) schemes have an opaque "null" origin.
+  const origin = parsed.origin !== 'null' ? parsed.origin : `${parsed.protocol}//${parsed.host}`;
+  return `${origin}${parsed.pathname}`.replace(/\/+$/, '');
+}
+
+// ─── Guarded GET (PLAN-AI-MODES M-1 review) ──────────────────────────────────
+// validateBaseUrl only sees the URL text. The model-list and key-check GETs
+// also refuse redirects, cap the body, and re-check every address DNS returns
+// at connect time, so a name that rebinds to 169.254.169.254 or a LAN host
+// after validation is still refused.
+
+/** Largest model-list / key-check body read; a bigger one is refused unparsed. */
+export const MAX_GUARDED_BODY_BYTES = 1024 * 1024;
+
+const BLOCKED_ADDRESS_CODE = 'ERR_MYTHOS_BLOCKED_ADDRESS';
+
+// `local` is set for the local kinds only: they may reach loopback, and the
+// carrier-grade NAT and benchmarking ranges a Tailscale or lab runtime uses,
+// which validateBaseUrl (and so the chat path) has always allowed.
+function isBlockedIpv4(octets: number[], local: boolean): boolean {
+  const [a, b] = octets;
+  if (a === 127) return !local;
+  if (a === 0 || a === 10) return true; // 0.0.0.0/8, 10/8
+  if (a === 100 && b >= 64 && b <= 127) return !local; // 100.64/10 carrier-grade NAT
+  if (a === 169 && b === 254) return true; // link-local, cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16/12
+  if (a === 192 && b === 168) return true; // 192.168/16
+  if (a === 198 && (b === 18 || b === 19)) return !local; // 198.18/15 benchmarking
+  return a >= 224; // multicast and reserved
+}
+
+/** Eight 16-bit groups, or null when the text is not an IPv6 address. */
+function ipv6Groups(address: string): number[] | null {
+  let text = address.toLowerCase();
+  const zone = text.indexOf('%');
+  if (zone >= 0) text = text.slice(0, zone);
+  if (isIP(text) !== 6) return null;
+  // A trailing dotted quad (::ffff:1.2.3.4) becomes two hex groups.
+  const lastColon = text.lastIndexOf(':');
+  const tail = text.slice(lastColon + 1);
+  if (tail.includes('.')) {
+    const o = tail.split('.').map(Number);
+    text = `${text.slice(0, lastColon + 1)}${((o[0] << 8) | o[1]).toString(16)}:${((o[2] << 8) | o[3]).toString(16)}`;
+  }
+  const split = text.split('::');
+  const head = split[0] ? split[0].split(':') : [];
+  const rest = split.length > 1 && split[1] ? split[1].split(':') : [];
+  const fill = split.length > 1 ? new Array<string>(8 - head.length - rest.length).fill('0') : [];
+  const groups = [...head, ...fill, ...rest].map((g) => parseInt(g, 16));
+  return groups.length === 8 && groups.every((g) => g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+/**
+ * Whether an outbound GET may connect to this resolved address. Blocks the
+ * unspecified, private, CGNAT, link-local, benchmarking, multicast and
+ * reserved IPv4 ranges, the IPv6 unspecified, ULA (fc00::/7), link-local
+ * (fe80::/10) and multicast (ff00::/8) ranges, and the IPv4 ranges again in
+ * every IPv6 form that embeds an IPv4 address (mapped, compatible, RFC 6145
+ * translated, NAT64 64:ff9b::/96, 6to4 2002::/16). With `local`, which only
+ * the local kinds get, loopback (127/8, ::1), CGNAT and 198.18/15 pass.
+ * Anything that does not parse as an IP address is blocked.
+ */
+export function isBlockedAddress(
+  address: string,
+  family: number | string | undefined,
+  local: boolean,
+): boolean {
+  const version = isIP(address.split('%')[0]);
+  const declared = family === 4 || family === 'IPv4' ? 4 : family === 6 || family === 'IPv6' ? 6 : undefined;
+  if (version === 0 || (declared !== undefined && declared !== version)) return true;
+  if (version === 4) return isBlockedIpv4(address.split('.').map(Number), local);
+  const g = ipv6Groups(address);
+  if (!g) return true;
+  const zeroPrefix = (n: number): boolean => g.slice(0, n).every((x) => x === 0);
+  const v4 = (hi: number, lo: number): number[] => [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff];
+  const embeddedV4 = v4(g[6], g[7]);
+  if (zeroPrefix(8)) return true; // ::
+  if (zeroPrefix(7) && g[7] === 1) return !local; // ::1
+  if (zeroPrefix(5) && g[5] === 0xffff) return isBlockedIpv4(embeddedV4, local); // ::ffff:a.b.c.d
+  if (zeroPrefix(6)) return isBlockedIpv4(embeddedV4, local); // ::a.b.c.d
+  if (zeroPrefix(4) && g[4] === 0xffff && g[5] === 0) return isBlockedIpv4(embeddedV4, local); // ::ffff:0:a.b.c.d
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
+    return isBlockedIpv4(embeddedV4, local); // 64:ff9b::a.b.c.d (NAT64)
+  }
+  if (g[0] === 0x2002) return isBlockedIpv4(v4(g[1], g[2]), local); // 2002:aabb:ccdd:: (6to4)
+  if ((g[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
+  if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
+  return (g[0] & 0xff00) === 0xff00; // ff00::/8
+}
+
+// Node's net.connect skips the lookup for an IP-literal host, so the guarded
+// GET checks literals itself before fetching.
+function literalHostBlocked(url: string, local: boolean): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return true;
+  }
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+  return isIP(host) !== 0 && isBlockedAddress(host, undefined, local);
+}
+
+function guardedLookup(local: boolean): LookupFunction {
+  return (hostname, options, callback) => {
+    dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
+      if (err) {
+        callback(err, '', undefined);
+        return;
+      }
+      const list = addresses as LookupAddress[];
+      const refused =
+        list.length === 0 || list.some((a) => isBlockedAddress(a.address, a.family, local));
+      if (refused) {
+        const blocked = Object.assign(new Error(`${hostname} resolves to a blocked address.`), {
+          code: BLOCKED_ADDRESS_CODE,
+        });
+        callback(blocked, '', undefined);
+        return;
+      }
+      if (options.all) callback(null, list);
+      else callback(null, list[0].address, list[0].family);
+    });
+  };
+}
+
+// Built on first use (and cached per flavor) so test files that mock undici
+// can still import this module.
+const guardedDispatchers = new Map<boolean, Agent>();
+function guardedDispatcher(local: boolean): Agent {
+  let dispatcher = guardedDispatchers.get(local);
+  if (!dispatcher) {
+    dispatcher = new Agent({ connect: { lookup: guardedLookup(local) } });
+    guardedDispatchers.set(local, dispatcher);
+  }
+  return dispatcher;
+}
+
+type GuardedGetOutcome =
+  | { kind: 'ok'; body: unknown }
+  | { kind: 'http'; status: number }
+  | { kind: 'blocked' }
+  | { kind: 'redirect' }
+  | { kind: 'too-large' }
+  | { kind: 'timeout' }
+  | { kind: 'network'; code: string }
+  | { kind: 'failed' };
+
+interface GuardedGetOptions {
+  headers: Record<string, string>;
+  timeoutMs: number;
+  /**
+   * Local kinds only (ollama, lmstudio, llamacpp, custom), plus Anthropic at a
+   * loopback ANTHROPIC_BASE_URL: see isBlockedAddress.
+   */
+  local: boolean;
+  /** Parse a 2xx body as JSON. When false the body is discarded unread. */
+  parseJson: boolean;
+}
+
+type GuardedResponse = Awaited<ReturnType<typeof nodeFetch>>;
+
+/** The body as text, or null once it passes MAX_GUARDED_BODY_BYTES. */
+async function readCappedText(res: GuardedResponse, controller: AbortController): Promise<string | null> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_GUARDED_BODY_BYTES) {
+    controller.abort();
+    return null;
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_GUARDED_BODY_BYTES) {
+      void reader.cancel().catch(() => undefined);
+      controller.abort();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * One GET with no redirects, a 1 MiB body cap and the connect-time address
+ * check. Callers run validateBaseUrl first and map the outcome to their own copy.
+ */
+async function guardedGet(url: string, opts: GuardedGetOptions): Promise<GuardedGetOutcome> {
+  if (literalHostBlocked(url, opts.local)) return { kind: 'blocked' };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), opts.timeoutMs);
+  try {
+    const res = await nodeFetch(url, {
+      headers: opts.headers,
+      signal: controller.signal,
+      redirect: 'error',
+      dispatcher: guardedDispatcher(opts.local),
+    });
+    if (!res.ok || !opts.parseJson) {
+      void res.body?.cancel().catch(() => undefined);
+      return res.ok ? { kind: 'ok', body: undefined } : { kind: 'http', status: res.status };
+    }
+    const text = await readCappedText(res, controller);
+    if (text === null) return { kind: 'too-large' };
+    return { kind: 'ok', body: JSON.parse(text) as unknown };
+  } catch (err) {
+    if ((err as { name?: string }).name === 'AbortError') return { kind: 'timeout' };
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    if (cause?.code === BLOCKED_ADDRESS_CODE) return { kind: 'blocked' };
+    if (cause?.message === 'unexpected redirect') return { kind: 'redirect' };
+    const msg = ((err as Error).message ?? '').toLowerCase();
+    const causeCode = cause?.code ?? '';
+    if (msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('network') || causeCode) {
+      return { kind: 'network', code: causeCode };
+    }
+    return { kind: 'failed' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ─── Model listing (SKY-1499) ─────────────────────────────────────────────────
 
 export interface ListModelsPayload {
@@ -223,19 +466,37 @@ export interface ListModelsPayload {
 
 export type ListModelsResult =
   | { ok: true; models: string[] }
-  | { ok: false; error: string };
+  /** `status` is set when the endpoint answered with a non-2xx HTTP status. */
+  | { ok: false; error: string; status?: number };
+
+/** REST base for Anthropic's GET /models when ANTHROPIC_BASE_URL is unset. */
+export const ANTHROPIC_REST_BASE_URL = 'https://api.anthropic.com/v1';
+const ANTHROPIC_API_VERSION = '2023-06-01';
+
+/**
+ * The host the Anthropic SDK chat path talks to, as a REST base: the SDK reads
+ * ANTHROPIC_BASE_URL (blank = unset) and never a configured baseUrl
+ * (runAnthropicStream), so the model list does the same.
+ */
+export function anthropicRestBaseUrl(): string {
+  const env = process.env.ANTHROPIC_BASE_URL?.trim();
+  return env ? `${env.replace(/\/+$/, '')}/v1` : ANTHROPIC_REST_BASE_URL;
+}
 
 /**
  * Fetch the model list from a provider endpoint.
  *
  * Routing:
- *   - ollama  → GET {origin}/api/tags   → models[].name
- *   - others  → GET {baseUrl}/models    → data[].id
+ *   - ollama    → GET {origin}/api/tags   → models[].name
+ *   - anthropic → GET {SDK host}/v1/models → data[].id (x-api-key + anthropic-version; baseUrl ignored)
+ *   - others    → GET {baseUrl}/models    → data[].id
  *
  * The timeout is enforced via AbortController — local runtimes get a longer
  * budget because a cold LM Studio / Ollama / llama.cpp can take several seconds
  * to load a model on the first call (SKY-11240 AC1). validateBaseUrl is called
- * before any fetch to block SSRF targets.
+ * before any fetch to block SSRF targets, and the GET itself goes through
+ * guardedGet (no redirects, 1 MiB body cap, connect-time address check).
+ * Error copy names the address via displayUrl, never the raw base.
  */
 export async function listModels(payload: ListModelsPayload): Promise<ListModelsResult> {
   if (!aiMasterGate()) return { ok: false, error: AI_DISABLED_MESSAGE };
@@ -251,6 +512,11 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
     } catch {
       return { ok: false, error: 'Invalid Ollama base URL.' };
     }
+  } else if (kind === 'anthropic') {
+    // DEFAULT_BASE_URLS.anthropic stays undefined (the SDK resolves its own),
+    // so the REST model list resolves the SDK's host itself (PLAN-AI-MODES M-1).
+    // A caller baseUrl is ignored: the key only ever goes where chat sends it.
+    resolvedBase = anthropicRestBaseUrl();
   } else {
     const fallback = DEFAULT_BASE_URLS[kind];
     resolvedBase = (baseUrl ?? fallback ?? '').replace(/\/$/, '');
@@ -267,32 +533,62 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
   // Local runtimes (LM Studio / Ollama / llama.cpp / a self-hosted custom
   // endpoint) may still be loading a model on the first request; give them
   // warmup headroom. Cloud APIs answer /models instantly, so keep them snappy.
+  // Only the local kinds may connect to loopback. Anthropic's base never comes
+  // from the renderer (see above), so a loopback ANTHROPIC_BASE_URL gateway
+  // (a local LiteLLM proxy) is reached as the SDK chat path reaches it.
   const localKinds = new Set<ProviderKind>(['ollama', 'lmstudio', 'llamacpp', 'custom']);
-  const timeoutMs = localKinds.has(kind) ? 15_000 : 5_000;
+  const isLocal = localKinds.has(kind);
+  const localAddress = isLocal || (kind === 'anthropic' && isLoopbackUrl(resolvedBase));
+  const timeoutMs = isLocal ? 15_000 : 5_000;
   const timeoutSeconds = Math.round(timeoutMs / 1000);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const label = PROVIDER_LABELS[kind];
+  const shown = displayUrl(resolvedBase);
 
-  try {
-    const url = kind === 'ollama'
-      ? `${resolvedBase}/api/tags`
-      : `${resolvedBase}/models`;
+  const url = kind === 'ollama'
+    ? `${resolvedBase}/api/tags`
+    : `${resolvedBase}/models`;
 
-    const headers: Record<string, string> = {};
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
+  const headers: Record<string, string> = {};
+  if (kind === 'anthropic') {
+    // Anthropic authenticates with x-api-key plus a pinned API version, not Bearer.
+    headers['anthropic-version'] = ANTHROPIC_API_VERSION;
+    if (apiKey) headers['x-api-key'] = apiKey;
+  } else if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
 
-    const res = await nodeFetch(url, { headers, signal: controller.signal });
-    if (!res.ok) {
+  const outcome = await guardedGet(url, { headers, timeoutMs, local: localAddress, parseJson: true });
+  const failed = { ok: false as const, error: `Failed to list ${label} models at ${shown} — check the provider configuration.` };
+  switch (outcome.kind) {
+    case 'ok':
+      break;
+    case 'http':
       return {
         ok: false,
-        error: `${PROVIDER_LABELS[kind]} at ${resolvedBase} returned HTTP ${res.status}. Check the endpoint and try again.`,
+        error: `${label} at ${shown} returned HTTP ${outcome.status}. Check the endpoint and try again.`,
+        status: outcome.status,
       };
+    case 'blocked':
+      return { ok: false, error: `${label} at ${shown} points to a private or reserved address — not allowed.` };
+    case 'redirect':
+      return { ok: false, error: `${label} at ${shown} answered with a redirect. Redirects are not followed; enter the final address.` };
+    case 'too-large':
+      return { ok: false, error: `${label} at ${shown} sent a model list larger than 1 MiB — refused.` };
+    case 'timeout':
+      return {
+        ok: false,
+        error: `${label} at ${shown} did not respond within ${timeoutSeconds} seconds — if it is still loading a model, wait a moment and try again.`,
+      };
+    case 'network': {
+      const detail = outcome.code ? ` (${outcome.code})` : '';
+      return { ok: false, error: `Network error reaching ${label} at ${shown}${detail} — check that the server is running and reachable.` };
     }
+    default:
+      return failed;
+  }
 
-    const json: unknown = await res.json();
-
+  try {
+    const json = outcome.body;
     let models: string[];
     if (kind === 'ollama') {
       const resp = json as { models?: Array<{ name?: string }> };
@@ -311,23 +607,59 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
     }
 
     return { ok: true, models };
-  } catch (err) {
-    const label = PROVIDER_LABELS[kind];
-    if ((err as { name?: string }).name === 'AbortError') {
+  } catch {
+    // A body that parsed but is not the expected shape.
+    return failed;
+  }
+}
+
+export type VerifyOpenRouterKeyResult =
+  | { ok: true }
+  /** `status` is set when OpenRouter answered with a non-2xx HTTP status. */
+  | { ok: false; error: string; status?: number };
+
+/**
+ * Check an OpenRouter key without spending tokens: GET
+ * https://{host}/api/v1/key with the key as Bearer, through the same master
+ * gate, SSRF guard and guarded GET as listModels. Only an OpenRouter host is
+ * ever sent the key, and always over https, whatever scheme the base names.
+ */
+export async function verifyOpenRouterKey(payload: { baseUrl: string; apiKey: string }): Promise<VerifyOpenRouterKeyResult> {
+  if (!aiMasterGate()) return { ok: false, error: AI_DISABLED_MESSAGE };
+  const guardError = validateBaseUrl(payload.baseUrl);
+  if (guardError) return { ok: false, error: guardError };
+  if (!isOpenRouterEndpoint(payload.baseUrl)) {
+    return { ok: false, error: 'Not an OpenRouter address — the key check only runs against openrouter.ai.' };
+  }
+  const origin = `https://${new URL(payload.baseUrl).hostname}`;
+  const shown = displayUrl(origin);
+  const outcome = await guardedGet(`${origin}/api/v1/key`, {
+    headers: { Authorization: `Bearer ${payload.apiKey}` },
+    timeoutMs: 5_000,
+    local: false,
+    parseJson: false,
+  });
+  switch (outcome.kind) {
+    case 'ok':
+      return { ok: true };
+    case 'http':
       return {
         ok: false,
-        error: `${label} at ${resolvedBase} did not respond within ${timeoutSeconds} seconds — if it is still loading a model, wait a moment and try again.`,
+        error: `OpenRouter at ${shown} returned HTTP ${outcome.status} for the key check.`,
+        status: outcome.status,
       };
+    case 'blocked':
+      return { ok: false, error: `OpenRouter at ${shown} points to a private or reserved address — not allowed.` };
+    case 'redirect':
+      return { ok: false, error: `OpenRouter at ${shown} answered the key check with a redirect, which is not followed.` };
+    case 'timeout':
+      return { ok: false, error: `OpenRouter at ${shown} did not respond within 5 seconds.` };
+    case 'network': {
+      const detail = outcome.code ? ` (${outcome.code})` : '';
+      return { ok: false, error: `Network error reaching OpenRouter at ${shown}${detail}.` };
     }
-    const msg = ((err as Error).message ?? '').toLowerCase();
-    const causeCode = (err as { cause?: { code?: string } }).cause?.code ?? '';
-    if (msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('network') || causeCode) {
-      const detail = causeCode ? ` (${causeCode})` : '';
-      return { ok: false, error: `Network error reaching ${label} at ${resolvedBase}${detail} — check that the server is running and reachable.` };
-    }
-    return { ok: false, error: `Failed to list ${label} models at ${resolvedBase} — check the provider configuration.` };
-  } finally {
-    clearTimeout(timeoutId);
+    default:
+      return { ok: false, error: `The OpenRouter key check at ${shown} failed.` };
   }
 }
 
@@ -353,9 +685,9 @@ export interface StreamRequest {
   thinking?: 'adaptive';
   /**
    * When `false`, suppress the local reasoning-token reserve (SKY-11276) so the
-   * server receives exactly `maxTokens`. Used by liveness probes (the Settings
-   * connection test) that send a 1-token budget and abort on the first token —
-   * there the reserve would turn a quick ping into a long thinking session.
+   * server receives exactly `maxTokens`. For liveness probes that send a
+   * 1-token budget and abort on the first token — there the reserve would turn
+   * a quick ping into a long thinking session.
    * Defaults to applying the reserve for eligible local runtimes.
    */
   reserveThinkingTokens?: boolean;
@@ -470,8 +802,8 @@ export const ANTHROPIC_THINKING_ON_BY_DEFAULT_MODELS = new Set(['claude-sonnet-5
 
 /**
  * Build the `thinking` request fragment for an Anthropic Messages call.
- * Shared by the streaming path and the non-streaming extraction side-call so
- * both apply the same model gating.
+ * Used by the streaming path; exported so any non-streaming Anthropic call
+ * applies the same model gating.
  */
 export function anthropicThinkingParam(
   model: string,

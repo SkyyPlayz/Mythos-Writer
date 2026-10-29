@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@anthropic-ai/sdk', () => ({ default: vi.fn() }));
-vi.mock('undici', () => ({ fetch: vi.fn() }));
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: vi.fn(),
+}));
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn(), off: vi.fn() },
   ipcRenderer: { invoke: vi.fn(), on: vi.fn(), send: vi.fn() },
@@ -208,29 +211,21 @@ describe('listModels OpenRouter catalog', () => {
   });
 
   it('drops mixed-case google/* ids from an OpenRouter catalog', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        data: [
-          { id: 'Google/Gemini' },
-          { id: 'google/gemini-2.5-pro' },
-          { id: 'GOOGLE/gemini-flash' },
-          { id: 'anthropic/claude-sonnet-4.5' },
-          { id: 'openai/gpt-5.1' },
-        ],
-      }),
-    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({
+      data: [
+        { id: 'Google/Gemini' },
+        { id: 'google/gemini-2.5-pro' },
+        { id: 'GOOGLE/gemini-flash' },
+        { id: 'anthropic/claude-sonnet-4.5' },
+        { id: 'openai/gpt-5.1' },
+      ],
+    })));
     const result = await listModels({ kind: 'custom', baseUrl: 'https://openrouter.ai/api/v1' });
     expect(result).toEqual({ ok: true, models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5.1'] });
   });
 
   it('keeps a local model whose id is Google/Gemini', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ data: [{ id: 'Google/Gemini' }, { id: 'local-model' }] }),
-    });
+    mockFetch.mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'Google/Gemini' }, { id: 'local-model' }] })));
     const result = await listModels({ kind: 'custom', baseUrl: 'http://127.0.0.1:1234/v1' });
     expect(result).toEqual({ ok: true, models: ['Google/Gemini', 'local-model'] });
   });
