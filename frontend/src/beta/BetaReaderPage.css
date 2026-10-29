@@ -586,9 +586,11 @@
 
 /* ── Production Team page (SKY-11411; chrome SKY-11458) ──────────── */
 /* Same tiles, labels, selects and gradient Run as the Reports page's
-   "Run a Beta Read" card, so the three tabs read as one surface. Literal
-   values on purpose — this sheet defines no custom properties, and an
-   undefined var() would silently freeze the tier off the theme (SKY-11449). */
+   "Run a Beta Read" card, so the three tabs read as one surface. Colour
+   values stay literal on purpose — this sheet defines no custom properties,
+   and an undefined var() would silently freeze the tier off the theme
+   (SKY-11449). Font sizes use the global --text-* tokens from tokens.css,
+   which are always defined (#1773). */
 
 /* The page hosts one panel, not the Reports three-column grid. */
 .beta-reader-columns--production {

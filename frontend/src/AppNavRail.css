@@ -191,6 +191,11 @@
   letter-spacing: .02em;
   text-align: center;
   line-height: 1.15;
+  /* #1773 T1: at the 12px floor a long one-word Partner name ("Collaborator")
+     is wider than the 58px item; break it inside the item instead of spilling
+     into the rail gutter. Default labels still break at their spaces. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 /* ── Stories popover (prototype 179–203) ──────────────────────────────── */
