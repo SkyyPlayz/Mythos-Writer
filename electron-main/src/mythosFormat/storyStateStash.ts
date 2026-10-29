@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { MYTHOS_MACHINE_DIRNAME } from './mythosJson.js';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultFileAtomic } from '../vault.js';
 
 export const STASH_FILENAME = 'story-state-stash.json';
 
@@ -57,7 +57,7 @@ function readFile(mythosRoot: string): StashFile {
 function writeFile(mythosRoot: string, file: StashFile): void {
   const dir = path.join(mythosRoot, MYTHOS_MACHINE_DIRNAME);
   fs.mkdirSync(dir, { recursive: true });
-  writeFileAtomic(stashPath(mythosRoot), `${JSON.stringify(file, null, 2)}\n`);
+  writeVaultFileAtomic(mythosRoot, `${MYTHOS_MACHINE_DIRNAME}/${STASH_FILENAME}`, `${JSON.stringify(file, null, 2)}\n`);
 }
 
 export function stashStoryState(

@@ -115,5 +115,8 @@ export async function saveCommentsFile(
 ): Promise<void> {
   const api = window.api;
   if (typeof api?.writeVault !== 'function') return;
-  await api.writeVault(commentsFilePath(storyPath), serializeCommentsFile(comments));
+  const res = await api.writeVault(commentsFilePath(storyPath), serializeCommentsFile(comments));
+  if (res && typeof res.error === 'string' && res.error) {
+    throw new Error(res.error);
+  }
 }

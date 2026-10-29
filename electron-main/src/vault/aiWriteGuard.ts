@@ -3,6 +3,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { openNoFollow } from './noFollowOpen.js';
 import { safeVaultJoin } from './safeVaultJoin.js';
 import { resolveManifestPath } from '../mythosFormat/mythosJson.js';
 import { BOOK_FILENAME } from '../mythosFormat/bookFile.js';
@@ -153,6 +154,25 @@ function bindManuscript(vaultReal: string, rel: string): string | null {
   return abs;
 }
 
+/** Read a manifest without following a symlink or junction placed at its path. */
+function readManifestText(manifestPath: string): string {
+  const fd = openNoFollow(fs, manifestPath, fs.constants.O_RDONLY);
+  try {
+    const opened = fs.fstatSync(fd);
+    if (!opened.isFile()) throw new Error('manifest is not a regular file');
+    const buf = Buffer.alloc(opened.size);
+    let offset = 0;
+    while (offset < buf.length) {
+      const n = fs.readSync(fd, buf, offset, buf.length - offset, offset);
+      if (n === 0) break;
+      offset += n;
+    }
+    return buf.subarray(0, offset).toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function loadIndex(vaultRoot: string): { ok: true; index: WriteIndex } | { ok: false } {
   let vaultReal: string;
   try {
@@ -168,7 +188,7 @@ function loadIndex(vaultRoot: string): { ok: true; index: WriteIndex } | { ok: f
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    parsed = JSON.parse(readManifestText(manifestPath));
   } catch {
     return { ok: false };
   }

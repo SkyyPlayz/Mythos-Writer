@@ -202,6 +202,13 @@ export default function MythosMigrationWizard({ status, onClose }: Props) {
 
         {step === 'report' && report && (
           <div className="mythos-migration-body" data-testid="mythos-migration-step-report">
+            {report.skippedSymlinks && report.skippedSymlinks.length > 0 && (
+              <ul className="mythos-migration-warnings" data-testid="mythos-migration-skipped">
+                {report.skippedSymlinks.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
             {report.ok ? (
               <>
                 <p>

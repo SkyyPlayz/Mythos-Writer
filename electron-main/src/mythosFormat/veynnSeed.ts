@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultOrSkip } from '../vault.js';
 import {
   agentVaultRootFor,
   notesVaultRootFor,
@@ -534,6 +534,8 @@ export interface VeynnSeedResult {
   firstSceneId: string;
   /** Story-Vault-relative path of the first seeded scene (posix). */
   firstScenePath: string;
+  /** Files refused because they were symbolic links. */
+  skippedSymlinks: string[];
 }
 
 /**
@@ -551,9 +553,9 @@ export function writeVeynnSeed(
   const agentVaultRoot = overrideRoots?.agentVaultRoot ?? agentVaultRootFor(mythosRoot);
   const nowStr = now().toISOString();
   const storyId = crypto.randomUUID();
+  const skippedSymlinks: string[] = [];
 
   // Manuscript: Part N/Chapter NN/Scene NN.md
-  const storyAbs = path.join(storyVaultRoot, VEYNN_STORY_FOLDER);
   const spine: BookSpinePart[] = [];
   let sceneCount = 0;
   let firstScene: { id: string; relPath: string } | null = null;
@@ -575,7 +577,6 @@ export function writeVeynnSeed(
         ...(chapter.intro ? { intro: chapter.intro } : {}),
       });
       for (const [si, scene] of chapter.scenes.entries()) {
-        const sceneAbs = path.join(storyAbs, partDir, chapterDir, sceneFileName(si + 1));
         const sceneId = crypto.randomUUID();
         if (firstScene === null) {
           firstScene = {
@@ -583,8 +584,9 @@ export function writeVeynnSeed(
             relPath: [VEYNN_STORY_FOLDER, partDir, chapterDir, sceneFileName(si + 1)].join('/'),
           };
         }
-        writeFileAtomic(
-          sceneAbs,
+        writeVaultOrSkip(
+          storyVaultRoot,
+          [VEYNN_STORY_FOLDER, partDir, chapterDir, sceneFileName(si + 1)].join('/'),
           serializeV2SceneFile({
             id: sceneId,
             title: scene.title,
@@ -594,6 +596,7 @@ export function writeVeynnSeed(
             updatedAt: nowStr,
             prose: scene.paras.join('\n\n'),
           }),
+          skippedSymlinks,
         );
         sceneCount += 1;
       }
@@ -602,8 +605,9 @@ export function writeVeynnSeed(
   }
 
   // book.md — compiled order + metadata.
-  writeFileAtomic(
-    path.join(storyAbs, BOOK_FILENAME),
+  writeVaultOrSkip(
+    storyVaultRoot,
+    `${VEYNN_STORY_FOLDER}/${BOOK_FILENAME}`,
     serializeBookFile({
       id: storyId,
       title: VEYNN_STORY_TITLE,
@@ -613,6 +617,7 @@ export function writeVeynnSeed(
       updatedAt: nowStr,
       spine,
     }),
+    skippedSymlinks,
   );
 
   // Notes Vault.
@@ -620,13 +625,15 @@ export function writeVeynnSeed(
     fs.mkdirSync(path.join(notesVaultRoot, ...dir.split('/')), { recursive: true });
   }
   for (const n of NOTES) {
-    writeFileAtomic(path.join(notesVaultRoot, ...n.relPath.split('/')), n.content);
+    writeVaultOrSkip(notesVaultRoot, n.relPath, n.content, skippedSymlinks);
   }
 
   // Starter idea library.
-  writeFileAtomic(
-    path.join(mythosRoot, IDEA_LIBRARY_DIRNAME, IDEA_LIBRARY_FILENAME),
+  writeVaultOrSkip(
+    mythosRoot,
+    `${IDEA_LIBRARY_DIRNAME}/${IDEA_LIBRARY_FILENAME}`,
     `${JSON.stringify({ version: 1, board: IDEA_BOARD, pool: IDEA_POOL }, null, 2)}\n`,
+    skippedSymlinks,
   );
 
   // Timeline events.
@@ -678,5 +685,6 @@ export function writeVeynnSeed(
     eventCount: TIMELINE_EVENTS.length,
     firstSceneId: firstScene.id,
     firstScenePath: firstScene.relPath,
+    skippedSymlinks,
   };
 }

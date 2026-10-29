@@ -51,7 +51,9 @@ import {
   statusToDraftState,
   storyFolderName,
 } from './sceneFiles.js';
-import { writeFileAtomic, writeManifest as writeManifestRaw } from '../vault.js';
+import { vaultRelPath, writeManifest as writeManifestRaw, writeVaultFileAtomic, writeVaultOrSkip } from '../vault.js';
+import { VaultWriteRefusedError } from '../vault/noFollowWrite.js';
+import { isSymlinkWriteRefusal, symlinkSkipLine } from '../vault/writeErrors.js';
 import {
   codePointCompare,
   loadPriorCacheRaw,
@@ -204,8 +206,10 @@ function scanChapterScenes(
     if (p.hadNoId) {
       try {
         const scene = parseV2SceneFile(p.raw, p.fileName);
-        writeFileAtomic(p.fileAbs, serializeV2SceneFile({ ...scene, id }));
-      } catch {
+        writeVaultOrSkip(storyVaultRoot, p.vaultRelPath, serializeV2SceneFile({ ...scene, id }), []);
+      } catch (err) {
+        if (err instanceof VaultWriteRefusedError) throw err;
+        if (err instanceof Error && err.message.startsWith('Path traversal denied')) throw err;
         /* read-only */
       }
     }
@@ -378,9 +382,10 @@ interface StoryDecision {
  */
 export function scanMythosStoryVault(
   mythosRoot: string,
-  opts: { carry?: Partial<Manifest> } = {},
+  opts: { carry?: Partial<Manifest>; skipped?: string[] } = {},
 ): Manifest {
   const storyVaultRoot = ensureActiveStoryVaultPath(mythosRoot);
+  const skippedSymlinks = opts.skipped ?? [];
   const mythos = readMythosFile(mythosRoot);
   const tracked = new Set(mythos.stories.map((s) => s.folder));
   // Rule 0: load prior cache inside the scan (no new caller argument).
@@ -667,7 +672,7 @@ export function scanMythosStoryVault(
         chapterFolders,
       });
       if (next !== null && next !== s.bookRaw) {
-        writeReIdFile(s.bookPath, next);
+        writeReIdFile(storyVaultRoot, s.bookPath, next, skippedSymlinks);
       }
     }
 
@@ -677,18 +682,20 @@ export function scanMythosStoryVault(
         if (finalSc === sc.claimedId && !sc.hadNoId) return;
         if (sc.hadNoId && finalSc === sc.claimedId) {
           // No-id mint path: full serialize (existing behavior).
+          let minted: string;
           try {
             const parsed = parseV2SceneFile(sc.raw, sc.fileName);
-            writeReIdFile(sc.fileAbs, serializeV2SceneFile({ ...parsed, id: finalSc }));
+            minted = serializeV2SceneFile({ ...parsed, id: finalSc });
           } catch {
-            /* read-only */
+            return; /* unreadable scene — leave it alone */
           }
+          writeReIdFile(storyVaultRoot, sc.fileAbs, minted, skippedSymlinks);
           return;
         }
         if (finalSc === sc.claimedId) return;
         const next = surgicalReplaceSceneFrontmatterId(sc.raw, sc.claimedId, finalSc);
         if (next !== null) {
-          writeReIdFile(sc.fileAbs, next);
+          writeReIdFile(storyVaultRoot, sc.fileAbs, next, skippedSymlinks);
         }
         // On null (count mismatch / missing line): keep in-memory id, write nothing.
       });
@@ -858,7 +865,11 @@ function spineFromManifest(story: StoryEntry, folder: string, previous: BookFile
  * content actually changed. Never throws — canonical sync must not break the
  * save path (the cache write already succeeded; the next sync self-heals).
  */
-export function syncCanonicalFromManifest(mythosRoot: string, manifest: Manifest): void {
+export function syncCanonicalFromManifest(
+  mythosRoot: string,
+  manifest: Manifest,
+  skipped?: string[],
+): void {
   try {
     const mythos = tryReadMythosFile(mythosRoot);
     if (!mythos) return;
@@ -904,7 +915,16 @@ export function syncCanonicalFromManifest(mythosRoot: string, manifest: Manifest
         const prevStable = serializeBookFile({ ...previous, updatedAt: book.updatedAt });
         if (prevStable === next) continue;
       }
-      writeFileAtomic(bookPath, next);
+      const bookRel = vaultRelPath(storyVaultRoot, bookPath);
+      try {
+        writeVaultFileAtomic(storyVaultRoot, bookRel, next);
+      } catch (err) {
+        if (isSymlinkWriteRefusal(err)) {
+          skipped?.push(symlinkSkipLine(bookRel));
+          continue;
+        }
+        throw err;
+      }
     }
 
     const storiesChanged =
