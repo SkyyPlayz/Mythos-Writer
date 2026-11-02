@@ -36,9 +36,11 @@ function makeTemp(): { tempRoot: string; userData: string } {
   const storyDir = path.join(tempRoot, 'story-vault');
   const notesDir = path.join(tempRoot, 'notes-vault');
   for (const d of [userData, storyDir, notesDir]) fs.mkdirSync(d, { recursive: true });
+  // #1774: freeze accent breathe; the root --b2 vs element rim comparison
+  // below reads in separate evaluates (see e2e/accent-breathe.spec.ts).
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
-    JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2),
+    JSON.stringify({ onboardingComplete: true, theme: 'dark', liquidNeonV2: { accentBreathe: false } }, null, 2),
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
