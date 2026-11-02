@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useId } from 'react';
 import type { Story, Chapter, Scene } from './types';
 import StoryNavigator from './StoryNavigator';
 import StoryVaultPicker from './components/StoryVaultPicker';
+import PrismChecklist from './components/Prism/PrismChecklist';
+import { usePrismBook } from './prism/usePrism';
 import type { SceneNoteDragPayload } from './sceneNotes';
 import { countWords } from './wordStats';
 import './LeftRail.css';
@@ -71,6 +73,18 @@ export default function LeftRail({
 }: Props) {
   void _sidebarCollapsed;
   const [navCollapsed, setNavCollapsed] = useState(false);
+  // Prism (#1764): the Analytics zone's open state is per-book
+  // (prism.json `analyticsOpen`); with no book open it falls back to local
+  // state so the header still toggles.
+  const [prismSettings, updatePrism] = usePrismBook(selectedStory);
+  const [analyticsOpenLocal, setAnalyticsOpenLocal] = useState(true);
+  const analyticsOpen = selectedStory ? prismSettings.analyticsOpen : analyticsOpenLocal;
+  const toggleAnalytics = () => {
+    if (selectedStory) updatePrism({ analyticsOpen: !analyticsOpen });
+    else setAnalyticsOpenLocal(!analyticsOpen);
+  };
+  const analyticsLabelId = useId();
+  const analyticsBodyId = useId();
 
   // Aggregate stats across all stories
   const { totalWords, totalScenes } = useMemo(() => {
@@ -197,6 +211,33 @@ export default function LeftRail({
           </div>
         )}
       </div>
+
+      {/* Zone 2b — Analytics (Prism rule checks, #1764). Capped height with its
+          own scroll so the navigator above and the footer below stay visible. */}
+      <section
+        className="lr-analytics-zone"
+        data-testid="lr-analytics-zone"
+        aria-labelledby={analyticsLabelId}
+      >
+        <div className="lr-analytics-header">
+          <span id={analyticsLabelId} className="lr-analytics-label">ANALYTICS</span>
+          <button
+            type="button"
+            className="lr-analytics-toggle"
+            data-testid="lr-analytics-toggle"
+            onClick={toggleAnalytics}
+            aria-label="Analytics"
+            aria-expanded={analyticsOpen}
+            aria-controls={analyticsBodyId}
+            title={analyticsOpen ? 'Collapse' : 'Expand'}
+          >
+            <span aria-hidden="true">{analyticsOpen ? '▾' : '▸'}</span>
+          </button>
+        </div>
+        <div id={analyticsBodyId} className="lr-analytics-body" hidden={!analyticsOpen}>
+          {analyticsOpen && <PrismChecklist story={selectedStory} sceneId={selectedSceneId} />}
+        </div>
+      </section>
 
       {/* Zone 3 — Project Footer */}
       <div className="lr-project-footer" data-testid="lr-project-footer">

@@ -1,0 +1,273 @@
+/* Prism (#1764) — sidebar Analytics checklist. Compact rows for the ~260px
+   left rail, in the rail's Liquid Neon glass language (LeftRail.css stat
+   chips, AgentHubPanel .ahp-card). Tokens only; sizes on the --text-* scale. */
+
+.prism-checklist {
+  --prism-cl-card-bg: var(--glass-highlight);
+  --prism-cl-card-border: var(--glass-border);
+  --prism-cl-row-hover: var(--bg-hover);
+  --prism-cl-badge-bg: var(--bg-elevated);
+  --prism-cl-badge-text: var(--text-muted);
+  --prism-cl-hot-bg: var(--accent-soft);
+  --prism-cl-hot-text: var(--accent);
+  --prism-cl-gap: 6px;
+  /* Width of the per-row disclosure button; rows without one reserve it. */
+  --prism-cl-expand-w: 20px;
+  /* A master-switch chip narrower than this drops to its own line. */
+  --prism-cl-switch-min: 104px;
+
+  container: prism-cl / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--prism-cl-gap);
+  /* 12px sides at the default rail width, easing to ~8px near the 160px minimum. */
+  padding: 2px clamp(8px, 5%, 12px) 10px;
+  font-size: var(--text-xs);
+  line-height: var(--leading-xs);
+  color: var(--text-body);
+}
+
+[data-contrast="high"] .prism-checklist {
+  --prism-cl-card-bg: var(--bg-canvas);
+  --prism-cl-card-border: var(--border-strong);
+  --prism-cl-hot-bg: var(--bg-canvas);
+}
+
+.prism-cl-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.prism-cl-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-body);
+}
+
+.prism-cl-helper,
+.prism-cl-hint,
+.prism-cl-stats,
+.prism-cl-empty {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.prism-cl-hint {
+  font-style: italic;
+}
+
+.prism-cl-stats {
+  color: var(--text-body);
+}
+
+/* Master switches: two glass chips side by side, stacking when the rail is
+   too narrow for both (160px minimum rail width). */
+.prism-cl-masters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--prism-cl-switch-min)), 1fr));
+  gap: var(--prism-cl-gap);
+}
+
+.prism-cl-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--prism-cl-card-bg);
+  border: 1px solid var(--prism-cl-card-border);
+  cursor: pointer;
+}
+
+/* Wraps rather than clips if a chip still runs out of room. */
+.prism-cl-switch-label {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.prism-cl-switch input,
+.prism-cl-check input {
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.prism-cl-switch:has(input:focus-visible),
+.prism-cl-check:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Check groups */
+.prism-cl-group {
+  margin: 0;
+  padding: 6px 8px;
+  min-width: 0;
+  border-radius: var(--radius-xs);
+  background: var(--prism-cl-card-bg);
+  border: 1px solid var(--prism-cl-card-border);
+}
+
+/* Eyebrow, same pattern as .lr-nav-label / .lr-footer-label. */
+.prism-cl-legend {
+  padding: 0 2px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.prism-cl-rows,
+.prism-cl-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prism-cl-row-main {
+  position: relative; /* contains the row's sr-only description */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.prism-cl-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Long names ("Repeated sentence starts") wrap at narrow rail widths instead
+   of truncating, so the full name is always readable. */
+.prism-cl-check-label {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+/* Near the 160px minimum rail width, hand the group's side padding to the
+   labels so names wrap between words instead of inside them. */
+@container prism-cl (max-width: 200px) {
+  .prism-cl-group {
+    padding-inline: 4px;
+  }
+}
+
+.prism-cl-count {
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 99px;
+  background: var(--prism-cl-badge-bg);
+  color: var(--prism-cl-badge-text);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.prism-cl-count--hot {
+  background: var(--prism-cl-hot-bg);
+  color: var(--prism-cl-hot-text);
+}
+
+.prism-cl-count--off {
+  font-weight: 400;
+  font-style: italic;
+}
+
+.prism-cl-expand,
+.prism-cl-expand-slot {
+  flex-shrink: 0;
+  width: var(--prism-cl-expand-w);
+  box-sizing: border-box;
+}
+
+.prism-cl-expand {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  padding: 2px 0;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  text-align: center;
+  transition: color var(--dur-hover-in) var(--ease-out);
+}
+
+.prism-cl-expand:hover {
+  color: var(--text-body);
+  background: var(--bg-elevated);
+}
+
+.prism-cl-expand:focus-visible,
+.prism-cl-item-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Finding list under an expanded row. */
+.prism-cl-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px 20px;
+  padding-left: 6px;
+  border-left: 1px solid var(--prism-cl-card-border);
+}
+
+.prism-cl-items[hidden] {
+  display: none;
+}
+
+.prism-cl-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.prism-cl-item-btn {
+  display: block;
+  width: 100%;
+  padding: 3px 4px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-body);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-hover-in) var(--ease-out);
+}
+
+.prism-cl-item-btn:hover {
+  background: var(--prism-cl-row-hover);
+}
+
+.prism-cl-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.prism-cl-item-msg,
+.prism-cl-more {
+  padding: 0 4px 2px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
