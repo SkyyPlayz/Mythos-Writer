@@ -17,6 +17,7 @@ import {
 } from './markdownImport.js';
 import type { ImportPlan } from './types.js';
 import { inlinesToMarkdown } from './blocks.js';
+import { assessImportPath } from './importSafety.js';
 
 let tmp: string;
 
@@ -584,6 +585,23 @@ describe('markdownFolderToPlan — plain text files', () => {
       ['Line one.\n\nLine two.\n\nLine three.'],
       [inlinesToMarkdown([{ text: 'She paid 2 * 3 coins_ and #won.' }])],
     ]);
+  });
+
+  it('holds folder members to the same content check as a file picked on its own', async () => {
+    const root = folder('Disguised', {
+      'Notes/keep.md': '# Keep\n\nA real note.',
+      'Notes/run.md': '#!/bin/sh\necho hi',
+      'Notes/prog.txt': Buffer.concat([Buffer.from('MZ'), Buffer.alloc(64, 0x41)]),
+      'Notes/bom-script.md': Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('#!/usr/bin/env python\nprint(1)')]),
+    });
+    // Picked on its own, each disguised member is refused…
+    for (const f of ['run.md', 'prog.txt', 'bom-script.md']) {
+      expect(assessImportPath(path.join(root, 'Notes', f))).toMatchObject({ ok: false, refused: true });
+    }
+    // …and inside a folder it is skipped, never parsed into a note.
+    const plan = await markdownFolderToPlan(root, 'Disguised');
+    expect(plan.notes.map((n) => n.title)).toEqual(['keep']);
+    expect(plan.warnings).toContain('Skipped 3 files that aren’t safe to import.');
   });
 
   it('reads .text files like .txt (detection accepts them, so the import must too)', async () => {

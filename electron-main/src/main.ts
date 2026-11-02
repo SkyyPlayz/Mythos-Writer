@@ -301,7 +301,7 @@ import createJobWorker from './jobs/jobWorker?nodeWorker';
 import { initJobService, shutdownJobService, getJobQueue } from './jobs/jobService.js';
 import { registerJobsIpc } from './jobs/jobsIpc.js';
 // #1765: import hub — drop zone / pickers → safety check → preview → commit.
-import { registerImportHubIpc } from './importHub/importHubIpc.js';
+import { fanOutImportedNotes, registerImportHubIpc } from './importHub/importHubIpc.js';
 import { buildImportPlan } from './importHub/buildPlan.js';
 import {
   buildVaultSummary,
@@ -11993,17 +11993,20 @@ app.whenReady().then(async () => {
     ensureNotesVaultDir,
     notifyNotesWritten: (relPaths) => {
       const notesRoot = getNotesVaultRoot();
-      for (const rel of relPaths) {
-        try {
-          handleNoteFileChanged(notesRoot, path.join(notesRoot, rel));
-        } catch {
-          /* the note already landed — the index catches up on the next scan */
-        }
-        notifyNotesVaultMutatedByApp(rel);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('vault:file-changed', { path: rel });
-        }
-      }
+      fanOutImportedNotes(relPaths, {
+        noteChanged: (rel) => handleNoteFileChanged(notesRoot, path.join(notesRoot, rel)),
+        noteWritten: (rel) => {
+          notifyNotesVaultMutatedByApp(rel);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('vault:file-changed', { path: rel });
+          }
+        },
+        topologyChanged: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('vault:graph-topology-changed', {});
+          }
+        },
+      });
     },
     // Same push the floating navigator uses after it edits the manifest:
     // every window re-reads the manifest and refreshes its story list.

@@ -78,6 +78,9 @@ before any byte is parsed:
   programs, `#!` scripts, old `.doc` files (they can carry macros — save as
   `.docx` first), Word files that contain macros, and "zip bombs" (files
   whose contents inflate far beyond what they claim).
+- **Inside a folder import**, every file gets the same checks: a blocked
+  type, or a program or script wearing a `.md` / `.txt` name, is skipped
+  (never read into a note) and the preview says how many were skipped.
 - Files over 50 MB, and archives other than `.docx` / `.epub`, are not read.
 
 ### Unknown files (owner decision)

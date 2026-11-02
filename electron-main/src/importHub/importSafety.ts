@@ -401,8 +401,12 @@ export function isZipHead(head: Buffer): boolean {
   return sig === 0x04034b50 || sig === 0x06054b50 || sig === 0x08074b50;
 }
 
-/** Refusal reason for a disguised program / script / OLE file, or null. */
-function sniffDangerous(head: Buffer): string | null {
+/**
+ * Refusal reason for a disguised program / script / OLE file, or null. Also
+ * applied to every file inside a folder import (markdownImport.ts), so a
+ * member is held to the same bar as a file picked on its own.
+ */
+export function sniffDangerous(head: Buffer): string | null {
   if (head.length >= 2 && head[0] === 0x4d && head[1] === 0x5a) {
     return 'This file is really a Windows program, not a document. Mythos won\'t open it.';
   }

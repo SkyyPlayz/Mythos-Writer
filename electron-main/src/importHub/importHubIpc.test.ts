@@ -21,6 +21,7 @@ import { IPC_CHANNELS, UNTRUSTED_FRAME_REJECTION } from '../ipc.js';
 import type { Manifest } from '../ipc.js';
 import { defaultManifest, readManifest, writeManifest as writeManifestRaw } from '../vault.js';
 import {
+  fanOutImportedNotes,
   IMPORT_ALREADY_RUNNING_ERROR,
   IMPORT_NO_VAULT_REASON,
   IMPORT_SOURCE_CHANGED_ERROR,
@@ -370,5 +371,35 @@ describe('import:pick', () => {
     const r = await handleMap.get(IPC_CHANNELS.IMPORT_PICK)!(topEvent(), { mode: 'anything' });
     expect(r).toMatchObject({ ok: false, refused: false });
     expect(deps.showOpenDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('fanOutImportedNotes', () => {
+  it('notifies every note and tells the graph once when any changed link topology', () => {
+    const calls: string[] = [];
+    fanOutImportedNotes(['a.md', 'b.md', 'c.md'], {
+      noteChanged: (rel) => rel === 'b.md' || rel === 'c.md',
+      noteWritten: (rel) => calls.push(`written:${rel}`),
+      topologyChanged: () => calls.push('graph'),
+    });
+    expect(calls).toEqual(['written:a.md', 'written:b.md', 'written:c.md', 'graph']);
+  });
+
+  it('does not touch the graph when no link topology changed', () => {
+    const topologyChanged = vi.fn();
+    fanOutImportedNotes(['a.md'], { noteChanged: () => false, noteWritten: () => {}, topologyChanged });
+    expect(topologyChanged).not.toHaveBeenCalled();
+  });
+
+  it('a note that fails to index still gets its notification and does not stop the rest', () => {
+    const written: string[] = [];
+    const topologyChanged = vi.fn();
+    fanOutImportedNotes(['bad.md', 'good.md'], {
+      noteChanged: (rel) => { if (rel === 'bad.md') throw new Error('parse'); return true; },
+      noteWritten: (rel) => written.push(rel),
+      topologyChanged,
+    });
+    expect(written).toEqual(['bad.md', 'good.md']);
+    expect(topologyChanged).toHaveBeenCalledTimes(1);
   });
 });

@@ -50,6 +50,32 @@ export interface ImportCommitPayload {
   options?: unknown;
 }
 
+/**
+ * After an import writes notes: index each one, tell the renderer, and — once
+ * — tell an open Vault Graph when any of them changed link topology. App
+ * writes are atomic and never reach the watcher, so nothing else does this.
+ * A failure indexing one note never stops the rest (it already landed).
+ */
+export function fanOutImportedNotes(
+  relPaths: readonly string[],
+  hooks: {
+    noteChanged(rel: string): boolean;
+    noteWritten(rel: string): void;
+    topologyChanged(): void;
+  },
+): void {
+  let topology = false;
+  for (const rel of relPaths) {
+    try {
+      if (hooks.noteChanged(rel)) topology = true;
+    } catch {
+      /* the note already landed — the index catches up on the next scan */
+    }
+    hooks.noteWritten(rel);
+  }
+  if (topology) hooks.topologyChanged();
+}
+
 export const IMPORT_NO_VAULT_REASON =
   'Open or create a Mythos vault first (Settings → Vault & Files → New vault…).';
 export const IMPORT_SOURCE_CHANGED_ERROR = 'The file changed since the preview — drop it again.';

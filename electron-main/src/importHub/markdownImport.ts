@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ImportChapter, ImportEntityType, ImportNote, ImportPlan, ImportScene, ImportStory } from './types.js';
 import { inlinesToMarkdown, isSceneBreakText, matchChapterMarker, segmentBlocks, type RichBlock } from './blocks.js';
-import { classifyExtension } from './importSafety.js';
+import { classifyExtension, sniffDangerous, SNIFF_BYTES } from './importSafety.js';
 import { plainTextToBlocks } from './plainText.js';
 
 /** Markdown files above this are skipped (a whole novel is ~1 MB). */
@@ -589,6 +589,10 @@ async function walkFolder(root: string): Promise<{ tree: DirNode; files: MdFile[
   for (const file of files) {
     try {
       const buf = await fs.promises.readFile(file.abs);
+      // Same content check as a file picked on its own: a program, script
+      // (`#!`) or old macro-capable Office file wearing a .md / .txt name is
+      // skipped, never parsed.
+      if (sniffDangerous(buf.subarray(0, SNIFF_BYTES))) { stats.unsafe++; continue; }
       const text = decodeText(buf);
       // A NUL in UTF-8 text means a binary file wearing a .md name.
       if (text.includes('\0')) { stats.unreadable++; continue; }
