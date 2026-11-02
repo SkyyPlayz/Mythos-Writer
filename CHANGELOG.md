@@ -42,6 +42,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 
 ### Added
+- Unlock mode lets you move, duplicate and lock sidebars and the nav rail (beta flag) ([#1796](https://github.com/SkyyPlayz/Mythos-Writer/pull/1796))
 - **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
 
 ## [0.5.7] — 2026-10-03
