@@ -93,10 +93,14 @@ function relFolder(folder: string): string {
 /** Count words in editor Markdown, ignoring the syntax around them. */
 export function countWords(markdown: string): number {
   if (!markdown) return 0;
+  // Every pattern here must stay linear on hostile input (an unmatched run of
+  // `[`, `<` or `](` must not rescan to the end from each position): word
+  // counting runs synchronously in the main process. Link text keeps its
+  // brackets (they never form a word on their own); only the `](target)` is
+  // dropped, and only simple tags (<u>, </em> …) are stripped.
   const plain = markdown
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/\]\([^()\s]{0,2048}\)/g, '] ')
+    .replace(/<\/?[A-Za-z][A-Za-z0-9]{0,15}>/g, ' ')
     .replace(/\s\{\.(?:center|right|justify)\}\s*$/gm, '')
     .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)/gm, '')
     .replace(/\\([\\`*_{}[\]()#+\-.!<>~|])/g, '$1')
@@ -114,7 +118,12 @@ export function buildExcerpt(plan: ImportPlan): string {
     for (const sc of byOrder(ch.scenes)) {
       const prose = sc.prose.trim();
       if (!prose) continue;
-      const chars = [...prose];
+      // Collect at most one code point past the limit — never the whole scene.
+      const chars: string[] = [];
+      for (const cp of prose) {
+        chars.push(cp);
+        if (chars.length > PREVIEW_EXCERPT_CHARS) break;
+      }
       if (chars.length <= PREVIEW_EXCERPT_CHARS) return prose;
       const cut = chars.slice(0, PREVIEW_EXCERPT_CHARS).join('');
       const lastSpace = cut.search(/\s\S*$/);

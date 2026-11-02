@@ -62,7 +62,44 @@ afterEach(() => {
   _clearImportSessionsForTest();
 });
 
+/**
+ * Linear-time check that holds on a slow or busy CI runner: 4× the input must
+ * take under 8× as long (a quadratic scan takes ~16×), with a 500 ms floor so
+ * timer noise on fast runs can't fail it; up to three attempts absorb a stray
+ * GC pause. Same helper as htmlBlocks.test.ts / epub.test.ts.
+ */
+function expectLinearTime(prepare: (k: number) => string, run: (input: string) => unknown, n: number): void {
+  const time = (input: string) => {
+    const start = performance.now();
+    run(input);
+    return performance.now() - start;
+  };
+  const small = prepare(n);
+  const big = prepare(4 * n);
+  time(small); // warm up
+  let last = { small: 0, big: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    last = { small: time(small), big: time(big) };
+    if (last.big < Math.max(8 * last.small, 500)) return;
+  }
+  expect(last.big, `4× input took ${Math.round(last.big)} ms vs ${Math.round(last.small)} ms`).toBeLessThan(Math.max(8 * last.small, 500));
+}
+
 describe('countWords', () => {
+  it('stays linear on unmatched link / tag openers (main-process freeze guard)', () => {
+    expectLinearTime((k) => '['.repeat(k), countWords, 40_000);
+    expectLinearTime((k) => '!['.repeat(k), countWords, 20_000);
+    expectLinearTime((k) => '<'.repeat(k), countWords, 40_000);
+    expectLinearTime((k) => '](x'.repeat(k), countWords, 40_000);
+    expectLinearTime((k) => `<${'a'.repeat(k)}`, countWords, 40_000);
+  });
+
+  it('drops link targets and simple tags but keeps words around them', () => {
+    expect(countWords('See [the map](https://example.com/a(b)c) and ![a picture](img.png) here')).toBe(7);
+    expect(countWords('a <em>b</em> <strong>c</strong> <s>d</s> e')).toBe(5);
+    expect(countWords('x < y and y > z')).toBe(5);
+  });
+
   it('ignores Markdown syntax', () => {
     expect(countWords('**Bold** start and *italic* end.')).toBe(5);
     expect(countWords('# Heading here\n\n> quoted words\n\n- list item')).toBe(6);

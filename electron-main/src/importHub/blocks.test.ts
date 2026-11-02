@@ -665,6 +665,25 @@ describe('segmentBlocks — page breaks and no structure', () => {
     expect(story.chapters.map((c) => c.title)).toEqual(['Chapter 1', 'Chapter 2']);
   });
 
+  it('pageBreaksAreChapters (ePub): an unheaded spine document between headed chapters is its own chapter', () => {
+    const blocks = [
+      h(1, 'Chapter One'), p('one'), page,
+      p('An unheaded interlude that sits between chapters.'), page,
+      p('Intermission'), p('A titled-by-first-line section.'), page,
+      h(1, 'Chapter Two'), p('two'), page,
+      h(2, 'A scene heading only'), p('three'),
+    ];
+    const opts = { fallbackTitle: 'Book', titleIsAuthoritative: true, pageBreaksAreChapters: true };
+    const o = segmentBlocks(blocks, opts).story;
+    expect(o.structure).toBe('headings');
+    expect(o.chapters.map((c) => c.title)).toEqual(['Chapter One', 'Section 1', 'Intermission', 'Chapter Two', 'Section 2']);
+    expect(o.chapters[1].scenes[0].prose).toBe('An unheaded interlude that sits between chapters.');
+    expect(o.chapters[2].scenes[0].prose).toContain('Intermission');
+    // Without the ePub option, the same page breaks stay scene breaks.
+    const docx = segmentBlocks([h(1, 'Chapter One'), p('one'), page, p('more'), h(1, 'Chapter Two'), p('two')], { fallbackTitle: 'B' }).story;
+    expect(docx.chapters.map((c) => [c.title, c.scenes.length])).toEqual([['Chapter One', 2], ['Chapter Two', 1]]);
+  });
+
   it('no structure → one chapter, one scene, both named after the story (legacy shape)', () => {
     const { story, warnings } = segmentBlocks([p('Once.'), p('The end.')], { fallbackTitle: 'My Story' });
     expect(story).toEqual({

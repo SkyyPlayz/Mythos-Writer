@@ -855,8 +855,22 @@ describe('renderInlineMarkdown (excerpt converter)', () => {
     expect(html('a &lt;b&gt; &amp; &#65;')).toBe('a &lt;b&gt; &amp; A');
   });
 
-  it('never renders HTML other than <u>: tags stay text', () => {
+  it('never renders HTML other than the four plain mark tags: everything else stays text', () => {
     expect(html('<script>alert(1)</script><img src=x>')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;&lt;img src=x&gt;');
+    expect(html('<em onclick="x">a</em> <strong class="y">b</strong> <span>c</span>'))
+      .toBe('&lt;em onclick="x"&gt;a&lt;/em&gt; &lt;strong class="y"&gt;b&lt;/strong&gt; &lt;span&gt;c&lt;/span&gt;');
+  });
+
+  it('renders the <em>/<strong>/<s> fallback marks the importer writes where * / ** / ~~ cannot parse', () => {
+    expect(html('It was <em>over—</em>and then it wasn’t.')).toBe('It was <em>over—</em>and then it wasn’t.');
+    expect(html('<strong>Chapter 1:</strong>The Gate')).toBe('<strong>Chapter 1:</strong>The Gate');
+    expect(html('no<s>(gone)</s>more and <u>under</u>')).toBe('no<s>(gone)</s>more and <u>under</u>');
+    expect(html('<strong><em>both</em></strong>')).toBe('<strong><em>both</em></strong>');
+  });
+
+  it('a mismatched or stray closing tag stays literal', () => {
+    expect(html('<em>a</strong>b</em>')).toBe('<em>a&lt;/strong&gt;b</em>');
+    expect(html('x</em>y')).toBe('x&lt;/em&gt;y');
   });
 
   it('hard breaks become <br>, soft newlines a space', () => {

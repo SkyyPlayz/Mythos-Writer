@@ -96,6 +96,8 @@ const RUNNABLE_REFUSAL = /\b(?:programs?|scripts?|macros?)\b|run code/i;
 // ─── Excerpt: editor Markdown → React elements ───────────────────────────────
 // A tiny, safe subset renderer for the preview excerpt (never HTML injection):
 // **bold** / __bold__, *italic* / _italic_, ~~strike~~, <u>underline</u>,
+// the plain <em>/<strong>/<s> tags the importer writes where `*`/`**`/`~~`
+// can't parse (no attributes — anything else stays literal text),
 // `\`+newline hard breaks, backslash escapes, the entities the serializer
 // writes, ` {.center}` alignment suffixes and `#` headings left in a scene.
 //
@@ -106,6 +108,9 @@ const RUNNABLE_REFUSAL = /\b(?:programs?|scripts?|macros?)\b|run code/i;
 // as one here too. The panel exists to catch exactly those mistakes.
 
 type MarkName = 'bold' | 'italic' | 'strike' | 'underline';
+
+/** The only inline HTML the excerpt honours — exactly what the serializer emits. */
+const TAG_MARKS: Record<string, MarkName> = { u: 'underline', em: 'italic', strong: 'bold', s: 'strike' };
 type DelimChar = '*' | '_' | '~';
 
 /** A delimiter run in the node list; `count` is how many of its chars are still unmatched (literal). */
@@ -114,7 +119,7 @@ interface DelimNode { k: 'delim'; ch: DelimChar; count: number }
 type InlineNode =
   | { k: 'text'; v: string }
   | { k: 'br' }
-  | { k: 'u'; closing: boolean; raw: string }
+  | { k: 'tag'; mark: MarkName; closing: boolean; raw: string }
   | DelimNode
   | { k: 'mark'; mark: MarkName; children: InlineNode[] };
 
@@ -202,8 +207,12 @@ function tokenize(src: string): { nodes: InlineNode[]; delims: Delimiter[] } {
       text(ch); i += 1; continue;
     }
     if (ch === '<') {
-      const m = /^<(\/?)u>/i.exec(src.slice(i));
-      if (m) { nodes.push({ k: 'u', closing: m[1] === '/', raw: m[0] }); i += m[0].length; continue; }
+      const m = /^<(\/?)(u|em|strong|s)>/i.exec(src.slice(i, i + 9));
+      if (m) {
+        nodes.push({ k: 'tag', mark: TAG_MARKS[m[2].toLowerCase()], closing: m[1] === '/', raw: m[0] });
+        i += m[0].length;
+        continue;
+      }
       text(ch); i += 1; continue;
     }
     if (ch === '*' || ch === '_' || ch === '~') {
@@ -305,24 +314,26 @@ export function renderInlineMarkdown(src: string, { cutOff = false }: { cutOff?:
   if (cutOff) closeAtEnd(nodes, delims);
   let key = 0;
   const render = (list: InlineNode[]): ReactNode[] => {
-    // `<u>…</u>` are inline HTML in the editor; pair them within one level.
-    const stack: ReactNode[][] = [[]];
-    const top = () => stack[stack.length - 1];
-    const closeU = () => {
-      const children = stack.pop() as ReactNode[];
-      top().push(wrap('underline', children, key++));
+    // `<u>` / `<em>` / `<strong>` / `<s>` are inline HTML in the editor; pair
+    // each closing tag with the innermost open tag of the same kind within
+    // one level — a stray or mismatched closing tag stays literal text.
+    const stack: { mark: MarkName | null; children: ReactNode[] }[] = [{ mark: null, children: [] }];
+    const top = () => stack[stack.length - 1].children;
+    const closeTop = () => {
+      const frame = stack.pop() as { mark: MarkName; children: ReactNode[] };
+      top().push(wrap(frame.mark, frame.children, key++));
     };
     for (const n of list) {
       if (n.k === 'text') top().push(n.v);
       else if (n.k === 'br') top().push(<br key={key++} />);
       else if (n.k === 'delim') { if (n.count > 0) top().push(n.ch.repeat(n.count)); }
       else if (n.k === 'mark') top().push(wrap(n.mark, render(n.children), key++));
-      else if (n.closing && stack.length > 1) closeU();
-      else if (!n.closing) stack.push([]);
+      else if (!n.closing) stack.push({ mark: n.mark, children: [] });
+      else if (stack.length > 1 && stack[stack.length - 1].mark === n.mark) closeTop();
       else top().push(n.raw);
     }
-    while (stack.length > 1) closeU();
-    return stack[0];
+    while (stack.length > 1) closeTop();
+    return stack[0].children;
   };
   return render(nodes);
 }

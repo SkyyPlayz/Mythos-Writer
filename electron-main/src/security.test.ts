@@ -500,4 +500,14 @@ describe('isAllowedRendererNavigation (#1765)', () => {
     expect(isAllowedRendererNavigation('http://localhost:5173/#/x', { ...posix, devServerUrl: 'http://localhost:5173' })).toBe(true);
     expect(isAllowedRendererNavigation('http://localhost:5173/#/x', posix)).toBe(false);
   });
+
+  it('matches the dev server by origin, not by string prefix', () => {
+    const dev = { ...posix, devServerUrl: 'http://localhost:5173' };
+    expect(isAllowedRendererNavigation('http://localhost:5173/', dev)).toBe(true);
+    expect(isAllowedRendererNavigation('http://localhost:5173@attacker.example/', dev)).toBe(false);
+    expect(isAllowedRendererNavigation('http://localhost:51730/', dev)).toBe(false);
+    expect(isAllowedRendererNavigation('http://localhost:5173.attacker.example/', dev)).toBe(false);
+    expect(isAllowedRendererNavigation('https://localhost:5173/', dev)).toBe(false);
+    expect(isAllowedRendererNavigation('http://localhost:5173/', { ...posix, devServerUrl: 'not a url' })).toBe(false);
+  });
 });

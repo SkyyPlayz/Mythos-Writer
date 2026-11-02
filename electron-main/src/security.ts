@@ -153,12 +153,20 @@ export function isAllowedRendererNavigation(
   url: string,
   opts: { devServerUrl?: string; rendererIndexPath: string; platform?: NodeJS.Platform },
 ): boolean {
-  if (opts.devServerUrl && url.startsWith(opts.devServerUrl)) return true;
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return false;
+  }
+  if (opts.devServerUrl) {
+    // Compare parsed origins, never a string prefix: `http://localhost:5173@evil.example/`
+    // starts with the dev URL but its host is evil.example.
+    try {
+      if (parsed.origin === new URL(opts.devServerUrl).origin && parsed.origin !== 'null') return true;
+    } catch {
+      /* a malformed dev URL allows nothing */
+    }
   }
   if (parsed.protocol !== 'file:') return false;
   let target: string;

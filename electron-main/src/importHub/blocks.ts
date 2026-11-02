@@ -487,6 +487,23 @@ function tidyTitle(text: string): string {
   )).join(' ');
 }
 
+/**
+ * After a page break at `from`: does the next real block start a section
+ * with no chapter heading of its own (prose, or a scene-level heading)?
+ */
+function opensUnheadedSection(
+  items: Item[],
+  from: number,
+  roleOf: (hd: Item & { t: 'heading' }) => 'part' | 'chapter' | 'scene',
+): boolean {
+  for (let j = from; j < items.length; j++) {
+    const next = items[j];
+    if (next.t === 'content') return true;
+    if (next.t === 'heading') return !(next.part || next.level <= 3) || roleOf(next) === 'scene';
+  }
+  return false;
+}
+
 function countWords(s: string): number {
   return (s.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []).length;
 }
@@ -785,7 +802,9 @@ export function segmentBlocks(
       titleSource = 'titleHeading';
     }
     let titleTaken = false;
-    for (const it of items) {
+    let unheadedSections = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
       if (it === titleHeading) continue;
       if (it.t === 'heading' && (it.part || it.level <= 3)) {
         const r = roleOf(it);
@@ -800,6 +819,19 @@ export function segmentBlocks(
         structs.push({ t: r, title: it.text });
       } else if (it.t === 'heading' || it.t === 'content') {
         structs.push({ t: 'content', block: it.block });
+      } else if (it.t === 'page' && opts.pageBreaksAreChapters && structs.length > 0 && opensUnheadedSection(items, i + 1, roleOf)) {
+        // An ePub spine document is a chapter even when it has no chapter
+        // heading of its own (an untitled interlude between headed chapters).
+        let first: (Item & { t: 'content' }) | undefined;
+        for (let j = i + 1; j < items.length && !first; j++) {
+          const x = items[j];
+          if (x.t === 'content') first = x;
+          else if (x.t === 'heading' || x.t === 'page') break;
+        }
+        const title = first && isTitleLikeLine(first.text) && first.text.length <= 60
+          ? tidyTitle(first.text)
+          : `Section ${++unheadedSections}`;
+        structs.push({ t: 'chapter', title });
       } else if (it.t === 'scene' || it.t === 'page') {
         structs.push({ t: 'break' });
       }
