@@ -218,6 +218,31 @@ function perfMedian(values: number[]): number {
   return sorted[mid] ?? 0;
 }
 
+// Save-cost gate. Runner speed swings about 4x between Windows runs (baseline save p50 seen
+// from 4.7 ms to 17.2 ms), so a fixed ms limit flakes on slow runners. The gate is a ratio:
+// median(guarded - baseline) per round, divided by median(baseline), with every sample taken
+// in the same run.
+const SAVE_WARMUP_ROUNDS = 10;
+const SAVE_ROUNDS = 120;
+// Size of the positive control: the slowdown every run must be able to see.
+const SAVE_CONTROL_SLOWDOWN_MS = 2;
+// p95(guarded) / p95(baseline). A tail check only, for slowdowns that hit some saves and
+// leave the median alone. Seen 0.55 to 1.33.
+const SAVE_TAIL_RATIO_CEILING = 2;
+
+/**
+ * Highest allowed added-cost ratio.
+ * win32 0.165: seen 0.079 to 0.130 over six notes-windows runs. A 2 ms slowdown adds
+ * 2 / baseline, which is 0.116 at the slowest baseline seen (17.2 ms), so it fails the gate
+ * up to a baseline of about 23 ms.
+ * Others 0.5: seen 0.04 to 0.08 locally and 0.23 on CI Linux. A 2 ms slowdown adds more than
+ * 2.0 at a 1 ms baseline.
+ * The positive control in the test checks this on each run.
+ */
+function saveAddedRatioCeiling(platform: NodeJS.Platform): number {
+  return platform === 'win32' ? 0.165 : 0.5;
+}
+
 const PROFILE_FS_METHODS = [
   'lstatSync',
   'existsSync',
@@ -1861,116 +1886,133 @@ describe('PR A symlink writes', () => {
   });
 
   it('measures the added save cost', () => {
-        const time = (run: () => void): number => {
-          const start = performance.now();
-          run();
-          return performance.now() - start;
-        };
-        const fmt = (n: number): string => (Number.isFinite(n) ? n.toFixed(3) : 'inf');
-        const payload = Buffer.from('hello');
+    const time = (run: () => void): number => {
+      const start = performance.now();
+      run();
+      return performance.now() - start;
+    };
+    const fmt = (n: number): string => (Number.isFinite(n) ? n.toFixed(3) : 'inf');
+    const payload = Buffer.from('hello');
 
-        resetVolumeProbeCache();
-        const probeCold = time(() => {
-          probeVolumeKind(root);
-        });
-        const probeWarm = time(() => {
-          probeVolumeKind(root);
-        });
+    resetVolumeProbeCache();
+    const probeCold = time(() => {
+      probeVolumeKind(root);
+    });
+    const probeWarm = time(() => {
+      probeVolumeKind(root);
+    });
 
-        const oldFile = path.join(root, 'old-save.md');
+    const oldFile = path.join(root, 'old-save.md');
+    const saveBaseline = (): void => prePrWriteFileAtomic(oldFile, payload);
+    const saveGuarded = (): void => {
+      writeVaultFileAtomic(root, 'new-save.md', payload);
+    };
+    // Positive control: the guarded save plus a fixed 2 ms. It shows in every run, on the
+    // runner that ran it, that the ratio gate below would flag a 2 ms per-save slowdown.
+    const saveSlowControl = (): void => {
+      saveGuarded();
+      const until = performance.now() + SAVE_CONTROL_SLOWDOWN_MS;
+      while (performance.now() < until) {
+        /* spin */
+      }
+    };
 
-        // One interleaved loop: alternate unguarded (old) and guarded (new) saves on the same payload.
-        // The first 5 pairs are warmup and discarded; the next 120 pairs are kept.
-        const saveWarmup = 5;
-        const saveN = 120;
-        const oldSaveSamples: number[] = [];
-        const newSaveSamples: number[] = [];
-        const pairedSaveDiffs: number[] = [];
-        for (let i = 0; i < saveWarmup + saveN; i++) {
-          const oldMs = time(() => prePrWriteFileAtomic(oldFile, payload));
-          const newMs = time(() => writeVaultFileAtomic(root, 'new-save.md', payload));
-          if (i >= saveWarmup) {
-            oldSaveSamples.push(oldMs);
-            newSaveSamples.push(newMs);
-            pairedSaveDiffs.push(newMs - oldMs);
-          }
-        }
-        const oldSave = perfStats(oldSaveSamples);
-        const newSave = perfStats(newSaveSamples);
-        const pairedSave = perfStats(pairedSaveDiffs);
+    // Same-run baseline. Each round times one baseline save (no symlink path), one guarded
+    // save and one control save, in a rotating order. Warmup rounds are discarded.
+    const arms = [saveBaseline, saveGuarded, saveSlowControl] as const;
+    const baselineSamples: number[] = [];
+    const guardedSamples: number[] = [];
+    const controlSamples: number[] = [];
+    const addedSamples: number[] = [];
+    const controlAddedSamples: number[] = [];
+    for (let round = 0; round < SAVE_WARMUP_ROUNDS + SAVE_ROUNDS; round++) {
+      const ms = [0, 0, 0];
+      for (let k = 0; k < arms.length; k++) {
+        const arm = (round + k) % arms.length;
+        ms[arm] = time(arms[arm]!);
+      }
+      if (round < SAVE_WARMUP_ROUNDS) continue;
+      const [baseMs, guardedMs, controlMs] = ms as [number, number, number];
+      baselineSamples.push(baseMs);
+      guardedSamples.push(guardedMs);
+      controlSamples.push(controlMs);
+      addedSamples.push(guardedMs - baseMs);
+      controlAddedSamples.push(controlMs - baseMs);
+    }
+    const baseline = perfStats(baselineSamples);
+    const guarded = perfStats(guardedSamples);
+    const control = perfStats(controlSamples);
+    const baselineMedian = perfMedian(baselineSamples);
+    const addedMedian = perfMedian(addedSamples);
+    const controlAddedMedian = perfMedian(controlAddedSamples);
+    const addedRatio = addedMedian / baselineMedian;
+    const controlAddedRatio = controlAddedMedian / baselineMedian;
+    const tailRatio = guarded.p95 / baseline.p95;
 
-        // One interleaved 5k join pass: alternate unguarded (old) and guarded writeMode (new).
-        const joinN = 5000;
-        const oldJoinSamples: number[] = [];
-        const newJoinSamples: number[] = [];
-        for (let i = 0; i < joinN; i++) {
-          const rel = `n${i}.md`;
-          oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
-          newJoinSamples.push(
-            time(() => {
-              safeVaultJoin(root, rel, { writeMode: true });
-            }),
-          );
-        }
-        const oldJoin = perfStats(oldJoinSamples);
-        const newJoin = perfStats(newJoinSamples);
+    // One interleaved 5k join pass: alternate unguarded (old) and guarded writeMode (new).
+    const joinN = 5000;
+    const oldJoinSamples: number[] = [];
+    const newJoinSamples: number[] = [];
+    for (let i = 0; i < joinN; i++) {
+      const rel = `n${i}.md`;
+      oldJoinSamples.push(time(() => prePrSafeVaultJoin(root, rel)));
+      newJoinSamples.push(
+        time(() => {
+          safeVaultJoin(root, rel, { writeMode: true });
+        }),
+      );
+    }
+    const oldJoin = perfStats(oldJoinSamples);
+    const newJoin = perfStats(newJoinSamples);
+    const joinP50Delta = newJoin.p50 - oldJoin.p50;
 
-        const profileN = 20;
-        const oldProfile = profileFsCalls(profileN, () => prePrWriteFileAtomic(oldFile, payload));
-        const newProfile = profileFsCalls(profileN, () => writeVaultFileAtomic(root, 'new-save.md', payload));
-        const bucketLine = (label: string, buckets: Map<string, ProfileBucket>): string => {
-          const rows = [...buckets.entries()].sort((a, b) => b[1].ms - a[1].ms);
-          return rows
-            .map(
-              ([name, bucket]) =>
-                `${label} ${name} calls=${bucket.calls} total_ms=${bucket.ms.toFixed(3)} per_save_ms=${(bucket.ms / profileN).toFixed(3)}`,
-            )
-            .join('\n');
-        };
+    const profileN = 20;
+    const oldProfile = profileFsCalls(profileN, saveBaseline);
+    const newProfile = profileFsCalls(profileN, saveGuarded);
+    const bucketLine = (label: string, buckets: Map<string, ProfileBucket>): string => {
+      const rows = [...buckets.entries()].sort((a, b) => b[1].ms - a[1].ms);
+      return rows
+        .map(
+          ([name, bucket]) =>
+            `${label} ${name} calls=${bucket.calls} total_ms=${bucket.ms.toFixed(3)} per_save_ms=${(bucket.ms / profileN).toFixed(3)}`,
+        )
+        .join('\n');
+    };
 
-        // Save p50 delta is the median of the paired differences (guarded - unguarded per pair),
-        // not median(guarded) - median(unguarded).
-        const savePairedP50Delta = pairedSave.p50;
-        const savePairedP95 = pairedSave.p95;
-        // p95 delta stays on the absolute sample sets for continuity with prior runs.
-        const saveP95Delta = newSave.p95 - oldSave.p95;
-        const joinP50Delta = newJoin.p50 - oldJoin.p50;
-        console.log(
-          [
-            `PERF-SAVE unguarded(old)_p50=${fmt(oldSave.p50)} unguarded(old)_p95=${fmt(oldSave.p95)} guarded(new)_p50=${fmt(newSave.p50)} guarded(new)_p95=${fmt(newSave.p95)} samples=${saveN} warmup=${saveWarmup}`,
-            `PERF-SAVE-PAIRED diff_p50=${fmt(pairedSave.p50)} diff_p95=${fmt(pairedSave.p95)} pairs=${pairedSaveDiffs.length}`,
-            `PERF-JOIN unguarded(old)_p50=${fmt(oldJoin.p50)} unguarded(old)_p95=${fmt(oldJoin.p95)} guarded(new)_p50=${fmt(newJoin.p50)} guarded(new)_p95=${fmt(newJoin.p95)} samples=${joinN}`,
-            'PERF-TABLE-BEGIN',
-            `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
-            `| --- | ---: | ---: | ---: | ---: | ---: | ---: |`,
-            `| per-save overwrite | ${fmt(oldSave.p50)} | ${fmt(oldSave.p95)} | ${fmt(newSave.p50)} | ${fmt(newSave.p95)} | ${fmt(perfPct(oldSave.p50, newSave.p50))} | ${fmt(perfPct(oldSave.p95, newSave.p95))} |`,
-            `| 5k join per call | ${fmt(oldJoin.p50)} | ${fmt(oldJoin.p95)} | ${fmt(newJoin.p50)} | ${fmt(newJoin.p95)} | ${fmt(perfPct(oldJoin.p50, newJoin.p50))} | ${fmt(perfPct(oldJoin.p95, newJoin.p95))} |`,
-            'PERF-TABLE-END',
-            `PERF-DELTAS save_paired_p50=${fmt(savePairedP50Delta)} save_paired_p95=${fmt(savePairedP95)} save_p95=${fmt(saveP95Delta)} join_p50=${fmt(joinP50Delta)}`,
-            `PERF-PROBE cold_ms=${fmt(probeCold)} warm_ms=${fmt(probeWarm)}`,
-            'PERF-BREAKDOWN-BEGIN',
-            bucketLine('old', oldProfile),
-            bucketLine('new', newProfile),
-            'PERF-BREAKDOWN-END',
-          ].join('\n'),
-        );
+    const addedRatioCeiling = saveAddedRatioCeiling(process.platform);
+    console.log(
+      [
+        `PERF-SAVE baseline_p50=${fmt(baseline.p50)} baseline_p95=${fmt(baseline.p95)} guarded_p50=${fmt(guarded.p50)} guarded_p95=${fmt(guarded.p95)} control_p50=${fmt(control.p50)} rounds=${SAVE_ROUNDS} warmup=${SAVE_WARMUP_ROUNDS}`,
+        `PERF-SAVE-RATIO baseline_median=${fmt(baselineMedian)} added_median=${fmt(addedMedian)} added_ratio=${fmt(addedRatio)} ceiling=${fmt(addedRatioCeiling)} control_added_median=${fmt(controlAddedMedian)} control_added_ratio=${fmt(controlAddedRatio)} tail_ratio=${fmt(tailRatio)} tail_ceiling=${fmt(SAVE_TAIL_RATIO_CEILING)}`,
+        `PERF-JOIN unguarded(old)_p50=${fmt(oldJoin.p50)} unguarded(old)_p95=${fmt(oldJoin.p95)} guarded(new)_p50=${fmt(newJoin.p50)} guarded(new)_p95=${fmt(newJoin.p95)} samples=${joinN}`,
+        'PERF-TABLE-BEGIN',
+        `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
+        `| --- | ---: | ---: | ---: | ---: | ---: | ---: |`,
+        `| per-save overwrite | ${fmt(baseline.p50)} | ${fmt(baseline.p95)} | ${fmt(guarded.p50)} | ${fmt(guarded.p95)} | ${fmt(perfPct(baseline.p50, guarded.p50))} | ${fmt(perfPct(baseline.p95, guarded.p95))} |`,
+        `| 5k join per call | ${fmt(oldJoin.p50)} | ${fmt(oldJoin.p95)} | ${fmt(newJoin.p50)} | ${fmt(newJoin.p95)} | ${fmt(perfPct(oldJoin.p50, newJoin.p50))} | ${fmt(perfPct(oldJoin.p95, newJoin.p95))} |`,
+        'PERF-TABLE-END',
+        `PERF-DELTAS save_added_median=${fmt(addedMedian)} save_added_ratio=${fmt(addedRatio)} save_tail_ratio=${fmt(tailRatio)} join_p50=${fmt(joinP50Delta)}`,
+        `PERF-PROBE cold_ms=${fmt(probeCold)} warm_ms=${fmt(probeWarm)}`,
+        'PERF-BREAKDOWN-BEGIN',
+        bucketLine('old', oldProfile),
+        bucketLine('new', newProfile),
+        'PERF-BREAKDOWN-END',
+      ].join('\n'),
+    );
 
-        expect(fs.readFileSync(oldFile).equals(payload)).toBe(true);
-        expect(fs.readFileSync(path.join(root, 'new-save.md')).equals(payload)).toBe(true);
-        const realRoot = fs.realpathSync.native(root);
-        expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
-        expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
+    expect(fs.readFileSync(oldFile).equals(payload)).toBe(true);
+    expect(fs.readFileSync(path.join(root, 'new-save.md')).equals(payload)).toBe(true);
+    const realRoot = fs.realpathSync.native(root);
+    expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
+    expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
 
-        // Owner ruling. Single interleaved pass (5 warmup pairs discarded, 120 paired save samples). Both platforms.
-        // per-save median of paired diffs (guarded - unguarded) <= 1 ms.
-        // p95(guarded) - p95(unguarded) <= 3 ms on Linux, <= 8 ms on win32.
-        // join p50(guarded) - p50(unguarded) <= 0.05 ms per call (one interleaved 5k pass).
-        // win32 ceiling 1.75: notes-windows on paired-diff tip measured save_paired_p50=1.594 (>1, <1.75).
-        // Linux stays at 1 ms. Cap authorized at most 1.75 when Windows remains noisy.
-        const saveP50Ceiling = process.platform === 'win32' ? 1.75 : 1;
-        const saveP95Ceiling = process.platform === 'win32' ? 8 : 3;
-        expect(savePairedP50Delta).toBeLessThanOrEqual(saveP50Ceiling);
-        expect(saveP95Delta).toBeLessThanOrEqual(saveP95Ceiling);
-        expect(joinP50Delta).toBeLessThanOrEqual(0.05);
-      }, 60000);
+    // The gate: median added cost per save, as a share of the same-run baseline save.
+    expect(addedRatio).toBeLessThanOrEqual(addedRatioCeiling);
+    // The gate can see a 2 ms per-save slowdown on this runner.
+    expect(controlAddedRatio).toBeGreaterThan(addedRatioCeiling);
+    // Tail: guarded p95 against the same-run baseline p95.
+    expect(tailRatio).toBeLessThanOrEqual(SAVE_TAIL_RATIO_CEILING);
+    // Owner ruling: join p50(guarded) - p50(unguarded) <= 0.05 ms per call.
+    expect(joinP50Delta).toBeLessThanOrEqual(0.05);
+  }, 60000);
 });
