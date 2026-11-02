@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { reorderNavConfigItems } from './components/SettingsPanel/settingsPanelTypes';
 import { ContextMenu, type MenuItemDef } from './components/ui/Menu';
 import { VaultIconAvatar } from './components/ui/VaultIconAvatar';
@@ -85,6 +85,23 @@ export interface AppNavRailProps {
   /** Only the active vault can be revealed (no per-path reveal IPC exists). */
   onVaultReveal?: (vaultId: string) => void;
   onVaultOpenSettings?: (vaultId: string) => void;
+  /**
+   * 0.5.9 widget frame (beta flag): lock/unlock toggle in the footer next to Settings.
+   * Absent → not rendered (flag off, or a duplicated nav rail).
+   */
+  layoutLock?: { locked: boolean; onToggle: () => void };
+  /**
+   * 0.5.9 widget frame: the rail fills its widget host. 'horizontal' when the rail sits on the top or
+   * bottom edge. Absent → today's fixed-width vertical rail, unchanged.
+   */
+  orientation?: 'vertical' | 'horizontal';
+  /** 0.5.9 widget frame: landmark name for a duplicated rail (landmarks must be unique). Default "Main navigation". */
+  navLabel?: string;
+  /**
+   * 0.5.9 widget frame: which way the Stories and Customize popovers open. 'left' when the rail sits on
+   * the right edge, so they stay inside the window. Absent → today's popovers, opening to the right.
+   */
+  popoverToward?: 'right' | 'left';
 }
 
 /**
@@ -100,6 +117,41 @@ const SLOT_BY_MODULE: Partial<Record<NavRailModuleId, number>> = {
   timeline: 2,
   'vault-graph': 3,
 };
+
+/** 0.5.9 widget frame: inline sizing when the rail fills a widget host (no CSS file change). */
+const FRAMED_RAIL_STYLE: Readonly<Record<'vertical' | 'horizontal', CSSProperties>> = {
+  vertical: { width: '100%', height: '100%', margin: 0, boxSizing: 'border-box' },
+  horizontal: { width: '100%', height: '100%', margin: 0, boxSizing: 'border-box', flexDirection: 'row', overflowX: 'auto' },
+};
+
+/** 0.5.9 widget frame: scrolling section list for a rail shorter than its content. */
+const SHORT_RAIL_NAV_STYLE: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  alignSelf: 'stretch',
+  gap: 'inherit',
+  flex: '0 1 auto',
+  minHeight: 0,
+  overflowX: 'hidden',
+  overflowY: 'auto',
+  scrollbarWidth: 'none',
+  padding: '4px 0',
+};
+
+/** 0.5.9 widget frame: mirrored popover anchors for a rail on the right edge (mirrors AppNavRail.css left offsets). */
+const LEFTWARD_STORIES_STYLE: CSSProperties = { left: 'auto', right: 64 };
+const LEFTWARD_EDIT_STYLE: CSSProperties = { left: 'auto', right: 26, transformOrigin: 'right bottom' };
+
+/** 0.5.9 widget frame: padlock glyph for the layout lock toggle (closed = locked). */
+function LockGlyph({ locked }: { locked: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="5" y="11" width="14" height="10" rx="2.5" />
+      <path d={locked ? 'M8 11V8a4 4 0 0 1 8 0v3' : 'M8 11V8a4 4 0 0 1 7.5-1.9'} />
+    </svg>
+  );
+}
 
 /** Prototype 184: story-row book glyph (columns icon, slot-2 tinted). */
 function StoryGlyph() {
@@ -274,6 +326,10 @@ export default function AppNavRail({
   onVaultIconSet,
   onVaultReveal,
   onVaultOpenSettings,
+  layoutLock,
+  orientation,
+  navLabel = 'Main navigation',
+  popoverToward,
 }: AppNavRailProps) {
   const itemRefs = useRef<HTMLButtonElement[]>([]);
   // SKY-11238: the vault-tile group scrolls when long (stable order means the
@@ -301,6 +357,26 @@ export default function AppNavRail({
   }, [navItems.length]);
   const slim = collapsed || autoSlim;
   const autoSlimHint = autoSlim && !collapsed;
+
+  // 0.5.9 widget frame: a vertical rail squeezed between top/bottom widgets is shorter than the window,
+  // so the section items scroll and the footer (Settings, lock, customize) stays reachable. Measures the
+  // rail itself; state flips only when it crosses the needed height. Absent orientation → never runs.
+  const navRef = useRef<HTMLElement>(null);
+  const [railShort, setRailShort] = useState(false);
+  useEffect(() => {
+    const el = navRef.current;
+    if (orientation !== 'vertical' || !el || typeof ResizeObserver !== 'function') {
+      setRailShort(false);
+      return;
+    }
+    const need = Math.max(1, navItems.length) * 64 + 60 + 3 * 36 + 90;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[entries.length - 1]?.contentRect.height ?? 0;
+      setRailShort(h > 0 && h < need);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [orientation, navItems.length]);
 
   // A collapsed (slim) rail only has room for the icon; and when the user
   // hides labels, icons become the only visible affordance — so at least one
@@ -461,14 +537,17 @@ export default function AppNavRail({
 
   return (
     <nav
+      ref={navRef}
       className={`nav-rail${slim ? ' nav-rail--collapsed' : ''}${storiesOpen || editOpen ? ' nav-rail--pop' : ''}`}
       title={autoSlimHint ? 'labels hidden — window is short' : undefined}
-      aria-label="Main navigation"
+      aria-label={navLabel}
+      data-orientation={orientation}
+      style={orientation === undefined ? undefined : FRAMED_RAIL_STYLE[orientation]}
     >
       {neonOverlay}
 
       {/* Section nav items (prototype 173–178). A1-Q2: no rail brand — account is title-bar avatar. */}
-      <div className="nav-rail__nav" role="group" aria-label="Sections">
+      <div className="nav-rail__nav" role="group" aria-label="Sections" style={railShort ? SHORT_RAIL_NAV_STYLE : undefined}>
         {navItems.map((item, index) => {
           const active = activeSection === item.id;
           const slot = SLOT_BY_MODULE[item.id] ?? 1;
@@ -515,6 +594,7 @@ export default function AppNavRail({
           />
           <div
             className="nav-rail__stories"
+            style={popoverToward === 'left' ? LEFTWARD_STORIES_STYLE : undefined}
             role="group"
             aria-label="Stories"
             data-testid="nav-rail-stories"
@@ -642,6 +722,19 @@ export default function AppNavRail({
             <span className="nav-rail__settings-label">Settings</span>
           )}
         </button>
+        {layoutLock && (
+          <button
+            type="button"
+            className="nav-rail__toggle nav-rail__layout-lock"
+            onClick={layoutLock.onToggle}
+            aria-label={layoutLock.locked ? 'Unlock layout' : 'Lock layout'}
+            title={layoutLock.locked ? 'Unlock layout to move and duplicate widgets' : 'Lock layout'}
+            data-testid="widget-layout-lock-toggle"
+            data-locked={layoutLock.locked ? 'true' : 'false'}
+          >
+            <LockGlyph locked={layoutLock.locked} />
+          </button>
+        )}
         {/* Beta 4 M3: prototype 216–236 — pencil (edit popover) + slim toggle.
             Escape is handled on this wrapper so it also works while focus sits
             on the pencil button (the popover is a sibling, not an ancestor,
@@ -684,6 +777,7 @@ export default function AppNavRail({
               />
               <div
                 className="nav-rail__edit"
+                style={popoverToward === 'left' ? LEFTWARD_EDIT_STYLE : undefined}
                 role="group"
                 aria-label="Customize navigation"
                 data-testid="nav-rail-edit"

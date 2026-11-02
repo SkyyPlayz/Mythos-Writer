@@ -35,6 +35,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed
+- Internal prep for the upcoming movable-widget layout; no visible change ([#1755](https://github.com/SkyyPlayz/Mythos-Writer/pull/1755)).
 - **Interface text is a little larger and more consistent.** Menus, panels, settings and labels now use one shared set of text sizes. The base interface text goes from 13px to 14px, and the updated menus, panels and settings use nothing smaller than 12px (the Appearance settings section follows in a later update). Your manuscript page font and size are unchanged. ([#1783](https://github.com/SkyyPlayz/Mythos-Writer/pull/1783))
 - **Brainstorm note proposals and Test connection no longer use AI.** Proposed notes from a Brainstorm reply come from a built-in name finder that needs no API key and sends nothing anywhere. Settings → Test connection now just asks the provider for its model list instead of spending a token. ([#1780](https://github.com/SkyyPlayz/Mythos-Writer/pull/1780))
 - **README matches the current app.** Windows is the primary platform. AI is your own OpenRouter key, Paste key (OpenAI-compatible), or a model on this computer (Ollama, LM Studio, or llama.cpp). A subscription sign-in is in beta. The screenshots are the current Liquid Neon window. ([#1759](https://github.com/SkyyPlayz/Mythos-Writer/pull/1759))
@@ -48,6 +49,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 
 ### Added
+- Unlock mode lets you move, duplicate and lock sidebars and the nav rail (beta flag) ([#1796](https://github.com/SkyyPlayz/Mythos-Writer/pull/1796))
 - **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
 
 ## [0.5.7] — 2026-10-03
