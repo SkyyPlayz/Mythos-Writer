@@ -132,7 +132,6 @@ export function BookSyncNotice({ outcome }: { outcome: ManifestSaveOutcome }) {
         borderRadius: 8,
         background: 'rgba(255, 196, 72, 0.16)',
         color: 'inherit',
-        fontSize: 14,
         lineHeight: 1.4,
       }}
     >
