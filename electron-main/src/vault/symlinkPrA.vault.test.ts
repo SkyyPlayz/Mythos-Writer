@@ -219,25 +219,45 @@ function perfMedian(values: number[]): number {
 }
 
 // Save-cost gate. Runner speed swings about 4x between Windows runs (baseline save p50 seen
-// from 4.7 ms to 17.2 ms), so a fixed ms limit flakes on slow runners. The gate is a ratio:
-// median(guarded - baseline) per round, divided by median(baseline), with every sample taken
-// in the same run.
+// from 4.7 ms to 17.2 ms), almost all of it in the fsync flush. A fixed ms limit flakes on slow
+// runners, and the flush noise is wider than the cost being measured. So the timed rounds
+// replace the flush with a counting no-op in both arms, the test checks that both arms make
+// the same flush calls, and the gate is a ratio from the same run:
+// median(guarded - baseline) per round, divided by median(baseline).
 const SAVE_WARMUP_ROUNDS = 10;
 const SAVE_ROUNDS = 120;
 // Size of the positive control: the slowdown every run must be able to see.
 const SAVE_CONTROL_SLOWDOWN_MS = 2;
 
 /**
- * Highest allowed added-cost ratio.
- * win32 0.165: seen 0.079 to 0.130 over six notes-windows runs. A 2 ms slowdown adds
- * 2 / baseline, which is 0.116 at the slowest baseline seen (17.2 ms), so it fails the gate
- * up to a baseline of about 23 ms.
- * Others 0.5: seen 0.04 to 0.08 locally and 0.23 on CI Linux. A 2 ms slowdown adds more than
- * 2.0 at a 1 ms baseline.
+ * Highest allowed added-cost ratio, flush excluded.
+ * win32 1.75: the fs-call breakdown with the flush left out reads 0.74 to 1.01 over seven
+ * notes-windows runs, baseline 0.47 to 0.86 ms per save and steady across runners. A 2 ms
+ * slowdown adds 2 / baseline, at least 2.3, so it lands at 3.0 or more.
+ * Others 1.0: 0.10 to 0.24 locally, about 0.42 in the CI Linux breakdown. A 2 ms slowdown
+ * adds about 5 at a 0.4 ms baseline.
  * The positive control in the test checks this on each run.
  */
 function saveAddedRatioCeiling(platform: NodeJS.Platform): number {
-  return platform === 'win32' ? 0.165 : 0.5;
+  return platform === 'win32' ? 1.75 : 1;
+}
+
+/** Run `fn` with fdatasync and fsync replaced by no-ops that count their calls. */
+function withFlushCounted<T>(fn: (flushCalls: () => number) => T): T {
+  const fsMutable = fs as unknown as Record<string, unknown>;
+  const saved = { fdatasyncSync: fs.fdatasyncSync, fsyncSync: fs.fsyncSync };
+  let calls = 0;
+  const count = (): void => {
+    calls += 1;
+  };
+  fsMutable.fdatasyncSync = count;
+  fsMutable.fsyncSync = count;
+  try {
+    return fn(() => calls);
+  } finally {
+    fsMutable.fdatasyncSync = saved.fdatasyncSync;
+    fsMutable.fsyncSync = saved.fsyncSync;
+  }
 }
 
 const PROFILE_FS_METHODS = [
@@ -1922,20 +1942,26 @@ describe('PR A symlink writes', () => {
     const controlSamples: number[] = [];
     const addedSamples: number[] = [];
     const controlAddedSamples: number[] = [];
-    for (let round = 0; round < SAVE_WARMUP_ROUNDS + SAVE_ROUNDS; round++) {
-      const ms = [0, 0, 0];
-      for (let k = 0; k < arms.length; k++) {
-        const arm = (round + k) % arms.length;
-        ms[arm] = time(arms[arm]!);
+    const flushCallsByArm = [0, 0, 0];
+    withFlushCounted((flushCalls) => {
+      for (let round = 0; round < SAVE_WARMUP_ROUNDS + SAVE_ROUNDS; round++) {
+        const ms = [0, 0, 0];
+        for (let k = 0; k < arms.length; k++) {
+          const arm = (round + k) % arms.length;
+          const before = flushCalls();
+          ms[arm] = time(arms[arm]!);
+          flushCallsByArm[arm]! += flushCalls() - before;
+        }
+        if (round < SAVE_WARMUP_ROUNDS) continue;
+        const [baseMs, guardedMs, controlMs] = ms as [number, number, number];
+        baselineSamples.push(baseMs);
+        guardedSamples.push(guardedMs);
+        controlSamples.push(controlMs);
+        addedSamples.push(guardedMs - baseMs);
+        controlAddedSamples.push(controlMs - baseMs);
       }
-      if (round < SAVE_WARMUP_ROUNDS) continue;
-      const [baseMs, guardedMs, controlMs] = ms as [number, number, number];
-      baselineSamples.push(baseMs);
-      guardedSamples.push(guardedMs);
-      controlSamples.push(controlMs);
-      addedSamples.push(guardedMs - baseMs);
-      controlAddedSamples.push(controlMs - baseMs);
-    }
+    });
+    const [baselineFlushCalls, guardedFlushCalls] = flushCallsByArm as [number, number, number];
     const baseline = perfStats(baselineSamples);
     const guarded = perfStats(guardedSamples);
     const control = perfStats(controlSamples);
@@ -1982,7 +2008,7 @@ describe('PR A symlink writes', () => {
     console.log(
       [
         `PERF-SAVE baseline_p50=${fmt(baseline.p50)} baseline_p95=${fmt(baseline.p95)} guarded_p50=${fmt(guarded.p50)} guarded_p95=${fmt(guarded.p95)} control_p50=${fmt(control.p50)} rounds=${SAVE_ROUNDS} warmup=${SAVE_WARMUP_ROUNDS}`,
-        `PERF-SAVE-RATIO baseline_median=${fmt(baselineMedian)} added_median=${fmt(addedMedian)} added_ratio=${fmt(addedRatio)} ceiling=${fmt(addedRatioCeiling)} control_added_median=${fmt(controlAddedMedian)} control_added_ratio=${fmt(controlAddedRatio)} tail_ratio=${fmt(tailRatio)}`,
+        `PERF-SAVE-RATIO baseline_median=${fmt(baselineMedian)} added_median=${fmt(addedMedian)} added_ratio=${fmt(addedRatio)} ceiling=${fmt(addedRatioCeiling)} control_added_median=${fmt(controlAddedMedian)} control_added_ratio=${fmt(controlAddedRatio)} tail_ratio=${fmt(tailRatio)} flush_calls baseline=${baselineFlushCalls} guarded=${guardedFlushCalls}`,
         `PERF-JOIN unguarded(old)_p50=${fmt(oldJoin.p50)} unguarded(old)_p95=${fmt(oldJoin.p95)} guarded(new)_p50=${fmt(newJoin.p50)} guarded(new)_p95=${fmt(newJoin.p95)} samples=${joinN}`,
         'PERF-TABLE-BEGIN',
         `| measure | old p50 ms | old p95 ms | new p50 ms | new p95 ms | % p50 | % p95 |`,
@@ -2005,6 +2031,9 @@ describe('PR A symlink writes', () => {
     expect(prePrSafeVaultJoin(root, 'n0.md').startsWith(realRoot)).toBe(true);
     expect(safeVaultJoin(root, 'n0.md', { writeMode: true }).startsWith(realRoot)).toBe(true);
 
+    // Both arms flush once per save, so leaving the flush out removes the same work from each.
+    expect(baselineFlushCalls).toBe(SAVE_WARMUP_ROUNDS + SAVE_ROUNDS);
+    expect(guardedFlushCalls).toBe(baselineFlushCalls);
     // The gate: median added cost per save, as a share of the same-run baseline save.
     expect(addedRatio).toBeLessThanOrEqual(addedRatioCeiling);
     // The gate can see a 2 ms per-save slowdown on this runner.
