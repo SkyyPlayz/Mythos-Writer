@@ -189,10 +189,11 @@ export async function epubToBlocks(
   for (const idref of spine) {
     const item = items.get(idref);
     if (!item) continue;
-    // Story text is XHTML or HTML only. A substring match on "xml" also
-    // accepted the NCX (`application/x-dtbncx+xml`) and imported it as a chapter.
+    // A declared type must be XHTML or HTML. NCX and SVG stay out even when
+    // the href ends in .xml. An empty type may use the file name, and only
+    // .xhtml, .html, or .htm — never plain .xml.
     const isHtml = item.type === 'application/xhtml+xml' || item.type === 'text/html'
-      || /\.(x?html?|xml)$/i.test(item.href);
+      || (item.type === '' && /\.(xhtml|html|htm)$/i.test(item.href));
     if (!isHtml || /\bnav\b/.test(item.props)) continue;
     const entry = reader.file(resolveHref(opfDir, item.href));
     if (!entry) {

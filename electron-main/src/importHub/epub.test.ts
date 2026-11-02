@@ -141,6 +141,46 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(JSON.stringify(story)).not.toMatch(/NCX Ghost Chapter/);
   });
 
+  it('a non-XHTML item with a .xml href yields no chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'ncx',
+        href: 'toc.xml',
+        mediaType: 'application/x-dtbncx+xml',
+        body: '<h1>NCX Xml Chapter</h1><p>Navigation named xml.</p>',
+      },
+      {
+        id: 'svg',
+        href: 'cover.xml',
+        mediaType: 'image/svg+xml',
+        body: '<h1>SVG Xml Chapter</h1><p>An svg is not a chapter.</p>',
+      },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/NCX Xml Chapter|SVG Xml Chapter/);
+  });
+
+  it('an empty media-type with a .xml href yields no chapter', async () => {
+    const buf = await makeEpub([
+      { id: 'xml', href: 'notes.xml', mediaType: '', body: '<h1>Xml Notes Chapter</h1><p>Not a chapter.</p>' },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/Xml Notes Chapter/);
+  });
+
+  it('an empty media-type .xhtml item is still a chapter', async () => {
+    const buf = await makeEpub([
+      { id: 'c1', href: 'ch1.xhtml', mediaType: '', body: '<h1>Untyped Chapter</h1><p>Still read.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Untyped Chapter']);
+    expect(story.chapters[0].scenes[0].prose).toBe('Still read.');
+  });
+
   it('warns about a missing spine document and still imports the rest', async () => {
     const zipBuf = await makeEpub(THREE_CHAPTERS, { title: 'T' });
     const zip = await JSZip.loadAsync(zipBuf);
