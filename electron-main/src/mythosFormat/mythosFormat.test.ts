@@ -39,7 +39,14 @@ import {
   statusToDraftState,
   storyFolderName,
 } from './sceneFiles.js';
-import { parseBookFile, serializeBookFile, type BookFile } from './bookFile.js';
+import {
+  extractSpineJson,
+  parseBookFile,
+  serializeBookFile,
+  stringifyFenceJson,
+  type BookFile,
+} from './bookFile.js';
+import { MAX_BOOK_PROFILES, MAX_BOOK_PROFILES_FENCE_BYTES, type BookProfile } from '../bookBuilder.js';
 import {
   draftsDirForChapter,
   listDraftsForScene,
@@ -394,6 +401,93 @@ describe('book.md codec', () => {
     const parsed = parseBookFile('---\nid: s\ntitle: T\n---\n<!-- mythos:spine\nnot json\n-->\n');
     expect(parsed.spine).toEqual([]);
     expect(parsed.id).toBe('s');
+  });
+
+  const profile: BookProfile = {
+    id: 'p1',
+    name: 'Trade paperback',
+    presetId: 'kdp-paperback',
+    styleId: 'modern',
+    language: 'en',
+    matter: { titlePage: true, copyright: false },
+    author: 'A. Writer',
+    copyrightYear: 2026,
+  };
+
+  it('round-trips profiles and unknown frontmatter', () => {
+    const withProfiles: BookFile = {
+      ...book,
+      profiles: [profile, { ...profile, id: 'p2', name: 'A --> B', presetId: 'ingram-print' }],
+      extraFrontmatter: { series: 'Ash Cycle', volume: 2, draft: false },
+    };
+    const text = serializeBookFile(withProfiles);
+    expect(text).toContain('<!-- mythos:book-profiles');
+    expect(text).toContain('--\\u003e');
+    expect(text).not.toContain('A --> B');
+    const parsed = parseBookFile(text);
+    expect(parsed.profiles).toEqual(withProfiles.profiles);
+    expect(parsed.extraFrontmatter).toEqual({ series: 'Ash Cycle', volume: 2, draft: false });
+    expect(parsed.spine).toEqual(book.spine);
+    expect(extractSpineJson(text)).toContain('"Chapter 01"');
+    expect(extractSpineJson(text)).not.toContain('mythos:book-profiles');
+  });
+
+  it('reads an old book.md that has no profiles fence', () => {
+    const text = serializeBookFile(book);
+    expect(text).not.toContain('mythos:book-profiles');
+    const parsed = parseBookFile(text);
+    expect(parsed).toEqual(book);
+    expect(parsed.profiles).toBeUndefined();
+    expect(parsed.extraFrontmatter).toBeUndefined();
+    const legacy = '---\nid: s\ntitle: Old\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-02T00:00:00.000Z\nseries: Keep\n---\n# Old\n\n<!-- mythos:spine\n[{"dir":"Part 1","chapters":[]}]\n-->\n';
+    const old = parseBookFile(legacy);
+    expect(old.title).toBe('Old');
+    expect(old.spine).toEqual([{ dir: 'Part 1', chapters: [] }]);
+    expect(old.profiles).toBeUndefined();
+    expect(old.extraFrontmatter).toEqual({ series: 'Keep' });
+    expect(parseBookFile(serializeBookFile(old)).extraFrontmatter).toEqual({ series: 'Keep' });
+  });
+
+  it('keeps an over-cap profiles fence verbatim instead of dropping it', () => {
+    const many = Array.from({ length: MAX_BOOK_PROFILES + 1 }, (_, i) => ({
+      ...profile,
+      id: `p${i}`,
+      name: `Name ${i}`,
+    }));
+    const payload = stringifyFenceJson(many);
+    expect(Buffer.byteLength(payload, 'utf8')).toBeLessThan(MAX_BOOK_PROFILES_FENCE_BYTES);
+    const text = [
+      '---',
+      'id: s',
+      'title: T',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-02T00:00:00.000Z',
+      '---',
+      '# T',
+      '',
+      '<!-- mythos:spine',
+      '[{"dir":"Part 1","chapters":[{"dir":"Chapter 01","id":"c","title":"One"}]}]',
+      '-->',
+      '',
+      '<!-- mythos:book-profiles',
+      payload,
+      '-->',
+      '',
+    ].join('\n');
+    const parsed = parseBookFile(text);
+    expect(parsed.profiles).toBeUndefined();
+    expect(parsed.profilesFenceRaw).toBe(payload);
+    expect(parsed.spine[0].chapters[0].title).toBe('One');
+    expect(serializeBookFile(parsed)).toContain(payload);
+
+    const hugeName = 'n'.repeat(MAX_BOOK_PROFILES_FENCE_BYTES);
+    const huge = stringifyFenceJson([{ ...profile, name: hugeName }]);
+    expect(Buffer.byteLength(huge, 'utf8')).toBeGreaterThan(MAX_BOOK_PROFILES_FENCE_BYTES);
+    const hugeFile = text.replace(payload, huge);
+    const hugeParsed = parseBookFile(hugeFile);
+    expect(hugeParsed.profiles).toBeUndefined();
+    expect(hugeParsed.profilesFenceRaw).toBe(huge);
+    expect(serializeBookFile(hugeParsed)).toContain(hugeName);
   });
 });
 

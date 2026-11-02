@@ -10,15 +10,30 @@
 // inline-array splitting), below a regenerated human-readable table of
 // contents.
 //
+// Book profiles live in a second fence, `<!-- mythos:book-profiles … -->`,
+// after the spine. Unknown YAML keys round-trip through `extraFrontmatter`.
+// A fence that fails the cap or the profile schema is kept verbatim
+// (`profilesFenceRaw`) so a later save cannot drop it.
+//
 // Pure Node.
 
 import { parseFrontmatter, serializeFrontmatter } from '../vault.js';
 import { partDirName, chapterDirName } from './sceneFiles.js';
+import {
+  BookProfilesCapError,
+  MAX_BOOK_PROFILES,
+  MAX_BOOK_PROFILES_FENCE_BYTES,
+  validateBookProfiles,
+  type BookProfile,
+} from '../bookBuilder.js';
 
 export const BOOK_FILENAME = 'book.md';
 
 const SPINE_FENCE_OPEN = '<!-- mythos:spine';
-const SPINE_FENCE_CLOSE = '-->';
+const PROFILES_FENCE_OPEN = '<!-- mythos:book-profiles';
+const FENCE_CLOSE = '-->';
+
+const KNOWN_FRONTMATTER_KEYS = new Set(['id', 'title', 'synopsis', 'createdAt', 'updatedAt']);
 
 export interface BookSpineChapter {
   /** Directory name under the part ("Chapter 01"). */
@@ -45,6 +60,15 @@ export interface BookFile {
   createdAt: string;
   updatedAt: string;
   spine: BookSpinePart[];
+  /** Validated profiles. Omitted when the book has none. */
+  profiles?: BookProfile[];
+  /**
+   * Original profiles-fence payload when it could not be adopted (over the
+   * 50-profile / 64 KB cap, or not a valid profile list). Sync echoes it.
+   */
+  profilesFenceRaw?: string;
+  /** YAML keys this codec does not own. Omitted when empty. */
+  extraFrontmatter?: Record<string, unknown>;
 }
 
 function sanitizeSpine(raw: unknown): BookSpinePart[] {
@@ -76,14 +100,47 @@ function sanitizeSpine(raw: unknown): BookSpinePart[] {
   return parts;
 }
 
-/** Extract the JSON payload between the mythos:spine comment fences. */
-export function extractSpineJson(body: string): string | null {
-  const start = body.indexOf(SPINE_FENCE_OPEN);
+function extractFencePayload(body: string, open: string): string | null {
+  const start = body.indexOf(open);
   if (start === -1) return null;
-  const afterOpen = start + SPINE_FENCE_OPEN.length;
-  const end = body.indexOf(SPINE_FENCE_CLOSE, afterOpen);
+  const afterOpen = start + open.length;
+  const end = body.indexOf(FENCE_CLOSE, afterOpen);
   if (end === -1) return null;
   return body.slice(afterOpen, end).trim();
+}
+
+/** Extract the JSON payload between the mythos:spine comment fences. */
+export function extractSpineJson(body: string): string | null {
+  return extractFencePayload(body, SPINE_FENCE_OPEN);
+}
+
+function extraFrontmatterFrom(frontmatter: Record<string, unknown>): Record<string, unknown> | undefined {
+  const extra: Record<string, unknown> = {};
+  let count = 0;
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (KNOWN_FRONTMATTER_KEYS.has(key)) continue;
+    extra[key] = value;
+    count += 1;
+  }
+  return count > 0 ? extra : undefined;
+}
+
+function profilesFromFence(prose: string): { profiles?: BookProfile[]; profilesFenceRaw?: string } {
+  const payload = extractFencePayload(prose, PROFILES_FENCE_OPEN);
+  if (payload === null) return {};
+  if (Buffer.byteLength(payload, 'utf8') > MAX_BOOK_PROFILES_FENCE_BYTES) {
+    return { profilesFenceRaw: payload };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return { profilesFenceRaw: payload };
+  }
+  const validated = validateBookProfiles(parsed);
+  if (!validated.ok) return { profilesFenceRaw: payload };
+  if (validated.profiles.length === 0) return {};
+  return { profiles: validated.profiles };
 }
 
 export function parseBookFile(content: string, fallbackTitle = 'Untitled Story'): BookFile {
@@ -97,6 +154,8 @@ export function parseBookFile(content: string, fallbackTitle = 'Untitled Story')
       spine = [];
     }
   }
+  const carried = profilesFromFence(prose);
+  const extraFrontmatter = extraFrontmatterFrom(frontmatter);
   return {
     id: typeof frontmatter.id === 'string' && frontmatter.id ? frontmatter.id : '',
     title:
@@ -115,6 +174,8 @@ export function parseBookFile(content: string, fallbackTitle = 'Untitled Story')
         ? frontmatter.updatedAt
         : new Date(0).toISOString(),
     spine,
+    ...carried,
+    ...(extraFrontmatter ? { extraFrontmatter } : {}),
   };
 }
 
@@ -131,6 +192,12 @@ export function serializeBookFile(book: BookFile): string {
     createdAt: book.createdAt,
     updatedAt: book.updatedAt,
   };
+  if (book.extraFrontmatter) {
+    for (const [key, value] of Object.entries(book.extraFrontmatter)) {
+      if (KNOWN_FRONTMATTER_KEYS.has(key) || value === undefined || value === null) continue;
+      fm[key] = typeof value === 'string' ? oneLine(value) : value;
+    }
+  }
   const body: string[] = [`# ${book.title}`, ''];
   if (book.synopsis) body.push(book.synopsis, '');
   for (const part of book.spine) {
@@ -144,13 +211,26 @@ export function serializeBookFile(book: BookFile): string {
     }
     body.push('');
   }
-  body.push(
-    SPINE_FENCE_OPEN,
-    stringifySpineJson(book.spine),
-    SPINE_FENCE_CLOSE,
-    '',
-  );
+  body.push(SPINE_FENCE_OPEN, stringifySpineJson(book.spine), FENCE_CLOSE, '');
+  if (book.profilesFenceRaw !== undefined) {
+    body.push(PROFILES_FENCE_OPEN, book.profilesFenceRaw, FENCE_CLOSE, '');
+  } else if (book.profiles && book.profiles.length > 0) {
+    if (book.profiles.length > MAX_BOOK_PROFILES) throw new BookProfilesCapError();
+    const payload = stringifyFenceJson(book.profiles);
+    if (Buffer.byteLength(payload, 'utf8') > MAX_BOOK_PROFILES_FENCE_BYTES) {
+      throw new BookProfilesCapError();
+    }
+    body.push(PROFILES_FENCE_OPEN, payload, FENCE_CLOSE, '');
+  }
   return serializeFrontmatter(fm, `${body.join('\n')}`);
+}
+
+/**
+ * Serialize JSON for an HTML-comment fence.
+ * `-->` inside JSON strings would close the fence early; encode defensively.
+ */
+export function stringifyFenceJson(value: unknown): string {
+  return JSON.stringify(value).replace(/-->/g, '--\\u003e');
 }
 
 /**
@@ -158,5 +238,5 @@ export function serializeBookFile(book: BookFile): string {
  * `-->` inside JSON strings would close the fence early; encode defensively.
  */
 export function stringifySpineJson(spine: unknown): string {
-  return JSON.stringify(spine).replace(/-->/g, '--\\u003e');
+  return stringifyFenceJson(spine);
 }

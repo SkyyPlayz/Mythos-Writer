@@ -12,6 +12,7 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
 
 ### Added
+- **Book profiles stay in the book file.** A book's print profiles are saved inside the book file and kept the next time the story is saved. The panel for editing them comes later.
 - **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
 
 ### Removed

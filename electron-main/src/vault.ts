@@ -245,6 +245,74 @@ export function writeVaultFileAtomic(
   return written;
 }
 
+/** Event code logged when a book.md compare-and-swap gives up. No path, no profile body. */
+export const BOOK_FILE_CAS_EXHAUSTED_EVENT = 'book-file-cas-exhausted';
+
+const BOOK_FILE_CAS_ATTEMPTS = 3;
+
+export class BookFileCasExhaustedError extends Error {
+  readonly event = BOOK_FILE_CAS_EXHAUSTED_EVENT;
+  constructor() {
+    super(BOOK_FILE_CAS_EXHAUSTED_EVENT);
+    this.name = 'BookFileCasExhaustedError';
+  }
+}
+
+export function isBookFileCasExhausted(err: unknown): err is BookFileCasExhaustedError {
+  return err instanceof BookFileCasExhaustedError;
+}
+
+/** Test-only. Runs after mutate and before the compare read inside writeBookFileCas. */
+let bookFileCasBeforeCompareForTests: (() => void) | undefined;
+
+export function _setBookFileCasBeforeCompareForTests(hook: (() => void) | null): void {
+  bookFileCasBeforeCompareForTests = hook ?? undefined;
+}
+
+function readVaultTextOrNull(vaultRoot: string, filePath: string): string | null {
+  const abs = safeVaultJoin(vaultRoot, filePath, { writeMode: true });
+  try {
+    return fs.readFileSync(abs, 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+export interface WriteBookFileCasOptions {
+  /** Test-only hook invoked after mutate and before the compare read. */
+  beforeCompare?: () => void;
+}
+
+/**
+ * Synchronous compare-and-swap for one vault file (book.md).
+ * Reads with readFileSync, or null when the file is missing. `mutate(null)`
+ * is the create path — this function does not invent file contents.
+ * After mutate, re-reads. Writes through writeVaultFileAtomic only when the
+ * bytes still match the snapshot; otherwise retries with a fresh mutate.
+ * Gives up after 3 attempts. Never awaits.
+ */
+export function writeBookFileCas(
+  vaultRoot: string,
+  filePath: string,
+  mutate: (prevRaw: string | null) => string,
+  options?: WriteBookFileCasOptions,
+): void {
+  const beforeCompare = options?.beforeCompare ?? bookFileCasBeforeCompareForTests;
+  for (let attempt = 0; attempt < BOOK_FILE_CAS_ATTEMPTS; attempt++) {
+    const prevRaw = readVaultTextOrNull(vaultRoot, filePath);
+    const next = mutate(prevRaw);
+    beforeCompare?.();
+    const current = readVaultTextOrNull(vaultRoot, filePath);
+    if (current === prevRaw) {
+      if (current !== next) writeVaultFileAtomic(vaultRoot, filePath, next);
+      return;
+    }
+  }
+  throw new BookFileCasExhaustedError();
+}
+
 /**
  * Write `content` to an absolute path the AI write guard already canonicalised.
  * Does not re-join a caller-supplied relative path. Bytes go through the

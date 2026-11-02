@@ -51,7 +51,14 @@ import {
   statusToDraftState,
   storyFolderName,
 } from './sceneFiles.js';
-import { vaultRelPath, writeManifest as writeManifestRaw, writeVaultFileAtomic, writeVaultOrSkip } from '../vault.js';
+import {
+  BOOK_FILE_CAS_EXHAUSTED_EVENT,
+  isBookFileCasExhausted,
+  vaultRelPath,
+  writeBookFileCas,
+  writeManifest as writeManifestRaw,
+  writeVaultOrSkip,
+} from '../vault.js';
 import { VaultWriteRefusedError } from '../vault/noFollowWrite.js';
 import { isSymlinkWriteRefusal, symlinkSkipLine } from '../vault/writeErrors.js';
 import {
@@ -860,6 +867,45 @@ function spineFromManifest(story: StoryEntry, folder: string, previous: BookFile
 }
 
 /**
+ * Next book.md body for one story. Carries profiles and unknown frontmatter
+ * from the previous file. Returns the previous bytes when the only difference
+ * would be `updatedAt`, so a quiet save does not rewrite the file.
+ * `prevRaw === null` creates a book from the manifest alone — no profiles,
+ * no invented isbn/author/publisher.
+ */
+function bookMarkdownForSync(story: StoryEntry, folder: string, prevRaw: string | null): string {
+  let previous: BookFile | null = null;
+  if (prevRaw !== null) {
+    try {
+      previous = parseBookFile(prevRaw, story.title);
+    } catch {
+      previous = null;
+    }
+  }
+  const book: BookFile = {
+    id: story.id,
+    title: story.title,
+    ...(story.synopsis ? { synopsis: story.synopsis } : {}),
+    createdAt: previous?.createdAt ?? story.createdAt,
+    updatedAt: story.updatedAt,
+    spine: spineFromManifest(story, folder, previous),
+    ...(previous?.profiles?.length ? { profiles: previous.profiles } : {}),
+    ...(previous?.profilesFenceRaw !== undefined
+      ? { profilesFenceRaw: previous.profilesFenceRaw }
+      : {}),
+    ...(previous?.extraFrontmatter && Object.keys(previous.extraFrontmatter).length > 0
+      ? { extraFrontmatter: previous.extraFrontmatter }
+      : {}),
+  };
+  const next = serializeBookFile(book);
+  if (prevRaw !== null && previous) {
+    const prevStable = serializeBookFile({ ...previous, updatedAt: book.updatedAt });
+    if (prevStable === next) return prevRaw;
+  }
+  return next;
+}
+
+/**
  * Decompose a manifest write into the canonical v2 files. Cheap by design:
  * mythos.json and each book.md are only rewritten when their serialized
  * content actually changed. Never throws — canonical sync must not break the
@@ -890,37 +936,22 @@ export function syncCanonicalFromManifest(
       });
 
       // book.md — only for stories whose folder exists on disk.
+      // Compare-and-swap so a concurrent profile edit is not overwritten by a
+      // stale snapshot. Exhaustion skips this file (last good bytes stay) and
+      // the next sync tries again. The manifest cache write already finished
+      // before this function runs; this path does not fail that save.
       const storyAbs = path.join(storyVaultRoot, folder);
       if (!fs.existsSync(storyAbs)) continue;
-      const bookPath = path.join(storyAbs, BOOK_FILENAME);
-      let previous: BookFile | null = null;
-      let previousRaw: string | null = null;
+      const bookRel = vaultRelPath(storyVaultRoot, path.join(storyAbs, BOOK_FILENAME));
       try {
-        previousRaw = fs.readFileSync(bookPath, 'utf-8');
-        previous = parseBookFile(previousRaw, story.title);
-      } catch {
-        previous = null;
-      }
-      const book: BookFile = {
-        id: story.id,
-        title: story.title,
-        ...(story.synopsis ? { synopsis: story.synopsis } : {}),
-        createdAt: previous?.createdAt ?? story.createdAt,
-        updatedAt: story.updatedAt,
-        spine: spineFromManifest(story, folder, previous),
-      };
-      // Skip the write when nothing but updatedAt would change.
-      const next = serializeBookFile(book);
-      if (previousRaw !== null && previous) {
-        const prevStable = serializeBookFile({ ...previous, updatedAt: book.updatedAt });
-        if (prevStable === next) continue;
-      }
-      const bookRel = vaultRelPath(storyVaultRoot, bookPath);
-      try {
-        writeVaultFileAtomic(storyVaultRoot, bookRel, next);
+        writeBookFileCas(storyVaultRoot, bookRel, (prevRaw) => bookMarkdownForSync(story, folder, prevRaw));
       } catch (err) {
         if (isSymlinkWriteRefusal(err)) {
           skipped?.push(symlinkSkipLine(bookRel));
+          continue;
+        }
+        if (isBookFileCasExhausted(err)) {
+          console.warn(JSON.stringify({ event: BOOK_FILE_CAS_EXHAUSTED_EVENT }));
           continue;
         }
         throw err;
