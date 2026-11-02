@@ -10,7 +10,7 @@ import {
   type SceneCrafterBoard,
   type BoardCard,
 } from './sceneCrafterBoard.js';
-import { writeFileAtomic } from './vault.js';
+import { writeVaultFileAtomic } from './vault.js';
 import { beginBoardWrite, endBoardWrite } from './sceneCrafterWatcher.js';
 
 // How long to keep the write-lock after a successful write, in milliseconds.
@@ -49,7 +49,7 @@ function writeBoard(notesVaultRoot: string, storySlug: string, board: SceneCraft
   beginBoardWrite(p);
   try {
     board.lastModified = new Date().toISOString();
-    writeFileAtomic(p, serializeBoardMarkdown(board));
+    writeVaultFileAtomic(notesVaultRoot, boardRelPath(storySlug), serializeBoardMarkdown(board));
   } finally {
     // Release write-lock after chokidar's awaitWriteFinish window passes so the
     // watcher event for this write is suppressed, not treated as an external edit.

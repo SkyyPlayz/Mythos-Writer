@@ -14,7 +14,7 @@ import {
   serializeSessionFile,
   sanitizeIncomingWriteTurn,
 } from './mythosFormat/agentSessions.js';
-import { writeFileAtomic } from './vault.js';
+import { writeVaultFileAtomic } from './vault.js';
 import type {
   AgentSessionListPayload,
   AgentSessionListResponse,
@@ -99,7 +99,7 @@ export function handleAgentSessionRename(
   const session = found.session;
   session.title = payload.title.replace(/[\r\n]+/g, ' ').trim() || session.title;
   session.updatedAt = new Date().toISOString();
-  writeFileAtomic(path.join(notesRoot, found.relPath), serializeSessionFile(session));
+  writeVaultFileAtomic(notesRoot, found.relPath, serializeSessionFile(session));
   return { ok: true };
 }
 

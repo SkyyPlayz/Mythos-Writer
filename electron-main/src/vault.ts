@@ -20,6 +20,15 @@ import type {
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
 import { blocksToMarkdownBody, unwrapBlockSegment } from './sceneBody.js';
 import { safeVaultJoin } from './vault/safeVaultJoin.js';
+import { MAX_VAULT_FILE_BYTES, VaultFileTooLargeError } from './vault/limits.js';
+import { writeExportFileAtomic, writeVaultFileNoFollow } from './vault/vaultFileWrite.js';
+import { writeNoFollowAtomic } from './vault/noFollowWrite.js';
+import { isSymlinkWriteRefusal, symlinkSkipLine } from './vault/writeErrors.js';
+import { renameSyncWithRetry } from './vault/renameSyncWithRetry.js';
+
+export { MAX_VAULT_FILE_BYTES, VaultFileTooLargeError } from './vault/limits.js';
+export { renameSyncWithRetry };
+export { writeExportFileAtomic } from './vault/vaultFileWrite.js';
 
 export {
   safeVaultJoin,
@@ -99,22 +108,6 @@ export function sceneVaultPath(
   return resolveSlugCollision(vaultRoot, chapterDir, toSlug(sceneTitle), '.md');
 }
 
-// ─── Size limits ───
-
-export const MAX_VAULT_FILE_BYTES = 25 * 1024 * 1024; // 25 MB — well above any scene
-
-export class VaultFileTooLargeError extends Error {
-  readonly sizeBytes: number;
-  readonly limitBytes: number;
-  constructor(sizeBytes: number, limitBytes = MAX_VAULT_FILE_BYTES) {
-    super(
-      `File too large: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB exceeds the ${(limitBytes / 1024 / 1024).toFixed(0)} MB limit.`
-    );
-    this.name = 'VaultFileTooLargeError';
-    this.sizeBytes = sizeBytes;
-    this.limitBytes = limitBytes;
-  }
-}
 /**
  * Resolve a relative path inside the vault, hardening against escape vectors
  * (traversal, symlinks, null bytes, encoded ".." and cross-OS payloads).
@@ -132,28 +125,32 @@ export function realSafePath(vaultRoot: string, relativePath: string, writeMode 
 export const safePath = realSafePath;
 
 /**
- * Resolve an EPUB export target (MYT-675).
- *
- * `export:epub` accepts an optional renderer-supplied `targetPath` as a headless
- * export escape hatch. Left unconstrained it allowed writing EPUB bytes to an
- * arbitrary absolute path (out-of-vault write), so a compromised/buggy renderer
- * could clobber files anywhere on disk. We constrain it to a vault-relative
- * `.epub` path and reuse the realSafePath containment hardening (MYT-672 /
- * MYT-641) so `..` traversal, absolute paths, and symlink escapes are all
- * rejected before any bytes are written.
- *
- * Returns the contained absolute path to write to.
+ * Validate a headless EPUB `targetPath`. Returns the path unchanged (relative).
+ * Containment and symlink refusal happen in {@link commitEpubTargetExport},
+ * which writes through `writeVaultFileAtomic`.
  */
 export function resolveEpubExportPath(vaultRoot: string, targetPath: string): string {
+  void vaultRoot;
   if (typeof targetPath !== 'string' || targetPath.trim().length === 0) {
     throw new Error('export:epub targetPath must be a non-empty string');
   }
   if (path.extname(targetPath).toLowerCase() !== '.epub') {
     throw new Error('export:epub targetPath must end in .epub');
   }
-  // realSafePath rejects absolute paths and "../" escapes (and symlink escapes),
-  // anchoring the write inside the vault root.
-  return realSafePath(vaultRoot, targetPath, true);
+  return targetPath;
+}
+
+/**
+ * Headless EPUB `targetPath` branch. Writes inside the vault. The returned
+ * `absPath` is what `lastExportPath` records; `path` stays vault-relative.
+ */
+export function commitEpubTargetExport(
+  vaultRoot: string,
+  targetPath: string,
+  data: Buffer | string,
+): { path: string; bytes: number; absPath: string } {
+  const rel = resolveEpubExportPath(vaultRoot, targetPath);
+  return writeVaultFileAtomic(vaultRoot, rel, data);
 }
 
 // ─── Basic R/W (used by legacy IPC channels) ───
@@ -199,81 +196,59 @@ export function readVaultFileWithRetry(
   }
 }
 
-/** Non-atomic write — leaves a torn file if the process crashes mid-write. Only for tests. */
+/** Test-only write. Still goes through the guard and a no-follow open (no fsync). */
 export function writeVaultFileUnsafe_testOnly(
   vaultRoot: string,
   filePath: string,
   content: string
 ): { path: string; bytes: number } {
-  const fullPath = realSafePath(vaultRoot, filePath, true);
-  const dir = path.dirname(fullPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(fullPath, content, 'utf-8');
+  const fullPath = safeVaultJoin(vaultRoot, filePath, { writeMode: true });
+  writeNoFollowAtomic(fullPath, content, { durable: false, mkdir: true, rel: filePath });
   markSelfWrite(fullPath);
   return { path: filePath, bytes: Buffer.byteLength(content, 'utf-8') };
 }
 
-// SKY-9027: on Windows, a file or directory that was just created or is being
-// scanned (antivirus, search indexer, an FTS walk) can hold a transient handle
-// that fails fs.renameSync with EPERM/EBUSY/EACCES even though the same rename
-// succeeds a moment later — observed on the native-Windows CI runner renaming a
-// freshly seeded folder. Retry briefly with backoff (the graceful-fs approach)
-// instead of surfacing a one-shot failure to the renderer. Non-transient codes
-// (ENOENT, EXDEV, …) and code-less errors still throw immediately.
-const RETRYABLE_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
-const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
+/**
+ * Atomic vault write: temp file → fdatasync → rename.
+ * Always joins with writeMode itself, then the no-follow writer.
+ */
+export function vaultRelPath(root: string, absPath: string): string {
+  return path.relative(root, absPath).split(path.sep).join('/');
+}
 
-export function renameSyncWithRetry(from: string, to: string): void {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      fs.renameSync(from, to);
-      return;
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code ?? '';
-      if (attempt >= RENAME_RETRY_DELAYS_MS.length || !RETRYABLE_RENAME_CODES.has(code)) {
-        throw err;
-      }
-      // Bounded sync wait (~750ms worst case) — these handlers run as sync IPC.
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RENAME_RETRY_DELAYS_MS[attempt]);
+/** Bulk callers: a symlink refusal is listed and skipped. Anything else throws. */
+export function writeVaultOrSkip(
+  root: string,
+  rel: string,
+  data: Buffer | string,
+  skipped: string[],
+): boolean {
+  try {
+    writeVaultFileAtomic(root, rel, data);
+    return true;
+  } catch (err) {
+    if (isSymlinkWriteRefusal(err)) {
+      skipped.push(symlinkSkipLine(rel.replace(/\\/g, '/')));
+      return false;
     }
+    throw err;
   }
 }
 
-/**
- * Atomic vault write: temp file → fdatasync → rename.
- * A crash between writeSync and renameSync leaves the original file intact.
- */
 export function writeVaultFileAtomic(
   vaultRoot: string,
   filePath: string,
-  content: string
-): { path: string; bytes: number } {
-  const fullPath = realSafePath(vaultRoot, filePath, true);
-  const buf = Buffer.from(content, 'utf-8');
-  if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
-  const dir = path.dirname(fullPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${fullPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
-  const fd = fs.openSync(tmp, 'w');
-  try {
-    fs.writeSync(fd, buf);
-    fs.fdatasyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
-  try {
-    renameSyncWithRetry(tmp, fullPath);
-  } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
-    throw err;
-  }
-  markSelfWrite(fullPath);
-  return { path: filePath, bytes: buf.byteLength };
+  content: Buffer | string,
+): { path: string; bytes: number; absPath: string } {
+  const written = writeVaultFileNoFollow(vaultRoot, filePath, content, true);
+  markSelfWrite(written.absPath);
+  return written;
 }
 
 /**
  * Write `content` to an absolute path the AI write guard already canonicalised.
- * Does not re-join a caller-supplied relative path.
+ * Does not re-join a caller-supplied relative path. Bytes go through the
+ * no-follow export writer so a symlink at that path is refused.
  */
 export function writeVaultFileAtomicAbs(
   absPath: string,
@@ -281,40 +256,15 @@ export function writeVaultFileAtomicAbs(
 ): { path: string; bytes: number } {
   const buf = Buffer.from(content, 'utf-8');
   if (buf.byteLength > MAX_VAULT_FILE_BYTES) throw new VaultFileTooLargeError(buf.byteLength);
-  const dir = path.dirname(absPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  writeFileAtomic(absPath, buf);
+  writeExportFileAtomic(absPath, buf);
   markSelfWrite(absPath);
   return { path: absPath, bytes: buf.byteLength };
 }
 
-/**
- * Generic atomic write for arbitrary absolute paths (e.g. export targets outside the vault).
- * Does NOT enforce the vault sandbox — callers are responsible for path safety.
- */
-export function writeFileAtomic(absPath: string, data: Buffer | string): void {
-  const dir = path.dirname(absPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${absPath}.${process.pid}-${crypto.randomBytes(6).toString('hex')}.tmp`;
-  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
-  const fd = fs.openSync(tmp, 'w');
-  try {
-    fs.writeSync(fd, buf);
-    fs.fdatasyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
-  try {
-    renameSyncWithRetry(tmp, absPath);
-  } catch (err) {
-    try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
-    throw err;
-  }
-}
-
 export function listVaultFiles(
   vaultRoot: string,
-  root?: string
+  root?: string,
+  opts?: { includeSymlinkLeaves?: boolean },
 ): { items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> } {
   const baseDir = root ? realSafePath(vaultRoot, root, false) : vaultRoot;
   const items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> = [];
@@ -328,7 +278,11 @@ export function listVaultFiles(
       return;
     }
     for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
+      if (entry.isSymbolicLink()) {
+        // Directory links are never walked. File links are listed only when a
+        // caller (rename cascade) must see them so a write can be refused.
+        if (!opts?.includeSymlinkLeaves || entry.isDirectory()) continue;
+      }
       if (entry.name.startsWith('.trash-')) continue; // deleteVaultFile rename-to-trash artifacts
       const fullPath = path.join(dir, entry.name);
       // SKY-8881: listing paths cross the IPC boundary into the renderer,
@@ -1232,7 +1186,7 @@ export function saveVaultIndexCache(
   try {
     fs.mkdirSync(cacheDir, { recursive: true });
     const cachePath = path.join(cacheDir, `${vaultRootHash(vaultRoot)}.json`);
-    writeFileAtomic(cachePath, JSON.stringify(cache));
+    writeExportFileAtomic(cachePath, JSON.stringify(cache));
   } catch {
     // Non-fatal — warm start just degrades to cold next time
   }

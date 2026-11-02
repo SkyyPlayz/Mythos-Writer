@@ -10,7 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultFileAtomic } from '../vault.js';
 
 export const VAULT_SETTINGS_FILENAME = 'settings.json';
 export const VAULT_SETTINGS_VERSION = 1 as const;
@@ -58,5 +58,5 @@ export function readVaultSettingsFile(mythosRoot: string): VaultSettingsFile {
 }
 
 export function writeVaultSettingsFile(mythosRoot: string, settings: VaultSettingsFile): void {
-  writeFileAtomic(vaultSettingsPath(mythosRoot), `${JSON.stringify(settings, null, 2)}\n`);
+  writeVaultFileAtomic(mythosRoot, VAULT_SETTINGS_FILENAME, `${JSON.stringify(settings, null, 2)}\n`);
 }

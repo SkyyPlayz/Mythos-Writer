@@ -17,9 +17,43 @@ function mockDirent(name: string, isFile: boolean): Dirent {
   return { name, isFile: () => isFile, isDirectory: () => !isFile } as unknown as Dirent;
 }
 
+const NOTE_DEV = 1;
+const NOTE_INO = 2;
+
+function mockNoteText(text: string): void {
+  const constants = fs.constants as { O_RDONLY: number; O_NOFOLLOW: number };
+  constants.O_RDONLY = 0;
+  constants.O_NOFOLLOW = 0;
+  vi.mocked(fs.openSync).mockReturnValue(4 as never);
+  vi.mocked(fs.fstatSync).mockReturnValue({
+    dev: NOTE_DEV,
+    ino: NOTE_INO,
+    size: Buffer.byteLength(text),
+    isFile: () => true,
+  } as never);
+  vi.mocked(fs.lstatSync).mockReturnValue({
+    dev: NOTE_DEV,
+    ino: NOTE_INO,
+    isFile: () => true,
+    isSymbolicLink: () => false,
+  } as never);
+  vi.mocked(fs.readSync).mockImplementation(((
+    _fd: number,
+    buf: NodeJS.ArrayBufferView,
+    offset?: number,
+    length?: number,
+  ) => {
+    const bytes = Buffer.from(text).subarray(0, length ?? text.length);
+    bytes.copy(buf as Buffer, offset ?? 0);
+    return bytes.length;
+  }) as typeof fs.readSync);
+  vi.mocked(fs.closeSync).mockImplementation(() => undefined);
+}
+
 describe('buildEntityIndex', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    (fs as unknown as Record<symbol, NodeJS.Platform>)[Symbol.for('mythos.noFollowPlatform')] = 'win32';
   });
 
   it('returns empty when directories do not exist', () => {
@@ -40,9 +74,10 @@ describe('buildEntityIndex', () => {
       if (d.endsWith('Stories')) return [] as unknown as any;
       return [] as unknown as any;
     });
-    vi.mocked(fs.readFileSync).mockReturnValue('---\naliases: [The Starchild]\ntype: Character\n---\nA hero.' as unknown as ReturnType<typeof fs.readFileSync>);
+    mockNoteText('---\naliases: [The Starchild]\ntype: Character\n---\nA hero.');
 
     const result = buildEntityIndex('/vault');
+    expect(result.length).toBeGreaterThan(0);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Lyra');
     expect(result[0].aliases).toEqual(['The Starchild']);
@@ -56,7 +91,7 @@ describe('buildEntityIndex', () => {
       if (String(dir).endsWith('Universes')) return [mockDirent('broken.md', true)] as unknown as any;
       return [] as unknown as any;
     });
-    vi.mocked(fs.readFileSync).mockImplementation(() => { throw new Error('EACCES'); });
+    vi.mocked(fs.openSync).mockImplementation(() => { throw new Error('EACCES'); });
 
     const result = buildEntityIndex('/vault');
     expect(result).toHaveLength(0);
@@ -71,9 +106,10 @@ describe('buildEntityIndex', () => {
       if (d.endsWith('Characters')) return [mockDirent('Arya.md', true)] as unknown as any;
       return [] as unknown as any;
     });
-    vi.mocked(fs.readFileSync).mockReturnValue('---\ntype: Character\n---\n' as unknown as ReturnType<typeof fs.readFileSync>);
+    mockNoteText('---\ntype: Character\n---\n');
 
     const result = buildEntityIndex('/vault');
+    expect(result.length).toBeGreaterThan(0);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Arya');
   });
@@ -85,9 +121,10 @@ describe('buildEntityIndex', () => {
       if (String(dir).endsWith('Universes')) return [mockDirent('Mab.md', true)] as unknown as any;
       return [] as unknown as any;
     });
-    vi.mocked(fs.readFileSync).mockReturnValue('---\naliases: [The Shadow]\ntype: Character\nreveal_point: Chapter 5\n---\n' as unknown as ReturnType<typeof fs.readFileSync>);
+    mockNoteText('---\naliases: [The Shadow]\ntype: Character\nreveal_point: Chapter 5\n---\n');
 
     const result = buildEntityIndex('/vault');
+    expect(result.length).toBeGreaterThan(0);
     expect(result[0].reveal_point).toBe('Chapter 5');
   });
 
@@ -98,9 +135,10 @@ describe('buildEntityIndex', () => {
       if (String(dir).endsWith('Universes')) return [mockDirent('Lyra.md', true)] as unknown as any;
       return [] as unknown as any;
     });
-    vi.mocked(fs.readFileSync).mockReturnValue('---\naliases: [The Starchild]\ntype: Character\n---\n' as unknown as ReturnType<typeof fs.readFileSync>);
+    mockNoteText('---\naliases: [The Starchild]\ntype: Character\n---\n');
 
     const result = buildEntityIndex('/vault');
+    expect(result.length).toBeGreaterThan(0);
     expect(result[0].reveal_point).toBeNull();
   });
 });

@@ -21,6 +21,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { NOFOLLOW_MISMATCH, openNoFollow } from './noFollowOpen.js';
 
 export interface SafeVaultJoinOptions {
   /** Treat as a write/create — the leaf is allowed to not exist yet. */
@@ -47,8 +48,179 @@ const UNC_RE = /^\\\\/;
 // watcher event normalisation) intends to decode and would *then* escape.
 const ENCODED_DOTDOT_RE = /(?:%2e){2}|(?:%252e){2}/i;
 
+/**
+ * Containment: `candidate === root` or `candidate` starts with `root + sep`.
+ * On win32 both sides are case-folded and a `\\?\` / `\\?\UNC\` prefix is stripped.
+ */
+export function containmentKey(p: string, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return p;
+  let s = p;
+  if (s.startsWith('\\\\?\\UNC\\')) s = `\\\\${s.slice('\\\\?\\UNC\\'.length)}`;
+  else if (s.startsWith('\\\\?\\')) s = s.slice(4);
+  return s.toLowerCase();
+}
+
+export function isResolvedPathInsideRoot(
+  root: string,
+  candidate: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const r = containmentKey(root, platform);
+  const c = containmentKey(candidate, platform);
+  return c === r || c.startsWith(r + path.sep);
+}
+
 function isWithinVault(realVaultRoot: string, candidate: string): boolean {
-  return candidate === realVaultRoot || candidate.startsWith(realVaultRoot + path.sep);
+  return isResolvedPathInsideRoot(realVaultRoot, candidate);
+}
+
+function logVaultRefusal(code: string, rel: string): void {
+  const safe = path.isAbsolute(rel) || path.win32.isAbsolute(rel) ? path.basename(rel) : rel.replace(/\\/g, '/');
+  console.error(`vault-write-refused ${JSON.stringify({ code, rel: safe })}`);
+}
+
+/**
+ * `lstatResult` must come from `lstat`, not `stat` or `fstat`.
+ * `stat` of a symlink-to-file reports `isFile()` and would hide the link.
+ * Callers: `lstatLeaf`, and `symlinkAncestorStopsWalk`'s `lstatSync`.
+ * A regular file skips `readlinkSync`. A directory reparse point is not a
+ * file, so the junction fallback still calls `readlinkSync`.
+ */
+function isLinkStat(lstatResult: fs.Stats, p: string): boolean {
+  if (lstatResult.isSymbolicLink()) return true;
+  if (lstatResult.isFile()) return false;
+  try {
+    fs.readlinkSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * lstat the leaf. ENOENT/ENOTDIR → null. ELOOP → loop error.
+ * Any other error is logged and rethrown (never treated as absent).
+ */
+function throwSymlinkLoop(relPath: string): never {
+  logVaultRefusal('ELOOP', relPath);
+  throw new Error(`Path traversal denied: ${relPath} (symlink loop)`);
+}
+
+/**
+ * An existing write leaf was lstat'd as a non-link. Open it through the shared
+ * no-follow helper, then require fstat to match that earlier lstat. A FIFO opened
+ * with plain O_RDONLY waits forever for a writer. realpath of the leaf would follow
+ * a symlink swapped in after the lstat and hand the writer a different file.
+ * On win32 the helper lstats again and refuses a symlink or junction before the open.
+ * The immediate-return flag is omitted on win32 so a normal file open stays the same there.
+ * Directories stay joinable for mkdir, move, and delete.
+ */
+function assertExistingLeafFd(absPath: string, relPath: string, listed: fs.Stats): void {
+  const nonBlock = process.platform === 'win32' ? 0 : (fs.constants.O_NONBLOCK ?? 0);
+  const flags = fs.constants.O_RDONLY | nonBlock;
+  let fd: number | undefined;
+  try {
+    fd = openNoFollow(fs, absPath, flags);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP' || code === NOFOLLOW_MISMATCH) {
+      logVaultRefusal('LEAF_LINK', relPath);
+      throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);
+    }
+    if (code === 'EISDIR' && listed.isDirectory()) return;
+    throw err;
+  }
+  try {
+    const opened = fs.fstatSync(fd);
+    if (opened.isDirectory() && listed.isDirectory()) return;
+    if (!opened.isFile()) {
+      logVaultRefusal('NOT_REGULAR', relPath);
+      throw new Error(`Path traversal denied: ${relPath} (not a regular file)`);
+    }
+    if (opened.dev !== listed.dev || opened.ino !== listed.ino) {
+      logVaultRefusal('LEAF_LINK', relPath);
+      throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function lstatLeaf(p: string, relPath: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(p);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    if (code === 'ELOOP') throwSymlinkLoop(relPath);
+    logVaultRefusal(code ?? 'LSTAT', relPath);
+    throw err;
+  }
+}
+
+/**
+ * existsSync follows links and treats a Windows file-symlink loop as absent,
+ * so a write of `d/x.md` through `d -> d` used to return the path. lstat of
+ * that child is ENOENT on win32 (the loop is not reported until an ancestor
+ * is stat'd). A successful lstat of a symlink ancestor is resolved here.
+ * An ELOOP from lstat of the path itself is left to lstatLeaf: mapping that
+ * to null must stay visible to a read whose parents are real directories.
+ *
+ * Read mode walks every parent component inside the caller's vault root.
+ * A missing leaf does not stop the walk: win32 reports ENOENT for a child of
+ * a file-symlink loop, and a higher component can be the looping link.
+ * ELOOP from lstat or from realpath of any of those components is refused.
+ * There is no win32 exception. A dangling symlink is not a loop; the lexical
+ * read check still decides that path.
+ */
+function assertNoReadParentLoop(resolved: string, relPath: string, vaultPath: string): void {
+  let ancestor = path.dirname(resolved);
+  while (isResolvedPathInsideRoot(vaultPath, ancestor)) {
+    let st: fs.Stats | undefined;
+    try {
+      st = fs.lstatSync(ancestor);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ELOOP') throwSymlinkLoop(relPath);
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+        logVaultRefusal(code ?? 'LSTAT', relPath);
+        throw err;
+      }
+      st = undefined;
+    }
+    if (st && isLinkStat(st, ancestor)) {
+      try {
+        fs.realpathSync.native(ancestor);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ELOOP') throwSymlinkLoop(relPath);
+      }
+    }
+    if (containmentKey(ancestor) === containmentKey(vaultPath)) break;
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+}
+
+function symlinkAncestorStopsWalk(ancestor: string, relPath: string): 'stop' | 'continue' | 'posix-loop' {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(ancestor);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP') return 'posix-loop';
+    if (code === 'ENOENT' || code === 'ENOTDIR') return 'continue';
+    throw err;
+  }
+  if (!isLinkStat(st, ancestor)) return 'continue';
+  try {
+    fs.realpathSync.native(ancestor);
+    return 'stop';
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ELOOP') throwSymlinkLoop(relPath);
+    throw new Error(`Path traversal denied: ${relPath} (parent symlink escapes vault)`);
+  }
 }
 
 function applyOptionalChecks(absPath: string, relPath: string, opts: SafeVaultJoinOptions): void {
@@ -93,18 +265,86 @@ export function safeVaultJoin(
 
   const realVaultRoot = fs.realpathSync.native(vaultRoot);
   const resolved = path.resolve(vaultRoot, relPath);
+  const leaf = lstatLeaf(resolved, relPath);
+
+  if (leaf && isLinkStat(leaf, resolved)) {
+    if (opts.writeMode) {
+      logVaultRefusal('LEAF_LINK', relPath);
+      throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);
+    }
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync.native(resolved);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ELOOP') {
+        logVaultRefusal('ELOOP', relPath);
+        throw new Error(`Path traversal denied: ${relPath} (symlink loop)`);
+      }
+      throw new Error(`Path traversal denied: ${relPath}`);
+    }
+    if (!isWithinVault(realVaultRoot, realPath)) {
+      throw new Error(`Path traversal denied: ${relPath} (symlink escape detected)`);
+    }
+    applyOptionalChecks(resolved, relPath, opts);
+    return resolved;
+  }
 
   if (opts.writeMode) {
+    if (leaf) {
+      // Open the leaf and match fstat to the lstat before any realpath.
+      // A symlink swapped in after the lstat must not become the write target.
+      assertExistingLeafFd(resolved, relPath, leaf);
+      // EACCES/EPERM from this path still have to throw so the AI guard can
+      // report resolve_failed. The realpath result is discarded: using it
+      // would follow a symlink that appeared after the fd check.
+      try {
+        fs.realpathSync.native(resolved);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ELOOP') {
+          logVaultRefusal('LEAF_LINK', relPath);
+          throw new Error(`Path traversal denied: ${relPath} (symlink leaf not allowed on write)`);
+        }
+        throw err;
+      }
+      const parent = path.dirname(resolved);
+      const realParent = parent === path.resolve(vaultRoot) ? realVaultRoot : fs.realpathSync.native(parent);
+      if (!isWithinVault(realVaultRoot, realParent)) {
+        // Leaf exists, so keep the leaf escape marker. A missing leaf through
+        // the same parent still uses the parent-symlink marker.
+        throw new Error(`Path traversal denied: ${relPath} (symlink escape detected)`);
+      }
+      const realTarget = path.join(realParent, path.basename(resolved));
+      if (!isWithinVault(realVaultRoot, realTarget)) {
+        throw new Error(`Path traversal denied: ${relPath}`);
+      }
+      applyOptionalChecks(realTarget, relPath, opts);
+      return realTarget;
+    }
+
     // Leaf may not exist yet — walk up to the nearest existing ancestor,
     // realpath that ancestor, then reattach the remaining suffix so a
     // symlinked vault root with deeply-nested empty parents is still allowed.
-    let ancestor = resolved;
-    while (!fs.existsSync(ancestor)) {
+    // lstatLeaf already classified `resolved`. Null is ENOENT/ENOTDIR, so the
+    // leaf is not a symlink; existsSync and a second lstat of that same path
+    // only repeat the miss. Windows file-symlink loops still report ENOENT on
+    // the child — the parent walk lstats those ancestors.
+    let ancestor = path.dirname(resolved);
+    let posixLoop = false;
+    let exists = fs.existsSync(ancestor);
+    while (!exists) {
+      if (!posixLoop) {
+        const stopped = symlinkAncestorStopsWalk(ancestor, relPath);
+        if (stopped === 'stop') break;
+        if (stopped === 'posix-loop') posixLoop = true;
+      }
       const parent = path.dirname(ancestor);
       if (parent === ancestor) break;
       ancestor = parent;
+      exists = fs.existsSync(ancestor);
     }
-    if (!fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relPath}`);
+    if (!exists && !fs.existsSync(ancestor)) throw new Error(`Path traversal denied: ${relPath}`);
 
     const realAncestor = fs.realpathSync.native(ancestor);
     if (!isWithinVault(realVaultRoot, realAncestor)) {
@@ -129,10 +369,12 @@ export function safeVaultJoin(
 
   // Read mode: keep the return value anchored to the caller's vault root so
   // callers see the path they passed in. Containment is still checked against
-  // the realpath'd root.
+  // the realpath'd root. Every parent component is lstat'd first so a symlink
+  // loop is refused on win32, where the leaf lstat is ENOENT rather than ELOOP.
   const normalizedRoot = path.resolve(vaultRoot);
+  if (!leaf) assertNoReadParentLoop(resolved, relPath, normalizedRoot);
 
-  if (fs.existsSync(resolved)) {
+  if (leaf) {
     const realPath = fs.realpathSync.native(resolved);
     if (!isWithinVault(realVaultRoot, realPath)) {
       throw new Error(`Path traversal denied: ${relPath} (symlink escape detected)`);
@@ -154,8 +396,11 @@ export function safeVaultJoin(
   // Neither leaf nor parent exists yet — lexical check against the un-realpath'd
   // root. We don't check against realVaultRoot here because on macOS the temp
   // dir resolves through a symlink (/var → /private/var) and that would wrongly
-  // deny valid nested writes into empty directories.
-  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
+  // deny valid nested writes into empty directories. The separator is required:
+  // `<root>-evil` starts with `<root>` and must still be denied.
+  const lexicalRoot = containmentKey(normalizedRoot);
+  const lexicalResolved = containmentKey(resolved);
+  if (!lexicalResolved.startsWith(lexicalRoot + path.sep) && lexicalResolved !== lexicalRoot) {
     throw new Error(`Path traversal denied: ${relPath}`);
   }
   applyOptionalChecks(resolved, relPath, opts);

@@ -21,6 +21,8 @@ import { NoteLinksBlock } from './NoteLinksBlockExtension';
 import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
 import { showLnToast } from './theme/lnToast';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import { dispatchTimelineFromNote, plotNoteOnTimeline } from './timeline2/notesToTimeline';
 import type { AnyExtension } from '@tiptap/core';
 import { useNoteReader } from './story/useNoteReader';
@@ -50,6 +52,12 @@ export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
 
 // Re-export storage keys for existing NoteViewer tests / callers.
 export { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY };
+
+/** Approved vault-write sentences. Generic failures stay the GH#616 alert only. */
+function isApprovedVaultSaveText(message: string): boolean {
+  return message.includes("it's a shortcut (symbolic link)")
+    || message.includes("isn't supported for saving yet");
+}
 
 interface Props {
   path: string;
@@ -443,6 +451,7 @@ export default function NoteViewer({
   // GH#616: surface autosave failures instead of silently dropping them, so a
   // writer never loses changes to a save they believe succeeded.
   const [saveError, setSaveError] = useState<string | null>(null);
+  const { toast, showToast, clearToast } = useToast(8000);
   const [fidelityWarning, setFidelityWarning] = useState<LossyFeature[] | null>(null);
   // SKY-11429: the CF-11 guard (below) silently lands a never-switched note in
   // Source instead of the Rich default when it's lossy — silent so it never
@@ -542,9 +551,17 @@ export default function NoteViewer({
     setSaving(true);
     try {
       const r = await window.api.writeNotesVault(path, text);
-      if ('error' in r) throw new Error(r.error);
+      if ('error' in r && r.error) {
+        const approved = isApprovedVaultSaveText(r.error);
+        const userText = approved ? r.error : 'Failed to save — changes not persisted.';
+        setSavedAt(null);
+        setSaveError(userText);
+        if (approved) showToast(r.error, 'error');
+        return false;
+      }
       setSavedAt(new Date());
       setSaveError(null);
+      clearToast();
       return true;
     } catch {
       // GH#616: the write did NOT persist. Surface an actionable error and make
@@ -555,7 +572,7 @@ export default function NoteViewer({
     } finally {
       setSaving(false);
     }
-  }, [path]);
+  }, [path, showToast, clearToast]);
 
   const handleSourceChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
@@ -877,6 +894,7 @@ export default function NoteViewer({
 
   return (
     <div className="note-viewer">
+      <Toast message={toast?.message ?? null} level={toast?.level} onDismiss={clearToast} />
       {fidelityWarning && (
         <FidelityWarning
           features={fidelityWarning}
@@ -935,7 +953,7 @@ export default function NoteViewer({
           </span>
         )}
         {saveError && (
-          <span className="note-viewer-save-error" role="alert">
+          <span className="note-viewer-save-error" role="alert" style={{ whiteSpace: 'pre-line' }}>
             {saveError}{' '}
             <button
               type="button"

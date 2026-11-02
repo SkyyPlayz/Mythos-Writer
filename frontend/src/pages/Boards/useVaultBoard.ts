@@ -103,6 +103,11 @@ export interface VaultBoard {
   onRenameCancel: () => void;
   /** Re-read this board from disk. `silent` keeps the current board on screen. */
   reload: (silent?: boolean) => Promise<void>;
+  /**
+   * Bumps when a board save is refused or the patch invoke rejects, so the
+   * canvas drops the optimistic drag and shows the last loaded layout.
+   */
+  layoutEpoch: number;
 }
 
 /**
@@ -126,6 +131,12 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
   const [activeTool, setActiveTool] = useState<BoardTool>('select');
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
+  // Last layout/colors read from disk. Optimistic patch calls must not update
+  // these: a later refusal rolls the board back here instead of leaving the
+  // drag looking saved.
+  const diskLayoutRef = useRef<Record<string, ItemLayout>>({});
+  const diskColorsRef = useRef<Record<string, string>>({});
 
   // A reload that finishes after a newer one started must not clobber it —
   // vault-change reloads and board navigation can overlap.
@@ -233,6 +244,8 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
       }
 
       setItems(resolvedItems);
+      diskLayoutRef.current = layoutMap;
+      diskColorsRef.current = colorsByPath;
       setSavedLayout(layoutMap);
       setItemKeysByPath(keysByPath);
       setItemColorsByPath(colorsByPath);
@@ -286,16 +299,31 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     };
   }, [notesVaultValid, folderPath, loadBoard]);
 
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    return window.api.onNotesBoardWriteRefused?.((info) => {
+      if (info.folderRelPath !== folderPath) return;
+      // Roll back to the last loaded layout. The patch invoke already
+      // resolved, so leaving savedLayout on the drag would report it as saved.
+      setActionError(info.message);
+      setSavedLayout(diskLayoutRef.current);
+      setItemColorsByPath(diskColorsRef.current);
+      setLayoutEpoch((n) => n + 1);
+    });
+  }, [notesVaultValid, folderPath]);
+
   const onItemMove = useCallback(async (itemPath: string, x: number, y: number) => {
     try {
       const { key } = await window.api.notesBoardPatchLayout(folderPath, itemPath, { x, y });
       setItemKeysByPath((prev) => ({ ...prev, [itemPath]: key }));
       setSavedLayout((prev) => ({ ...prev, [itemPath]: { ...(prev[itemPath] ?? {}), x, y } }));
     } catch (err) {
-      // Non-fatal — the position stays in local state for this session. Logged
-      // rather than swallowed: an "item not found" here is exactly the shape
-      // SKY-11336 took, and a bare `catch {}` hid it for a whole beta.
+      // The invoke rejected, so this drag was not saved. Show that and drop
+      // the optimistic position. A bare console.warn left the card where the
+      // pointer released it.
       console.warn('[Boards] failed to persist item position', err);
+      setActionError(err instanceof Error ? err.message : "Couldn't save the board.");
+      setLayoutEpoch((n) => n + 1);
     }
   }, [folderPath]);
 
@@ -305,8 +333,9 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
       setItemKeysByPath((prev) => ({ ...prev, [itemPath]: key }));
       setSavedLayout((prev) => ({ ...prev, [itemPath]: { ...(prev[itemPath] ?? {}), w, h } }));
     } catch (err) {
-      // Non-fatal — see onItemMove.
       console.warn('[Boards] failed to persist item size', err);
+      setActionError(err instanceof Error ? err.message : "Couldn't save the board.");
+      setLayoutEpoch((n) => n + 1);
     }
   }, [folderPath]);
 
@@ -322,6 +351,8 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
       });
     } catch (err) {
       console.warn('[Boards] failed to persist item colour', err);
+      setActionError(err instanceof Error ? err.message : "Couldn't save the board.");
+      setLayoutEpoch((n) => n + 1);
     }
   }, [folderPath]);
 
@@ -333,6 +364,8 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
       return key;
     } catch (err) {
       console.warn('[Boards] failed to mint item key for line endpoint', err);
+      setActionError(err instanceof Error ? err.message : "Couldn't save the board.");
+      setLayoutEpoch((n) => n + 1);
       return undefined;
     }
   }, [folderPath]);
@@ -420,6 +453,7 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     mintItemKeyAt,
     onCreateItem,
     onRequestRename,
+    layoutEpoch,
     onRenameCommit,
     onRenameCancel,
     reload,

@@ -542,6 +542,7 @@ export const IPC_CHANNELS = {
   NOTES_BOARD_GET: 'notesBoard:get',
   NOTES_BOARD_PATCH_LAYOUT: 'notesBoard:patchLayout',
   NOTES_BOARD_PATCH_COLORS: 'notesBoard:patchColors',
+  NOTES_BOARD_WRITE_REFUSED: 'notesBoard:writeRefused',
   NOTES_BOARD_FURNITURE_CREATE: 'notesBoard:furnitureCreate',
   NOTES_BOARD_FURNITURE_UPDATE: 'notesBoard:furnitureUpdate',
   NOTES_BOARD_FURNITURE_DELETE: 'notesBoard:furnitureDelete',
@@ -1354,6 +1355,9 @@ export interface VaultWritePayload {
 export interface VaultWriteResponse {
   path: string;
   bytes: number;
+  /** Set when the write was refused. `path` is the requested relative path and `bytes` is 0. */
+  error?: string;
+  code?: string;
 }
 
 // SKY-11360: brainstorm board lives in the Agent Vault. The renderer never
@@ -1476,6 +1480,8 @@ export interface RenameCascadeUndoResponse {
   filesRestored: number;
   /** Files edited since the rename — left untouched, never overwritten. */
   filesSkipped: number;
+  /** Symlink leaves undo would not write through, as `<rel>: skipped (symlink)`. */
+  skippedSymlinks?: string[];
   fromPath?: string;
   toPath?: string;
   oldStem?: string;
@@ -2532,6 +2538,8 @@ export interface MythosMigrationRunResponse {
     notesChecked: number;
     mismatches: string[];
   };
+  /** Destination files left untouched because they were symbolic links. */
+  skippedSymlinks?: string[];
 }
 
 export interface MythosMigrationConfirmResponse {
@@ -5500,6 +5508,7 @@ export interface NotesTagRenamePayload {
 
 export interface NotesTagRenameResponse {
   affectedFiles: number;
+  skipped?: string[];
 }
 
 export interface NotesTagMergePayload {
@@ -5509,6 +5518,7 @@ export interface NotesTagMergePayload {
 
 export interface NotesTagMergeResponse {
   affectedFiles: number;
+  skipped?: string[];
 }
 // ─── SKY-55: per-scene notes ───
 export interface NotesGetPayload { sceneId: string }

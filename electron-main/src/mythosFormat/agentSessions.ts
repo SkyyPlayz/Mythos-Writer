@@ -26,7 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { parseFrontmatter, serializeFrontmatter, renameSyncWithRetry, writeFileAtomic } from '../vault.js';
+import { parseFrontmatter, serializeFrontmatter, renameSyncWithRetry, writeVaultFileAtomic } from '../vault.js';
 import { agentVaultRootFor } from './mythosJson.js';
 import { ensureActiveNotesVaultPath } from './notesVaultRegistry.js';
 
@@ -287,7 +287,7 @@ export function createSession(
     turns: (opts.turns ?? []).map(sanitizeSessionTurn),
   };
   const relPath = path.posix.join(SESSIONS_DIRNAME, sessionFileName(session));
-  writeFileAtomic(path.join(notesVaultRoot, relPath), serializeSessionFile(session));
+  writeVaultFileAtomic(notesVaultRoot, relPath, serializeSessionFile(session));
   return { session, relPath };
 }
 
@@ -303,7 +303,7 @@ export function appendTurns(
   // Shield HARD fix 1 — escape leading coach-card marker on append (not duplicate/read).
   session.turns.push(...turns.map(sanitizeIncomingWriteTurn));
   session.updatedAt = new Date().toISOString();
-  writeFileAtomic(path.join(notesVaultRoot, found.relPath), serializeSessionFile(session));
+  writeVaultFileAtomic(notesVaultRoot, found.relPath, serializeSessionFile(session));
   return session;
 }
 

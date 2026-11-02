@@ -10,6 +10,9 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
+import { VaultWriteRefusedError, writeNoFollowAtomic } from '../vault/noFollowWrite.js';
+import { SETTINGS_LINK_TEXT } from '../vault/writeErrors.js';
+
 /** Same-dir unique temp next to `targetPath` (pid + random). */
 export function atomicTempPath(targetPath: string): string {
   const rand = crypto.randomBytes(6).toString('hex');
@@ -22,42 +25,20 @@ export function atomicTempPath(targetPath: string): string {
  * temp and is owner-read/write only on POSIX.
  */
 export function writeFileAtomicSecure(targetPath: string, data: string | Buffer): void {
-  const dir = path.dirname(targetPath);
-  fs.mkdirSync(dir, { recursive: true });
-  const tmp = atomicTempPath(targetPath);
-  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
-  let fd: number | undefined;
   try {
-    fd = fs.openSync(tmp, 'wx', 0o600);
-    fs.writeSync(fd, buf);
-    fs.fsyncSync(fd);
+    writeNoFollowAtomic(targetPath, data, {
+      mode: 0o600,
+      durable: 'fsync',
+      zeroIndex: 'exempt',
+      mkdir: true,
+      rel: path.basename(targetPath),
+    });
   } catch (err) {
-    if (fd !== undefined) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-        /* ignore */
-      }
-    }
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore */
-    }
-    throw err;
-  }
-  try {
-    fs.closeSync(fd);
-  } catch {
-    /* ignore */
-  }
-  try {
-    fs.renameSync(tmp, targetPath);
-  } catch (err) {
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore */
+    if (
+      err instanceof VaultWriteRefusedError &&
+      (err.code === 'LEAF_LINK' || err.code === 'HANDLE_MISMATCH' || err.code === 'SWAP')
+    ) {
+      throw new Error(SETTINGS_LINK_TEXT);
     }
     throw err;
   }

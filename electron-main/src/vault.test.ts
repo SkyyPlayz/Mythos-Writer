@@ -8,7 +8,8 @@ import {
   readVaultFileWithRetry,
   writeVaultFileUnsafe_testOnly,
   writeVaultFileAtomic,
-  writeFileAtomic,
+  writeExportFileAtomic,
+  commitEpubTargetExport,
   listVaultFiles,
   deleteVaultFile,
   excerptFromMarkdown,
@@ -410,10 +411,10 @@ describe('IPC vault round-trip', () => {
     expect(tmpFiles).toHaveLength(0);
   });
 
-  it('writeFileAtomic writes buffer to arbitrary path atomically', () => {
+  it('writeExportFileAtomic writes buffer to an absolute path atomically', () => {
     const target = path.join(tmpDir, 'export', 'output.bin');
     const data = Buffer.from('binary export data');
-    writeFileAtomic(target, data);
+    writeExportFileAtomic(target, data);
     expect(fs.readFileSync(target)).toEqual(data);
     expect(fs.existsSync(`${target}.tmp`)).toBe(false);
   });
@@ -993,7 +994,7 @@ describe('Structure-only manifest — prose hydration + recovery (SKY-6596 / GH 
   it('readManifest hydrates blocks[0].content from the .md file when the on-disk manifest carries no prose', () => {
     writeSceneFile(tmpDir, 'scene-1.md', { id: 'sc-1', title: 'Scene One', prose: 'Hydrated prose.' });
     const manifestPath = path.join(tmpDir, 'manifest.json');
-    writeFileAtomic(manifestPath, JSON.stringify(manifestWithScene(tmpDir, 'sc-1', 'scene-1.md', '')));
+    writeVaultFileAtomic(tmpDir, 'manifest.json', JSON.stringify(manifestWithScene(tmpDir, 'sc-1', 'scene-1.md', '')));
 
     const read = readManifest(manifestPath);
     expect(read.scenes[0].blocks[0].content).toBe('Hydrated prose.');
@@ -1003,7 +1004,7 @@ describe('Structure-only manifest — prose hydration + recovery (SKY-6596 / GH 
     writeSceneFile(tmpDir, 'scene-2.md', { id: 'sc-2', title: 'Scene Two', prose: 'Current prose.' });
     const manifestPath = path.join(tmpDir, 'manifest.json');
     // Simulate a hand-edited / pre-migration manifest that still has stale embedded content.
-    writeFileAtomic(manifestPath, JSON.stringify(manifestWithScene(tmpDir, 'sc-2', 'scene-2.md', 'Stale, wrong prose.')));
+    writeVaultFileAtomic(tmpDir, 'manifest.json', JSON.stringify(manifestWithScene(tmpDir, 'sc-2', 'scene-2.md', 'Stale, wrong prose.')));
 
     const read = readManifest(manifestPath);
     expect(read.scenes[0].blocks[0].content).toBe('Current prose.');
@@ -1325,14 +1326,16 @@ describe('realSafePath — symlink escapes are rejected', () => {
     const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
     fs.writeFileSync(targetFile, 'sensitive data');
     fs.symlinkSync(targetFile, path.join(tmpDir, 'escape.txt'));
-    expect(() => writeVaultFileAtomic(tmpDir, 'escape.txt', 'content')).toThrow(/symlink escape detected/);
+    expect(() => writeVaultFileAtomic(tmpDir, 'escape.txt', 'content')).toThrow(/symlink leaf not allowed on write/);
+    expect(fs.readFileSync(targetFile, 'utf8')).toBe('sensitive data');
   });
 
   it('deleteVaultFile rejects a symlink escape', () => {
     const targetFile = path.join(os.tmpdir(), 'outside-file.txt');
     fs.writeFileSync(targetFile, 'sensitive data');
     fs.symlinkSync(targetFile, path.join(tmpDir, 'escape.txt'));
-    expect(() => deleteVaultFile(tmpDir, 'escape.txt')).toThrow(/symlink escape detected/);
+    expect(() => deleteVaultFile(tmpDir, 'escape.txt')).toThrow(/symlink leaf not allowed on write/);
+    expect(fs.readFileSync(targetFile, 'utf8')).toBe('sensitive data');
   });
 
   it('listVaultFiles skips symlink entries', () => {
@@ -1485,42 +1488,30 @@ describe('writeVaultFileAtomic — nested create-on-write semantics (MYT-46 regr
   });
 });
 
-describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)', () => {
+describe('resolveEpubExportPath — relative shape; containment is the vault write (MYT-675)', () => {
   let tmpDir: string;
+  let outside: string;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-epub-target-'));
+    outside = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-epub-outside-'));
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
   });
 
-  it('accepts a vault-relative .epub path and anchors it inside the vault', () => {
-    const resolved = resolveEpubExportPath(tmpDir, 'exports/book.epub');
-    // realSafePath in write-mode returns the realpath-resolved target, so
-    // anchor the expectation on the real tmpDir (macOS /var → /private/var).
-    const realTmp = fs.realpathSync.native(tmpDir);
-    expect(resolved).toBe(path.join(realTmp, 'exports', 'book.epub'));
-    expect(resolved.startsWith(realTmp + path.sep)).toBe(true);
+  it('returns a vault-relative .epub path unchanged', () => {
+    expect(resolveEpubExportPath(tmpDir, 'exports/book.epub')).toBe('exports/book.epub');
   });
 
-  it('accepts a bare .epub filename at the vault root', () => {
-    const realTmp = fs.realpathSync.native(tmpDir);
-    expect(resolveEpubExportPath(tmpDir, 'My Story.epub')).toBe(path.join(realTmp, 'My Story.epub'));
+  it('returns a bare .epub filename unchanged', () => {
+    expect(resolveEpubExportPath(tmpDir, 'My Story.epub')).toBe('My Story.epub');
   });
 
-  it('rejects an absolute out-of-vault target path', () => {
-    expect(() => resolveEpubExportPath(tmpDir, '/tmp/evil.epub')).toThrow(/Path traversal denied/);
-  });
-
-  it('rejects a "../" traversal escape (no existing parent)', () => {
-    expect(() => resolveEpubExportPath(tmpDir, '../../escape.epub')).toThrow(/Path traversal denied/);
-  });
-
-  it('rejects a "../" escape whose parent exists', () => {
-    fs.mkdirSync(path.join(tmpDir, 'sub'));
-    expect(() => resolveEpubExportPath(tmpDir, 'sub/../../escape.epub')).toThrow(/Path traversal denied/);
+  it('returns a case-insensitive .EPUB path unchanged', () => {
+    expect(resolveEpubExportPath(tmpDir, 'Book.EPUB')).toBe('Book.EPUB');
   });
 
   it('rejects a non-.epub extension (cannot clobber arbitrary file types)', () => {
@@ -1529,21 +1520,33 @@ describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)
     expect(() => resolveEpubExportPath(tmpDir, 'no-extension')).toThrow(/must end in \.epub/);
   });
 
-  it('accepts a case-insensitive .EPUB extension', () => {
-    const realTmp = fs.realpathSync.native(tmpDir);
-    expect(resolveEpubExportPath(tmpDir, 'Book.EPUB')).toBe(path.join(realTmp, 'Book.EPUB'));
-  });
-
   it('rejects an empty or whitespace target path', () => {
     expect(() => resolveEpubExportPath(tmpDir, '')).toThrow(/non-empty string/);
     expect(() => resolveEpubExportPath(tmpDir, '   ')).toThrow(/non-empty string/);
   });
 
-  it('rejects a symlink-escape .epub target (parent symlinks outside the vault)', () => {
-    fs.symlinkSync(os.tmpdir(), path.join(tmpDir, 'link'));
-    // MYT-641 reworded the write-mode parent-escape error from
-    // "parent symlink escape detected" to "parent symlink escapes vault".
-    expect(() => resolveEpubExportPath(tmpDir, 'link/escape.epub')).toThrow(/parent symlink escapes vault/);
+  it('refuses an absolute out-of-vault target at the write', () => {
+    const target = path.join(outside, 'evil.epub');
+    expect(() => commitEpubTargetExport(tmpDir, target, Buffer.from('epub'))).toThrow(/Path traversal denied/);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it('refuses a "../" traversal escape and writes nothing outside', () => {
+    const target = path.join(outside, 'escape.epub');
+    expect(() => commitEpubTargetExport(tmpDir, '../escape.epub', Buffer.from('epub'))).toThrow(/Path traversal denied/);
+    expect(fs.existsSync(target)).toBe(false);
+  });
+
+  it('refuses a "../" escape whose parent exists and writes nothing outside', () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'));
+    expect(() => commitEpubTargetExport(tmpDir, 'sub/../../escape.epub', Buffer.from('epub'))).toThrow(/Path traversal denied/);
+    expect(fs.readdirSync(outside)).toEqual([]);
+  });
+
+  it('refuses a symlink-escape .epub target and writes nothing outside', () => {
+    fs.symlinkSync(outside, path.join(tmpDir, 'link'));
+    expect(() => commitEpubTargetExport(tmpDir, 'link/escape.epub', Buffer.from('epub'))).toThrow(/parent symlink escapes vault/);
+    expect(fs.existsSync(path.join(outside, 'escape.epub'))).toBe(false);
   });
 });
 

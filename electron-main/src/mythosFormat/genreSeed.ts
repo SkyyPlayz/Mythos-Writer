@@ -11,7 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultOrSkip } from '../vault.js';
 import { notesVaultRootFor } from './mythosJson.js';
 
 /** Canonical wizard genre presets (prototype `this.genres`, HTML 3118).
@@ -275,6 +275,7 @@ ${rows}
 export interface GenreSeedResult {
   /** Notes-Vault-relative paths written (posix). */
   written: string[];
+  skipped: string[];
 }
 
 /**
@@ -291,12 +292,12 @@ export function writeGenreStarterNotes(mythosRoot: string, genre: GenreSeedGenre
     [GENRE_SEED_NOTE_PATHS.personas, personasNote(genre, p)],
   ];
   const written: string[] = [];
+  const skipped: string[] = [];
   for (const [relPath, content] of notes) {
     const abs = path.join(notesVaultRoot, ...relPath.split('/'));
     if (fs.existsSync(abs)) continue;
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    writeFileAtomic(abs, content);
-    written.push(relPath);
+    if (writeVaultOrSkip(notesVaultRoot, relPath, content, skipped)) written.push(relPath);
   }
-  return { written };
+  return { written, skipped };
 }

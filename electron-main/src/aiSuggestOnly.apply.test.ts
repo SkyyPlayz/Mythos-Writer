@@ -37,7 +37,6 @@ vi.mock('./entities.js', () => ({
 }));
 
 import {
-  writeFileAtomic,
   writeSceneFile,
   writeSceneFileAtomic,
   writeVaultFileAtomic,
@@ -72,7 +71,6 @@ function manuscriptSuggestion(): DbSuggestion {
 describe('manuscript accept stays status-only (T4)', () => {
   beforeEach(() => {
     vi.mocked(writeVaultFileAtomic).mockClear();
-    vi.mocked(writeFileAtomic).mockClear();
     vi.mocked(writeSceneFile).mockClear();
     vi.mocked(writeSceneFileAtomic).mockClear();
   });
@@ -82,7 +80,6 @@ describe('manuscript accept stays status-only (T4)', () => {
     expect(result).toEqual({ ok: true, finalStatus: 'accepted', snapshotPath: null });
     const calls = [
       ...vi.mocked(writeVaultFileAtomic).mock.calls,
-      ...vi.mocked(writeFileAtomic).mock.calls,
       ...vi.mocked(writeSceneFile).mock.calls,
       ...vi.mocked(writeSceneFileAtomic).mock.calls,
     ];

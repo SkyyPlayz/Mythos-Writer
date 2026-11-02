@@ -225,6 +225,7 @@ export default function TagPane({ onTagFilter, activeTag }: TagPaneProps) {
   const [renamingFullName, setRenamingFullName] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [skipNotice, setSkipNotice] = useState<string | null>(null);
 
   const [mergeSrc, setMergeSrc] = useState<string | null>(null);
 
@@ -261,7 +262,11 @@ export default function TagPane({ onTagFilter, activeTag }: TagPaneProps) {
     parts[parts.length - 1] = trimmed;
     const newTag = parts.join('/');
     try {
-      await window.api.notesTagRename(renamingFullName, newTag);
+      const result = await window.api.notesTagRename(renamingFullName, newTag);
+      if (result.skipped && result.skipped.length > 0) {
+        setRenameError(result.skipped.join('\n'));
+        return;
+      }
       if (activeTag === renamingFullName) onTagFilter(newTag);
       setRenamingFullName(null);
       await load();
@@ -281,7 +286,12 @@ export default function TagPane({ onTagFilter, activeTag }: TagPaneProps) {
 
   const handleMerge = useCallback(async (sourceTag: string, targetTag: string) => {
     setMergeSrc(null);
-    await window.api.notesTagMerge(sourceTag, targetTag);
+    const result = await window.api.notesTagMerge(sourceTag, targetTag);
+    if (result.skipped && result.skipped.length > 0) {
+      setSkipNotice(result.skipped.join('\n'));
+    } else {
+      setSkipNotice(null);
+    }
     if (activeTag === sourceTag) onTagFilter(null);
     await load();
   }, [activeTag, onTagFilter, load]);
@@ -315,6 +325,11 @@ export default function TagPane({ onTagFilter, activeTag }: TagPaneProps) {
         </button>
       </div>
 
+      {skipNotice && (
+        <p className="tp-rename-error" role="alert" data-testid="tag-skip-notice" style={{ whiteSpace: 'pre-line' }}>
+          {skipNotice}
+        </p>
+      )}
       {!collapsed && (
         <div id="tp-body" className="tp-body">
           {loading ? (
