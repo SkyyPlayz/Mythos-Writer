@@ -119,6 +119,13 @@ function attr(tag: string, name: string): string | undefined {
   return m ? decodeEntities(m[1] ?? m[2] ?? '') : undefined;
 }
 
+/** Base media type for the chapter allowlist: trim, drop `;` parameters, lowercase. */
+function spineMediaType(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim();
+  const head = trimmed.split(';', 1)[0] ?? '';
+  return head.trim().toLowerCase();
+}
+
 /** OPF-relative href → zip entry path (resolves `../`, decodes %XX, drops #fragments). */
 function resolveHref(opfDir: string, href: string): string {
   const bare = href.split('#')[0];
@@ -174,7 +181,7 @@ export async function epubToBlocks(
   for (const tag of startTags(opf, 'item')) {
     const id = attr(tag, 'id');
     const href = attr(tag, 'href');
-    if (id && href) items.set(id, { href, type: (attr(tag, 'media-type') ?? '').toLowerCase(), props: attr(tag, 'properties') ?? '' });
+    if (id && href) items.set(id, { href, type: spineMediaType(attr(tag, 'media-type')), props: attr(tag, 'properties') ?? '' });
   }
   const spine = [...startTags(opf, 'itemref')]
     .filter((tag) => (attr(tag, 'linear') ?? 'yes').toLowerCase() !== 'no')
@@ -189,9 +196,9 @@ export async function epubToBlocks(
   for (const idref of spine) {
     const item = items.get(idref);
     if (!item) continue;
-    // A declared type must be XHTML or HTML. NCX and SVG stay out even when
-    // the href ends in .xml. An empty type may use the file name, and only
-    // .xhtml, .html, or .htm — never plain .xml.
+    // item.type is the normalized base (spineMediaType). A declared type must
+    // be XHTML or HTML. NCX and SVG stay out even when the href is .xhtml.
+    // An empty base may use .xhtml, .html, or .htm — never plain .xml.
     const isHtml = item.type === 'application/xhtml+xml' || item.type === 'text/html'
       || (item.type === '' && /\.(xhtml|html|htm)$/i.test(item.href));
     if (!isHtml || /\bnav\b/.test(item.props)) continue;

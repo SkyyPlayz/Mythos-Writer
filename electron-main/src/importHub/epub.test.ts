@@ -193,6 +193,55 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(JSON.stringify(story)).not.toMatch(/NCX Xhtml Chapter|SVG Xhtml Chapter/);
   });
 
+  it('a charset parameter on application/xhtml+xml is still a chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'c1',
+        href: 'ch1.xhtml',
+        mediaType: 'application/xhtml+xml; charset=utf-8',
+        body: '<h1>Charset Chapter</h1><p>Still read.</p>',
+      },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Charset Chapter']);
+    expect(story.chapters[0].scenes[0].prose).toBe('Still read.');
+  });
+
+  it('text/html with surrounding whitespace is still a chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'c1',
+        href: 'ch1.html',
+        mediaType: ' text/html ',
+        body: '<h1>Padded Chapter</h1><p>Still read.</p>',
+      },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Padded Chapter']);
+    expect(story.chapters[0].scenes[0].prose).toBe('Still read.');
+  });
+
+  it('a declared non-HTML type with parameters and an .xhtml href yields no chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'svg',
+        href: 'cover.xhtml',
+        mediaType: 'image/svg+xml; charset=utf-8',
+        body: '<h1>SVG Param Chapter</h1><p>An svg is not a chapter.</p>',
+      },
+      {
+        id: 'ncx',
+        href: 'toc.xhtml',
+        mediaType: ' application/x-dtbncx+xml ',
+        body: '<h1>NCX Padded Chapter</h1><p>Navigation is not a chapter.</p>',
+      },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/SVG Param Chapter|NCX Padded Chapter/);
+  });
+
   it('an empty media-type .xhtml item is still a chapter', async () => {
     const buf = await makeEpub([
       { id: 'c1', href: 'ch1.xhtml', mediaType: '', body: '<h1>Untyped Chapter</h1><p>Still read.</p>' },
