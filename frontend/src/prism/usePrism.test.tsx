@@ -13,6 +13,7 @@ import {
 } from './store';
 import {
   usePrismBook,
+  usePrismBookForScene,
   usePrismCurrentBookId,
   usePrismLive,
   usePrismOpenBook,
@@ -203,5 +204,48 @@ describe('usePrismLive', () => {
     act(() => prismLiveStore.publish(mkSnapshot()));
     const { result } = renderHook(() => usePrismLive(null));
     expect(result.current).toBeNull();
+  });
+});
+
+describe('scene ownership (usePrismOpenBook / usePrismBookForScene)', () => {
+  beforeEach(() => {
+    __resetPrismStoresForTests();
+    installApi();
+    readVault.mockRejectedValue(new Error('ENOENT'));
+  });
+  afterEach(() => {
+    cleanup();
+    __resetPrismStoresForTests();
+  });
+
+  const book = {
+    id: 'book-1',
+    path: 'stories/book-1',
+    chapters: [{ scenes: [{ id: 'sc-ch' }] }],
+    parts: [{ chapters: [{ scenes: [{ id: 'sc-part' }] }] }],
+  };
+
+  it('registers the scenes in chapters and parts, and releases them on unmount', () => {
+    const owner = renderHook(() => usePrismBookForScene('sc-part'));
+    expect(owner.result.current).toBeNull();
+    const opened = renderHook(() => usePrismOpenBook(book));
+    expect(owner.result.current).toBe('book-1');
+    expect(prismSettingsStore.getBookForScene('sc-ch')).toBe('book-1');
+    expect(prismSettingsStore.getBookForScene('elsewhere')).toBeNull();
+    opened.unmount();
+    expect(owner.result.current).toBeNull();
+  });
+
+  it('keeps one registration across new story objects with the same scenes', () => {
+    const register = vi.spyOn(prismSettingsStore, 'registerBookScenes');
+    const { rerender } = renderHook(({ story }) => usePrismOpenBook(story), {
+      initialProps: { story: book },
+    });
+    rerender({ story: { ...book, chapters: [{ scenes: [{ id: 'sc-ch' }] }] } });
+    expect(register).toHaveBeenCalledTimes(1);
+    rerender({ story: { ...book, chapters: [{ scenes: [{ id: 'sc-ch' }, { id: 'sc-new' }] }] } });
+    expect(register).toHaveBeenCalledTimes(2);
+    expect(prismSettingsStore.getBookForScene('sc-new')).toBe('book-1');
+    register.mockRestore();
   });
 });

@@ -86,6 +86,21 @@ function currentBookId(): string | null {
   return currentBookClaims[currentBookClaims.length - 1]?.storyId ?? null;
 }
 
+/**
+ * Scene id → owning book, registered by every surface that opens a book.
+ * Exact where the current-book claim is only a guess: a scene without a
+ * storyId that mounts in the same render that selects its book would
+ * otherwise read the previously claimed book.
+ */
+let sceneBooks: Array<{ token: object; storyId: string; sceneIds: ReadonlySet<string> }> = [];
+
+function bookForScene(sceneId: string): string | null {
+  for (let i = sceneBooks.length - 1; i >= 0; i--) {
+    if (sceneBooks[i].sceneIds.has(sceneId)) return sceneBooks[i].storyId;
+  }
+  return null;
+}
+
 function notifySettings(): void {
   for (const l of [...settingsListeners]) l();
 }
@@ -209,6 +224,30 @@ export const prismSettingsStore = {
   /** The selected book's id (see claimCurrentBook), or null. */
   getCurrentBookId(): string | null {
     return currentBookId();
+  },
+
+  /**
+   * Record which scenes belong to `storyId`. Returns the release; the latest
+   * live registration wins for a scene listed by more than one.
+   * Subscribers hear about it when it changes some scene's book.
+   */
+  registerBookScenes(storyId: string, sceneIds: readonly string[]): () => void {
+    const token = {};
+    const ids = new Set(sceneIds);
+    const changed = () => [...ids].some((id) => bookForScene(id) !== storyId);
+    const notify = changed();
+    sceneBooks = [...sceneBooks, { token, storyId, sceneIds: ids }];
+    if (notify) notifySettings();
+    return () => {
+      const before = [...ids].map(bookForScene);
+      sceneBooks = sceneBooks.filter((r) => r.token !== token);
+      if ([...ids].some((id, i) => bookForScene(id) !== before[i])) notifySettings();
+    };
+  },
+
+  /** The book a surface registered `sceneId` under (see registerBookScenes), or null. */
+  getBookForScene(sceneId: string | null | undefined): string | null {
+    return sceneId ? bookForScene(sceneId) : null;
   },
 
   /** Stable-identity subscribe for useSyncExternalStore. */
@@ -370,6 +409,7 @@ export const prismLiveStore = {
 export function __resetPrismStoresForTests(): void {
   books = new Map();
   currentBookClaims = [];
+  sceneBooks = [];
   liveScenes = new Map();
   notifySettings();
   notifyLive();

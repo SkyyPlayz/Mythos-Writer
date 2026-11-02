@@ -979,6 +979,35 @@ describe('BlockEditor Prism book fallback (scene without storyId)', () => {
     act(() => releaseB());
   });
 
+  it('follows the book that owns the scene when book and scene change in one step', async () => {
+    // The shell selects book B and B's scene together: the editor mounts while
+    // A is still the claimed book, before B's surfaces have run their effects.
+    const scene = { ...sceneWithoutStory(), id: 'scene-in-b' };
+    let releaseA: () => void = () => {};
+    let releaseB: () => void = () => {};
+    let unregister: () => void = () => {};
+    act(() => {
+      releaseA = prismSettingsStore.claimCurrentBook('book-a');
+    });
+    render(
+      <BlockEditor scene={scene} onBlocksChange={vi.fn()} onDraftStateChange={vi.fn()} autoFocus={false} />
+    );
+    act(() => {
+      releaseA();
+      releaseB = prismSettingsStore.claimCurrentBook('book-b');
+      unregister = prismSettingsStore.registerBookScenes('book-b', ['scene-in-b']);
+      prismSettingsStore.update('book-b', { flags: true });
+    });
+    await waitFor(() => expect(prismLiveStore.get('scene-in-b')?.storyId).toBe('book-b'));
+    await waitFor(() => {
+      expect(document.querySelector('.prism-flag--adverbs')?.textContent).toBe('slowly');
+    });
+    act(() => {
+      unregister();
+      releaseB();
+    });
+  });
+
   it('a different scene opened in the same editor takes the book selected now', async () => {
     const sceneA = sceneWithoutStory();
     let release: () => void = () => {};

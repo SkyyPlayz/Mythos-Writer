@@ -65,6 +65,32 @@ export const prismPluginKey = new PluginKey<PrismPluginState>('prism');
 
 const OBJECT_REPLACEMENT = '￼';
 const SNIPPET_MAX = 80;
+/** Raw characters of context read on each side before whitespace is collapsed. */
+const SNIPPET_WINDOW = SNIPPET_MAX * 4;
+
+/** Index of the first element > x in a sorted array. */
+function upperBound(sorted: readonly number[], x: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] <= x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Index of the first element >= x in a sorted array. */
+function lowerBound(sorted: readonly number[], x: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid] < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
 
 const CHECK_KIND = new Map<PrismCheckId, PrismCheckKind>(PRISM_CHECKS.map((c) => [c.id, c.kind]));
 
@@ -297,15 +323,17 @@ function buildSnippet(
   to: number
 ): string {
   const text = extraction.paragraphs[paragraph].text;
-  let sFrom = 0;
-  let sTo = text.length;
-  for (const b of source.breaks) {
-    if (b <= from) sFrom = b;
-    else if (b >= to) {
-      sTo = b;
-      break;
-    }
-  }
+  // Sentence bounds by binary search over the sorted starts, then cut to a
+  // window a few snippets wide: a dense run-on sentence must not make every
+  // finding normalise the whole sentence (quadratic on large blocks).
+  const { breaks } = source;
+  const firstAfterFrom = upperBound(breaks, from);
+  let sFrom = firstAfterFrom > 0 ? breaks[firstAfterFrom - 1] : 0;
+  const atOrAfterTo = Math.max(firstAfterFrom, lowerBound(breaks, to));
+  let sTo = atOrAfterTo < breaks.length ? breaks[atOrAfterTo] : text.length;
+  sFrom = Math.max(sFrom, from - SNIPPET_WINDOW);
+  sTo = Math.min(sTo, to + SNIPPET_WINDOW);
+  to = Math.min(to, from + SNIPPET_WINDOW);
   const { plain } = source;
   const pos = (o: number) => extraction.toDoc(paragraph, o);
   const between = (a: number, b: number) => {

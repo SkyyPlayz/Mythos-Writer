@@ -9,22 +9,48 @@
 // has no storyId), and the checklist reads the editor's live findings through
 // usePrismLive.
 
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { PrismSettingsPatch } from './settings';
 import { prismLiveStore, prismSettingsStore, type PrismLiveSnapshot } from './store';
 import type { PrismSettings } from './types';
 
-/** Load a book's prism.json (once per path) without making it the current book. */
-export function usePrismOpenBook(story: { id: string; path: string } | null | undefined): void {
+/** The parts of a Story the Prism bindings read; chapters/parts list its scenes. */
+export interface PrismBookRef {
+  id: string;
+  path: string;
+  chapters?: ReadonlyArray<{ scenes: ReadonlyArray<{ id: string }> }>;
+  parts?: ReadonlyArray<{ chapters: ReadonlyArray<{ scenes: ReadonlyArray<{ id: string }> }> }>;
+}
+
+function bookSceneIds(story: PrismBookRef): string[] {
+  const ids: string[] = [];
+  const chapters = [...(story.chapters ?? []), ...(story.parts ?? []).flatMap((p) => p.chapters)];
+  for (const ch of chapters) for (const sc of ch.scenes) ids.push(sc.id);
+  return ids;
+}
+
+/**
+ * Load a book's prism.json (once per path) without making it the current
+ * book, and register its scenes so their editors find the book even when a
+ * scene carries no storyId.
+ */
+export function usePrismOpenBook(story: PrismBookRef | null | undefined): void {
   const storyId = story?.id ?? null;
   const storyPath = story?.path ?? null;
   useEffect(() => {
     if (storyId && storyPath) prismSettingsStore.open(storyId, storyPath);
   }, [storyId, storyPath]);
+
+  // Keyed by the id list's contents, not the story object (which changes on every save).
+  const sceneKey = story ? bookSceneIds(story).join('\n') : '';
+  const sceneIds = useMemo(() => (sceneKey ? sceneKey.split('\n') : []), [sceneKey]);
+  useEffect(() => {
+    if (storyId && sceneIds.length) return prismSettingsStore.registerBookScenes(storyId, sceneIds);
+  }, [storyId, sceneIds]);
 }
 
 export function usePrismBook(
-  story: { id: string; path: string } | null | undefined
+  story: PrismBookRef | null | undefined
 ): [PrismSettings, (patch: PrismSettingsPatch) => void] {
   const storyId = story?.id ?? null;
   usePrismOpenBook(story);
@@ -53,6 +79,13 @@ export function usePrismSettingsById(storyId: string | null | undefined): PrismS
 /** The book the writer has selected (claimed by usePrismBook), or null. */
 export function usePrismCurrentBookId(): string | null {
   return useSyncExternalStore(prismSettingsStore.subscribe, prismSettingsStore.getCurrentBookId);
+}
+
+/** The book a surface registered this scene under (see usePrismOpenBook), or null. */
+export function usePrismBookForScene(sceneId: string | null | undefined): string | null {
+  return useSyncExternalStore(prismSettingsStore.subscribe, () =>
+    prismSettingsStore.getBookForScene(sceneId)
+  );
 }
 
 /** The live editor's latest Prism snapshot for a scene, or null. */

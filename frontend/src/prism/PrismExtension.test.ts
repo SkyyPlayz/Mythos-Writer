@@ -433,6 +433,26 @@ describe('PrismExtension plugin', () => {
     for (const f of findings) expect(f.snippet.length).toBeLessThanOrEqual(80);
   });
 
+  it('builds snippets in bounded time for a densely flagged run-on sentence', () => {
+    // ~6k words with no sentence break and thousands of findings: snippet
+    // context must be cut down before it is normalised, not per whole sentence.
+    const runOn = 'She just really walked very slowly and quickly felt the cold wind and '.repeat(
+      500
+    );
+    const editor = makeEditor(`<p>${runOn}</p>`);
+    const t0 = performance.now();
+    configure(editor, DEFAULT_PRISM_SETTINGS);
+    const elapsed = performance.now() - t0;
+    const findings = prismLiveStore.get('scene-1')?.findings ?? [];
+    expect(findings.length).toBeGreaterThan(5000);
+    const middle = findings[Math.floor(findings.length / 2)];
+    expect(middle.snippet.startsWith('…')).toBe(true);
+    expect(middle.snippet.endsWith('…')).toBe(true);
+    for (const f of findings) expect(f.snippet.length).toBeLessThanOrEqual(80);
+    // Generous CI bound; the quadratic version took ~3 s here, the bounded one well under 1 s.
+    expect(elapsed).toBeLessThan(1500);
+  });
+
   it('snippets collapse runs of whitespace and line breaks', () => {
     const editor = makeEditor('<p>x</p>');
     configure(editor, DEFAULT_PRISM_SETTINGS);

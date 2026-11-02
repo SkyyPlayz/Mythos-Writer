@@ -17,7 +17,7 @@ import type { FormatToolbarActions } from './FormatToolbar';
 import { HeadingFocusExtension, headingFocusKey } from './HeadingFocusExtension';
 import { levelsPresent, focusState, stepFocus, headingsAtLevel, reconcileFocusLevel } from './lib/headingFocus';
 import { PrismExtension, PRISM_META, type PrismEditorConfig } from './prism/PrismExtension';
-import { usePrismCurrentBookId, usePrismSettingsById } from './prism/usePrism';
+import { usePrismBookForScene, usePrismCurrentBookId, usePrismSettingsById } from './prism/usePrism';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -362,7 +362,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   if (prismBookLatch.sceneId !== scene.id || prismBookLatch.bookId !== latchedBookId) {
     setPrismBookLatch({ sceneId: scene.id, bookId: latchedBookId });
   }
-  const prismStoryId = scene.storyId ?? hostStoryId ?? latchedBookId;
+  // The book that lists this scene beats the latch: the shell can select a
+  // new book and its scene in one step, before the new book is claimed.
+  const owningBookId = usePrismBookForScene(scene.id);
+  const prismStoryId = scene.storyId ?? hostStoryId ?? owningBookId ?? latchedBookId;
   const prismSettings = usePrismSettingsById(prismStoryId);
   useEffect(() => {
     if (!editor) return;
