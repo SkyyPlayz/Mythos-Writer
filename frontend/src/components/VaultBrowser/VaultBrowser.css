@@ -106,7 +106,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted, rgba(255,255,255,0.5));
-  font-size: 1rem;
+  font-size: var(--text-base);
   padding: 1px 6px;
   border-radius: var(--radius-xs, 3px);
   line-height: 1;
@@ -166,7 +166,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted, rgba(255,255,255,0.5));
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   padding: 2px 6px;
   opacity: 0;
   transition: opacity 80ms ease;
@@ -184,14 +184,14 @@
 /* ─── Shared row elements ─── */
 
 .vb-chevron {
-  font-size: 0.55rem;
+  font-size: var(--text-xs);
   width: 10px;
   flex-shrink: 0;
   color: var(--text-muted, rgba(255,255,255,0.5));
 }
 
 .vb-icon {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   flex-shrink: 0;
   width: 16px;
   text-align: center;
@@ -214,7 +214,7 @@
   gap: 7px;
   padding: 5.5px 8px 5.5px 0;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #aebad0;
   user-select: none;
   white-space: nowrap;
@@ -237,7 +237,7 @@
 
 /* Prototype file rows are one notch smaller than folder rows. */
 .vb-row.vb-file {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
 }
 
 /* Slot-tinted selection: gs1 fill + b1 border + g1 glow. */
@@ -277,7 +277,7 @@
 
 /* M15 folder item count (prototype r.count). */
 .vb-count {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: #7686a2;
   flex: none;
 }
@@ -323,7 +323,7 @@
 }
 
 .vb-vault-name {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary, #eef2fb);
 }
@@ -350,7 +350,7 @@
 }
 
 .vb-vault-picker-heading {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   color: var(--text-muted, #7686a2);
@@ -379,13 +379,13 @@
 }
 
 .vb-vault-picker-label {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-primary, #e6ecf9);
 }
 
 .vb-vault-picker-sub {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #8e9db8);
 }
 
@@ -435,7 +435,7 @@
   border: none;
   cursor: pointer;
   color: #8e9db8;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   padding: 0;
   border-radius: 7px;
   line-height: 1;
@@ -489,7 +489,7 @@
   color: #dbe4f5;
   /* Ivy H2: exact prototype stack on N2 only — do not bundle Inter webfont. */
   font-family: Inter, system-ui, sans-serif;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   padding: 1px 2px;
   outline: none;
 }
@@ -507,7 +507,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted, rgba(255,255,255,0.4));
-  font-size: 1rem;
+  font-size: var(--text-base);
   padding: 0 4px;
   line-height: 1;
 }
@@ -524,7 +524,7 @@
 }
 
 .vb-recent-label {
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -551,7 +551,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-secondary, rgba(255,255,255,0.7));
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   padding: 4px 8px;
   text-align: left;
 }
@@ -571,7 +571,7 @@
 
 .vb-recent-when {
   flex: none;
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
   color: var(--text-muted, rgba(255,255,255,0.4));
 }
 
@@ -580,7 +580,7 @@
   flex-shrink: 0;
   padding: 8px 12px;
   border-top: 1px solid var(--glass-border, rgba(255,255,255,0.08));
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--text-muted, rgba(255,255,255,0.5));
 }
 
@@ -597,7 +597,7 @@
   border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
   border-radius: var(--radius-xs, 3px);
   color: var(--text-primary, #fff);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   padding: 3px 6px;
   cursor: pointer;
 }
@@ -866,7 +866,7 @@
 .vb-ctx-menu .ln-menu-item {
   padding: 6px 10px;
   border-radius: 8px;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: #cdd8ea;
 }
 
@@ -1059,7 +1059,7 @@
 }
 
 .vb-daily-streak {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   color: var(--text-secondary, #888);
   flex: 1;
   white-space: nowrap;
@@ -1071,7 +1071,7 @@
   color: #fff;
   border: none;
   border-radius: 5px;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1126,7 +1126,7 @@
 }
 
 .vb-backlinks-chevron {
-  font-size: 0.6rem;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 
@@ -1185,7 +1185,7 @@
 }
 
 .vb-backlinks-snippet {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--text-muted, rgba(255,255,255,0.45));
   white-space: nowrap;
   overflow: hidden;

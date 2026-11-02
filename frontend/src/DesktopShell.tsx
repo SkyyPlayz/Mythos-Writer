@@ -17,6 +17,7 @@ import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStor
 import {
   applyLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
+  resolveVaultLiquidNeonV2,
   vaultDefaultThemePatch,
   type LiquidNeonPageCfg,
   type LiquidNeonV2Settings,
@@ -577,6 +578,31 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
+  // F1#9: createChapter awaits the title modal, then inserts after the
+  // selected chapter. The click handler closes over the selection from the
+  // render that started it. A second + Chapter that starts before React
+  // commits the previous selection (the scheduler loses the race to the next
+  // input — CI, with Accent breathe's 4 Hz style work on the main thread)
+  // otherwise keeps inserting after the original chapter and the new chapters
+  // come out reversed. Written synchronously below; a render pulls state in
+  // only when the committed id changes, so a same-id re-render cannot clobber
+  // an anchor this handler already published.
+  const selectedChapterRef = useRef<Chapter | null>(selectedChapter);
+  const selectedStoryRef = useRef<Story | null>(selectedStory);
+  const seenSelectionIdRef = useRef<{ chapterId: string | null; storyId: string | null }>({
+    chapterId: selectedChapter?.id ?? null,
+    storyId: selectedStory?.id ?? null,
+  });
+  const chapterStateId = selectedChapter?.id ?? null;
+  const storyStateId = selectedStory?.id ?? null;
+  if (seenSelectionIdRef.current.chapterId !== chapterStateId) {
+    seenSelectionIdRef.current.chapterId = chapterStateId;
+    selectedChapterRef.current = selectedChapter;
+  }
+  if (seenSelectionIdRef.current.storyId !== storyStateId) {
+    seenSelectionIdRef.current.storyId = storyStateId;
+    selectedStoryRef.current = selectedStory;
+  }
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1546,9 +1572,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           cachedSettings = themed;
           setAppSettings(themed);
           window.api.settingsSet(themed).catch(() => {});
-          // SKY-11237: per-vault appearance overrides the preset's liquidNeonV2.
+          // SKY-11237: per-vault appearance overrides the preset's liquidNeonV2
+          // (#1774: a snapshot without accentBreathe inherits the global one).
           const switchedVaultApp = s.vaultAppearance?.[switchedVaultRoot];
-          void applyLiquidNeonV2Theme(switchedVaultApp?.liquidNeonV2 ?? vaultPatch.liquidNeonV2);
+          void applyLiquidNeonV2Theme(resolveVaultLiquidNeonV2(switchedVaultApp?.liquidNeonV2, vaultPatch.liquidNeonV2));
           // SKY-9262 (P0.5): name the vault by its single story's title when it
           // has one — the raw directory name is only the fallback.
           showLnToast(
@@ -1560,7 +1587,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } else {
           // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
           // v1 axis tokens so v2 values win where both define a property.
-          void applyLiquidNeonV2Theme(initVaultApp?.liquidNeonV2 ?? s.liquidNeonV2);
+          void applyLiquidNeonV2Theme(resolveVaultLiquidNeonV2(initVaultApp?.liquidNeonV2, s.liquidNeonV2));
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
@@ -3679,15 +3706,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       scenes: [], createdAt: now(), updatedAt: now(),
     };
     // F1#9: insert after the selected chapter (same part) when that chapter
-    // belongs to this story; otherwise append to the last part.
+    // belongs to this story; otherwise append to the last part. Read the
+    // refs, not the render closure — the callback that opened this modal
+    // may predate the previous add's selection commit.
+    const anchorChapter = selectedChapterRef.current;
+    const anchorStory = selectedStoryRef.current;
     const holder: { story: Story | null } = { story: null };
     updateManifest(latest.map((s) => {
       if (s.id !== storyId) return s;
       let updated: Story;
-      if (selectedChapter && selectedStory?.id === storyId) {
-        const owner = findOwningPart(s, selectedChapter.id);
+      if (anchorChapter && anchorStory?.id === storyId) {
+        const owner = findOwningPart(s, anchorChapter.id);
         if (owner) {
-          updated = insertChapterIntoPart(s, owner.id, chapter, selectedChapter.id);
+          updated = insertChapterIntoPart(s, owner.id, chapter, anchorChapter.id);
         } else {
           updated = appendChapterToStory(s, chapter);
         }
@@ -3699,19 +3730,25 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }));
     // Probe: select the newly added chapter so repeated File/+ Chapter adds
     // keep chronological order (avoid Alpha→Charlie→Bravo reverse inserts).
+    // Publish into the refs before yielding so the next add, if it already
+    // started on this turn, inserts after this chapter.
     const storyAfter = holder.story;
     const owned = storyAfter
       ? (storyAfter.parts ?? []).flatMap((p) => p.chapters).find((c) => c.id === id)
         ?? storyAfter.chapters.find((c) => c.id === id)
       : undefined;
     if (owned && storyAfter) {
+      selectedStoryRef.current = storyAfter;
+      selectedChapterRef.current = owned;
       setSelectedStory(storyAfter);
       setSelectedChapter(owned);
       setSelectedScene(owned.scenes[0] ?? null);
     }
-  }, [updateManifest, requestText, selectedChapter, selectedStory]);
+  }, [updateManifest, requestText]);
 
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
+    selectedChapterRef.current = chapter;
+    selectedStoryRef.current = story;
     setSelectedScene(scene);
     setSelectedChapter(chapter);
     setSelectedStory(story);
@@ -6759,7 +6796,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               applyLiquidNeonTokens(lg);
             }
             // Beta 3 Liquid Neon (M1): re-apply v2 slot-engine tokens on save.
-            void applyLiquidNeonV2Theme(savedVaultApp?.liquidNeonV2 ?? s.liquidNeonV2);
+            void applyLiquidNeonV2Theme(resolveVaultLiquidNeonV2(savedVaultApp?.liquidNeonV2, s.liquidNeonV2));
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}

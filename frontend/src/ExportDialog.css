@@ -14,17 +14,17 @@
 
 /* Prototype 2727–2729: serif title + square close chip */
 .export-dialog-header { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
-.export-dialog-title { font-family: 'Lora', Georgia, serif; font-size: 18px; font-weight: 600; margin: 0; color: #f0f3fc; flex: 1; }
+.export-dialog-title { font-family: 'Lora', Georgia, serif; font-size: var(--text-lg); font-weight: 600; margin: 0; color: #f0f3fc; flex: 1; }
 .export-dialog-close { background: none; border: none; width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #8e9db8; cursor: pointer; padding: 0; }
 .export-dialog-close:hover { color: #fff; background: rgba(255, 255, 255, .08); }
 .export-dialog-close:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
 
 /* Prototype 2732 */
-.export-dialog-sub { font-size: 11px; color: #8e9db8; margin: 0 0 13px; }
+.export-dialog-sub { font-size: var(--text-xs); color: #8e9db8; margin: 0 0 13px; }
 
 /* ── Format cards (prototype 2733–2737 + exFmtCards st 4426) ── */
 .export-dialog-formats { border: none; padding: 0; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 8px; }
-.export-dialog-formats-legend { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #8e9db8; padding: 0; position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.export-dialog-formats-legend { font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #8e9db8; padding: 0; position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* min-width 88px: five cards (DOCX·PDF·EPUB·MD·TXT) fit the 540px modal on one row */
 .export-fmt-card { position: relative; flex: 1; min-width: 88px; padding: 11px; border-radius: 12px; cursor: pointer; text-align: center; background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .09); transition: all .16s ease; display: flex; flex-direction: column; align-items: center; color: #8e9db8; }
 .export-fmt-card:hover { border-color: rgba(255, 255, 255, .25); }
@@ -37,20 +37,20 @@
 .export-fmt-card__input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
 .export-fmt-card:has(.export-fmt-card__input:focus-visible) { outline: 2px solid var(--n1, #00f0ff); outline-offset: 2px; }
 .export-fmt-card__icon { display: inline-flex; }
-.export-fmt-card__name { font-size: 12px; font-weight: 700; margin-top: 6px; color: #dbe4f5; }
+.export-fmt-card__name { font-size: var(--text-xs); font-weight: 700; margin-top: 6px; color: #dbe4f5; }
 .export-fmt-card--selected .export-fmt-card__name { color: var(--n1, #00f0ff); }
-.export-fmt-card__desc { font-size: 9.5px; color: #8e9db8; margin-top: 1px; }
-.export-fmt-card__note { font-size: 9px; color: #7686a2; margin-top: 3px; }
+.export-fmt-card__desc { font-size: var(--text-xs); color: #8e9db8; margin-top: 1px; }
+.export-fmt-card__note { font-size: var(--text-xs); color: #7686a2; margin-top: 3px; }
 
 /* ── Scope row (prototype 3839–3844, seg pill from segMk) ── */
 .export-dialog-scope { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; padding: 0; background: none; border-radius: 0; }
-.export-dialog-scope-key { font-size: 11.5px; color: #aebad0; width: 52px; flex: none; }
-.export-dialog-scope-label { font-size: 11.5px; font-weight: 600; color: var(--n1, #00f0ff); background: var(--gs1, rgba(0, 240, 255, .12)); border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, .4)); border-radius: 8px; padding: 4px 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.export-dialog-stats { font-size: 10.5px; color: #7686a2; flex-shrink: 0; margin-left: auto; }
+.export-dialog-scope-key { font-size: var(--text-xs); color: #aebad0; width: 52px; flex: none; }
+.export-dialog-scope-label { font-size: var(--text-xs); font-weight: 600; color: var(--n1, #00f0ff); background: var(--gs1, rgba(0, 240, 255, .12)); border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, .4)); border-radius: 8px; padding: 4px 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.export-dialog-stats { font-size: var(--text-xs); color: #7686a2; flex-shrink: 0; margin-left: auto; }
 
 /* Beta 4 M14 — Full book / Current part / Current chapter segmented control */
 .export-scope-seg { display: flex; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, .05); border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, .2)); gap: 2px; }
-.export-scope-seg__btn { border: none; background: none; color: #94a3bd; font-size: 11px; font-weight: 400; padding: 4px 11px; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: color .12s ease, background .12s ease; }
+.export-scope-seg__btn { border: none; background: none; color: #94a3bd; font-size: var(--text-xs); font-weight: 400; padding: 4px 11px; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: color .12s ease, background .12s ease; }
 .export-scope-seg__btn:hover:not(:disabled):not(.export-scope-seg__btn--active) { color: #fff; }
 .export-scope-seg__btn--active { color: var(--n1, #00f0ff); background: var(--gs1, rgba(0, 240, 255, .12)); font-weight: 600; box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, .4)); }
 .export-scope-seg__btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -59,7 +59,7 @@
 /* ── Compile-option toggles (prototype 2744–2751, mkToggle 4180) ── */
 .export-dialog-toggle-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
 .export-dialog-toggle-row:last-of-type { padding-bottom: 13px; }
-.export-dialog-toggle-label { flex: 1; font-size: 11.5px; color: #aebad0; }
+.export-dialog-toggle-label { flex: 1; font-size: var(--text-xs); color: #aebad0; }
 .export-toggle { width: 37px; height: 21px; border-radius: 99px; position: relative; cursor: pointer; flex: none; transition: all .2s ease; background: rgba(255, 255, 255, .04); border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .3)); padding: 0; }
 .export-toggle--on { background: var(--gs1, rgba(0, 240, 255, .12)); border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); box-shadow: 0 0 10px -2px var(--g1, rgba(0, 240, 255, .4)); }
 .export-toggle:disabled { cursor: not-allowed; opacity: .5; }
@@ -67,7 +67,7 @@
 .export-toggle--on .export-toggle__knob { transform: translateX(16px); background: var(--n1, #00f0ff); box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, .4)); }
 
 /* ── Run button (gradient, full width per prototype 3852) ── */
-.export-dialog-run { display: block; width: 100%; text-align: center; padding: 9px; border-radius: 11px; border: none; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); color: #0b0d17; font-size: 12.5px; font-weight: 700; cursor: pointer; box-shadow: 0 0 18px -3px var(--g2, rgba(155, 95, 255, .4)); transition: transform .12s ease; }
+.export-dialog-run { display: block; width: 100%; text-align: center; padding: 9px; border-radius: 11px; border: none; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); color: #0b0d17; font-size: var(--text-xs); font-weight: 700; cursor: pointer; box-shadow: 0 0 18px -3px var(--g2, rgba(155, 95, 255, .4)); transition: transform .12s ease; }
 .export-dialog-run:hover:not(:disabled) { transform: scale(1.015); }
 .export-dialog-run:disabled { opacity: .5; cursor: not-allowed; }
 .export-dialog-run:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 2px; }
@@ -76,21 +76,21 @@
 .export-dialog-busy { padding: 26px 6px 16px; text-align: center; }
 .export-dialog-busy-track { height: 7px; border-radius: 5px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-bottom: 14px; }
 .export-dialog-busy-fill { width: 60%; height: 100%; border-radius: 5px; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); animation: lnPulse 1s ease-in-out infinite; }
-.export-dialog-busy-text { font-size: 12px; color: #aebad0; }
+.export-dialog-busy-text { font-size: var(--text-xs); color: #aebad0; }
 
 /* ── Done step (Beta 4 M14, prototype 3860–3876) ── */
 .export-dialog-done { padding: 18px 6px 6px; text-align: center; }
-.export-dialog-done-title { font-size: 13px; font-weight: 600; color: #eef2fb; margin-top: 9px; }
+.export-dialog-done-title { font-size: var(--text-sm); font-weight: 600; color: #eef2fb; margin-top: 9px; }
 .export-dialog-file-chip { display: flex; align-items: center; gap: 9px; margin: 13px auto 0; max-width: 360px; padding: 9px 12px; border-radius: 11px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .1); color: var(--n1, #00f0ff); }
-.export-dialog-file-name { flex: 1; text-align: left; font-size: 11.5px; color: #dbe4f5; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.export-dialog-file-size { font-size: 10px; color: #7686a2; }
+.export-dialog-file-name { flex: 1; text-align: left; font-size: var(--text-xs); color: #dbe4f5; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.export-dialog-file-size { font-size: var(--text-xs); color: #7686a2; }
 /* SKY-7108 — missing scene .md file(s) surfaced instead of silently exporting empty. */
-.export-dialog-done-warning { margin: 12px auto 0; max-width: 360px; padding: 8px 12px; border-radius: 10px; font-size: 11px; line-height: 1.5; text-align: left; color: var(--state-warning, #fbbf24); background: var(--color-warning-bg, rgba(251, 191, 36, .1)); border: 1px solid var(--color-warning-border, rgba(251, 191, 36, .35)); }
+.export-dialog-done-warning { margin: 12px auto 0; max-width: 360px; padding: 8px 12px; border-radius: 10px; font-size: var(--text-xs); line-height: 1.5; text-align: left; color: var(--state-warning, #fbbf24); background: var(--color-warning-bg, rgba(251, 191, 36, .1)); border: 1px solid var(--color-warning-border, rgba(251, 191, 36, .35)); }
 .export-dialog-done-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
-.export-dialog-reveal { padding: 6px 14px; border-radius: 9px; border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4)); background: none; color: #c3cee2; font-size: 11.5px; cursor: pointer; }
+.export-dialog-reveal { padding: 6px 14px; border-radius: 9px; border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4)); background: none; color: #c3cee2; font-size: var(--text-xs); cursor: pointer; }
 .export-dialog-reveal:hover { border-color: var(--b1, rgba(0, 240, 255, .5)); color: #fff; }
 .export-dialog-reveal:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
-.export-dialog-done-btn { padding: 6px 16px; border-radius: 9px; border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); background: none; color: var(--n1, #00f0ff); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.export-dialog-done-btn { padding: 6px 16px; border-radius: 9px; border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); background: none; color: var(--n1, #00f0ff); font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
 .export-dialog-done-btn:hover { background: var(--gs1, rgba(0, 240, 255, .12)); }
 .export-dialog-done-btn:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
 
