@@ -486,33 +486,36 @@ function isSingleCloser(text: string, i: number): boolean {
 const isDoubleOpener = (text: string, i: number): boolean =>
   text[i] === '“' || (text[i] === '"' && !isInchMark(text, i));
 
-/** Index of the closer of the double quote opening at `i`, searched before `limit`; -1 if none. */
 /**
- * A straight `"` after a digit inside speech (`“I saw a 12" ruler,” she said.`)
- * is an inch mark when the speech is still closed later: by a `”` for curly
- * speech, or by a straight `"` that follows its own punctuation (`edge,"`).
- * With no such closer (`"Meet me at 5" she said.`) it is the closing quote.
+ * Index of the closer of the double quote opening at `i`, searched before
+ * `limit`; -1 if none. One forward scan, so every measurement in a line
+ * (`“The 12" and 14" boards,”`) is passed over on the way to the real closer:
+ * - Curly speech (`“`) closes only at `”`.
+ * - Straight speech closes at a `”` or at a straight `"` that does not follow
+ *   a digit. A `"` after a digit (`12"`) is a measurement, except that the
+ *   first one closes the line when nothing better follows: no later `"`
+ *   (`"Meet me at 5" she said.`), or a later `"` that opens new speech rather
+ *   than following its own punctuation (`"At 5" she said, "go."`). A
+ *   feet-and-inches mark (`6'2"`) never closes.
  */
-function isInchInSpeech(text: string, opener: number, j: number, limit: number): boolean {
-  if (!isInchMark(text, j)) return false;
-  let k = j + 1;
-  while (k < limit && text[k] !== '"' && text[k] !== '”' && text[k] !== '“') k++;
-  if (k >= limit) return false;
-  if (text[opener] === '“') return text[k] === '”';
-  return text[k] === '"' && ',.!?…—–-'.includes(text[k - 1]);
-}
-
 function doubleCloserOf(text: string, i: number, limit: number): number {
-  let j = i + 1;
-  while (
-    j < limit &&
-    !(
-      text[j] === '”' ||
-      (text[j] === '"' && !isPrimeInch(text, j) && !isInchInSpeech(text, i, j, limit))
-    )
-  )
-    j++;
-  return j < limit ? j : -1;
+  if (text[i] === '“') {
+    for (let j = i + 1; j < limit; j++) if (text[j] === '”') return j;
+    return -1;
+  }
+  let firstInch = -1;
+  for (let j = i + 1; j < limit; j++) {
+    const c = text[j];
+    if (c === '”') return j;
+    if (c !== '"') continue;
+    if (isInchMark(text, j)) {
+      if (firstInch < 0 && !isPrimeInch(text, j)) firstInch = j;
+      continue;
+    }
+    if (firstInch < 0 || ',.!?…—–-'.includes(text[j - 1])) return j;
+    return firstInch;
+  }
+  return firstInch;
 }
 
 interface SingleQuoteIndex {

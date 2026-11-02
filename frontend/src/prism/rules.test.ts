@@ -527,6 +527,26 @@ describe('dialogue tint', () => {
     expect(hits('dialogue', '"At 5" she said, "go."')).toEqual(['"At 5"', '"go."']);
   });
 
+  it('passes over every inch mark in a line on the way to the real closer', () => {
+    const curly2 = '“The 12" and 14" boards felt rough,” she said.';
+    expect(hits('dialogue', curly2)).toEqual(['“The 12" and 14" boards felt rough,”']);
+    expect(hits('filter-words', curly2)).toEqual([]);
+    const curly3 = '“Buy 2", 4", and 6" nails,” he said.';
+    expect(hits('dialogue', curly3)).toEqual(['“Buy 2", 4", and 6" nails,”']);
+    const straight2 = '"The 12" and 14" boards felt rough," she said.';
+    // The whole line, and no stray `" she said.` tinted as speech.
+    expect(hits('dialogue', straight2)).toEqual(['"The 12" and 14" boards felt rough,"']);
+    expect(hits('filter-words', straight2)).toEqual([]);
+    const straight3 = '"Buy 2", 4", and 6" nails," he said.';
+    expect(hits('dialogue', straight3)).toEqual(['"Buy 2", 4", and 6" nails,"']);
+    // Measurements mixed with feet-and-inches.
+    const mixed = '“He is 6\'2" and the door is 80" tall, so I felt fine,” she said.';
+    expect(hits('dialogue', mixed)).toEqual([
+      '“He is 6\'2" and the door is 80" tall, so I felt fine,”',
+    ]);
+    expect(hits('filter-words', mixed)).toEqual([]);
+  });
+
   it('spans from the opening to the closing quote inclusive', () => {
     expect(hits('dialogue', '“Hi,” she said, “there.” Then "bye" too.')).toEqual([
       '“Hi,”',
