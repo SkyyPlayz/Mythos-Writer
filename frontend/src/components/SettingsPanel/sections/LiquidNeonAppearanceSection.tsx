@@ -566,11 +566,13 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
       <Card title="Motion" sub="Slow ambient color movement. Reduce motion and your system's reduced-motion setting always turn it off.">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }}>
-            {/* #1773 type-scale guard: new rows use the --text-* scale, not 11.5/10px. */}
-            <div style={{ fontSize: 'var(--text-xs)', color: '#aebad0' }}>Accent breathe</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 1 }}>{"Glow and border colors slowly drift through your theme's six colors. Pauses while the window is hidden or idle."}</div>
+            {/* #1773 type-scale guard: new rows use the --text-* scale, not 11.5/10px.
+                Colors use the text tokens (not literals) so high contrast /
+                prefers-contrast brighten them — the hint can say "high contrast". */}
+            <div data-testid="lnas-accentbreathe-label" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-body)' }}>Accent breathe</div>
+            <div data-testid="lnas-accentbreathe-desc" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 1 }}>{"Glow and border colors slowly drift through your theme's six colors. Pauses while the window is hidden or idle."}</div>
             {breatheHint && (
-              <div id={breatheHintId} data-testid="lnas-accentbreathe-hint" style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 1 }}>{breatheHint}</div>
+              <div id={breatheHintId} data-testid="lnas-accentbreathe-hint" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 1 }}>{breatheHint}</div>
             )}
           </div>
           <NeonToggle

@@ -454,6 +454,14 @@ describe('#1774 — Motion card: Accent breathe', () => {
       expect(toggle).toHaveAttribute('aria-checked', 'true'); // still the saved setting
     };
 
+    it('label, description and hint use the contrast-aware text tokens', async () => {
+      stubMatchMedia({ [CONTRAST]: true });
+      await setup();
+      expect(screen.getByTestId('lnas-accentbreathe-label').style.color).toBe('var(--text-body)');
+      expect(screen.getByTestId('lnas-accentbreathe-desc').style.color).toBe('var(--text-muted)');
+      expect(hint()!.style.color).toBe('var(--text-muted)');
+    });
+
     it('in-app Reduce motion: hint names it and the switch points at it', async () => {
       stubMatchMedia();
       await setup({ reduceMotion: true });
