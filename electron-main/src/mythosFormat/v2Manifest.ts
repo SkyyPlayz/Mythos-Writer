@@ -1001,6 +1001,7 @@ export function syncCanonicalFromManifest(
           continue;
         }
         if (isBookFileIoError(err)) {
+          rememberPendingEdit(story);
           recordBookSkip(warnings, 'book-file-io', story.id);
           continue;
         }
@@ -1013,7 +1014,9 @@ export function syncCanonicalFromManifest(
           recordBookSkip(warnings, event, story.id);
           continue;
         }
+        rememberPendingEdit(story);
         recordBookSkip(warnings, 'book-file-sync-skipped', story.id);
+        continue;
       }
     }
 

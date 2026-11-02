@@ -26,7 +26,7 @@ import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitche
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
 import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
+import { BookSyncNotice, isLoadedManifest, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import {
   parseSceneNotes,
   serializeSceneNotes,
@@ -1391,9 +1391,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
       }
 
-      const m = storyValid
-        ? await window.api.readManifest() as Manifest
+      const rawManifest = storyValid
+        ? await window.api.readManifest()
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
+      if (storyValid && !isLoadedManifest(rawManifest)) {
+        setBookSave({ ok: false });
+        return;
+      }
+      const m = rawManifest as Manifest;
       // SKY-11379: last IPC resolved — re-check the generation once more before
       // the atomic apply below. setManifest through setActiveVaultRoot run with
       // no further awaits between them, so a single check here protects the
@@ -2661,9 +2666,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!window.api.onNavigatorManifestChanged) return;
     const unsub = window.api.onNavigatorManifestChanged(() => {
-      (window.api.readManifest() as Promise<Manifest>).then((m) => {
-        setStories(m?.stories ?? []);
-        const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m?.bookSyncWarnings ?? [] });
+      (window.api.readManifest() as Promise<unknown>).then((m) => {
+        if (!isLoadedManifest(m)) {
+          setBookSave({ ok: false });
+          return;
+        }
+        const loaded = m as Manifest;
+        setStories(loaded.stories ?? []);
+        const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: loaded.bookSyncWarnings ?? [] });
         setBookSave(read.ok ? read : { ok: true, warnings: [] });
       }).catch(() => {});
     });

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { applyTheme } from './theme';
 import { DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
+import { BookSyncNotice, isLoadedManifest, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import type { Story, Manifest } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
@@ -79,9 +79,11 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [bookSave, setBookSave] = useState<ManifestSaveOutcome>({ ok: true, warnings: [] });
-  const noteManifestWrite = useCallback(async (manifest: Manifest) => {
+  const noteManifestWrite = useCallback(async (manifest: Manifest): Promise<ManifestSaveOutcome> => {
     const result = await window.api.writeManifest(stripManifestContentForIpc(manifest));
-    setBookSave(manifestSaveOutcome(result));
+    const outcome = manifestSaveOutcome(result);
+    setBookSave(outcome);
+    return outcome;
   }, []);
   const [stories, setStories] = useState<Story[]>([]);
   // SKY-2966: track selected scene so the navigator highlights the active scene
@@ -110,9 +112,14 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
 
   // Refresh the manifest from disk into local state.
   const refreshStories = useCallback(() => {
-    (window.api.readManifest() as Promise<Manifest>).then((m) => {
-      setStories(m?.stories ?? []);
-      const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m?.bookSyncWarnings ?? [] });
+    (window.api.readManifest() as Promise<unknown>).then((m) => {
+      if (!isLoadedManifest(m)) {
+        setBookSave({ ok: false });
+        return;
+      }
+      const loaded = m as Manifest;
+      setStories(loaded.stories ?? []);
+      const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: loaded.bookSyncWarnings ?? [] });
       setBookSave(read.ok ? read : { ok: true, warnings: [] });
     }).catch(() => {});
   }, []);
@@ -164,8 +171,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       const updated = { ...m, stories: [...(m?.stories ?? []), story] };
       // SKY-6196: strip scene prose before it crosses the IPC boundary — React
       // state (`stories`) keeps full content untouched.
-      await noteManifestWrite(updated);
-      setStories(updated.stories);
+      const outcome = await noteManifestWrite(updated);
+      if (outcome.ok) setStories(updated.stories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to create story:', e);
@@ -192,8 +199,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       );
       // SKY-6196: strip scene prose before it crosses the IPC boundary — React
       // state (`stories`) keeps full content untouched.
-      await noteManifestWrite({ ...m, stories: updatedStories });
-      setStories(updatedStories);
+      const outcome = await noteManifestWrite({ ...m, stories: updatedStories });
+      if (outcome.ok) setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to create chapter:', e);
@@ -236,8 +243,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       );
       // SKY-6196: strip scene prose before it crosses the IPC boundary — React
       // state (`stories`) keeps full content untouched.
-      await noteManifestWrite({ ...m, stories: updatedStories });
-      setStories(updatedStories);
+      const outcome = await noteManifestWrite({ ...m, stories: updatedStories });
+      if (outcome.ok) setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to create scene:', e);
@@ -262,8 +269,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       );
       // SKY-6196: strip scene prose before it crosses the IPC boundary — React
       // state (`stories`) keeps full content untouched.
-      await noteManifestWrite({ ...m, stories: updatedStories });
-      setStories(updatedStories);
+      const outcome = await noteManifestWrite({ ...m, stories: updatedStories });
+      if (outcome.ok) setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to reorder scenes:', e);

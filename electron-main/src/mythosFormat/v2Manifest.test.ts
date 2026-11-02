@@ -26,6 +26,7 @@ import {
   writeManifest,
   reindexVault,
   _setBookFileCasBeforeCompareForTests,
+  _setBookFileCasBeforeWriteForTests,
 } from '../vault.js';
 import {
   parseBookFile,
@@ -1122,6 +1123,7 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
 
   afterEach(() => {
     _setBookFileCasBeforeCompareForTests(null);
+    _setBookFileCasBeforeWriteForTests(null);
     _clearPendingBookEditsForTests();
   });
 
@@ -1354,6 +1356,37 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     expect(healed.profiles).toEqual([profile]);
     expect(healed.extraFrontmatter).toEqual({ series: 'Ash Cycle' });
     expect(fs.readFileSync(bookPath, 'utf8')).not.toContain('racer');
+  });
+
+  it('through writeManifest, a write failure after compare warns, keeps one pending edit, and retries', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('WriteFail');
+    const before = fs.readFileSync(bookPath, 'utf8');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'After Compare';
+    story.updatedAt = '2026-08-01T00:00:00.000Z';
+    _setBookFileCasBeforeWriteForTests(() => {
+      const err = new Error(`${bookPath} ENOSPC Trade paperback`) as NodeJS.ErrnoException;
+      err.code = 'ENOSPC';
+      throw err;
+    });
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    _setBookFileCasBeforeWriteForTests(null);
+    expect(saved.warnings).toEqual([{ event: 'book-file-io', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain(bookPath);
+    expect(JSON.stringify(saved.warnings)).not.toContain('ENOSPC');
+    expect(JSON.stringify(saved.warnings)).not.toContain('Trade paperback');
+    expect(Object.keys(saved.warnings[0] ?? {})).toEqual(['event', 'storyId']);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(before);
+    expect(pendingBookEditCount()).toBe(1);
+    expect(pendingBookEditFor('profiled-story')?.title).toBe('After Compare');
+    const retried = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(retried.warnings).toEqual([]);
+    expect(pendingBookEditFor('profiled-story')).toBeUndefined();
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).title).toBe('After Compare');
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).profiles).toEqual([profile]);
   });
 
   it('through writeManifest, an EACCES skip warns with only the event code and story id', () => {

@@ -265,8 +265,15 @@ export function isBookFileCasExhausted(err: unknown): err is BookFileCasExhauste
 /** Test-only. Runs after mutate and before the compare read inside writeBookFileCas. */
 let bookFileCasBeforeCompareForTests: (() => void) | undefined;
 
+/** Test-only. Runs after a matching compare and before writeVaultFileAtomic. */
+let bookFileCasBeforeWriteForTests: (() => void) | undefined;
+
 export function _setBookFileCasBeforeCompareForTests(hook: (() => void) | null): void {
   bookFileCasBeforeCompareForTests = hook ?? undefined;
+}
+
+export function _setBookFileCasBeforeWriteForTests(hook: (() => void) | null): void {
+  bookFileCasBeforeWriteForTests = hook ?? undefined;
 }
 
 /** Read failed for a reason other than a verified missing leaf. Message is the event code only. */
@@ -336,7 +343,16 @@ export function writeBookFileCas(
     beforeCompare?.();
     const current = readVaultTextOrNull(vaultRoot, filePath);
     if (current === prevRaw) {
-      if (current !== next) writeVaultFileAtomic(vaultRoot, filePath, next);
+      if (current !== next) {
+        try {
+          bookFileCasBeforeWriteForTests?.();
+          writeVaultFileAtomic(vaultRoot, filePath, next);
+        } catch (err) {
+          if (isSymlinkWriteRefusal(err)) throw err;
+          if (isBookFileIoError(err)) throw err;
+          throw bookFileIoError(err);
+        }
+      }
       return;
     }
   }

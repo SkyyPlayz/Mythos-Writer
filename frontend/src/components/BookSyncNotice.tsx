@@ -75,6 +75,43 @@ function noticeText(warning: BookSyncWarning): string {
   }
 }
 
+export function isLoadedManifest(result: unknown): result is { stories: unknown[] } {
+  if (!result || typeof result !== 'object') return false;
+  const record = result as { error?: unknown; ok?: unknown; stories?: unknown };
+  if (typeof record.error === 'string' || record.ok === false) return false;
+  return Array.isArray(record.stories);
+}
+
+/**
+ * Apply a manifest read. An `{ error }` result leaves stories and manifest as they were.
+ * Warnings on a real manifest are non-fatal.
+ */
+export function applyManifestRead<TStories, TManifest>(
+  previous: { stories: TStories; manifest: TManifest },
+  result: unknown,
+): { stories: TStories; manifest: TManifest; save: ManifestSaveOutcome } {
+  if (!isLoadedManifest(result)) {
+    return { stories: previous.stories, manifest: previous.manifest, save: { ok: false } };
+  }
+  const manifest = result as TManifest & { stories: TStories; bookSyncWarnings?: unknown };
+  const warned = manifestSaveOutcome({ ok: true, bookSyncWarnings: manifest.bookSyncWarnings ?? [] });
+  return {
+    stories: manifest.stories,
+    manifest,
+    save: warned.ok ? warned : { ok: true, warnings: [] },
+  };
+}
+
+/**
+ * Apply a manifest write. Warnings keep the current stories. An `{ error }` result does too.
+ */
+export function applyManifestWrite<TStories, TManifest>(
+  previous: { stories: TStories; manifest: TManifest },
+  result: unknown,
+): { stories: TStories; manifest: TManifest; save: ManifestSaveOutcome } {
+  return { stories: previous.stories, manifest: previous.manifest, save: manifestSaveOutcome(result) };
+}
+
 export function BookSyncNotice({ outcome }: { outcome: ManifestSaveOutcome }) {
   if (!outcome.ok) {
     return (
