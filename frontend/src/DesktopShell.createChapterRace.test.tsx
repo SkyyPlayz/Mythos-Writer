@@ -847,4 +847,52 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
       expect(content).toContain('Survives chapter→part.');
     });
   });
+
+  it('rapid + Chapter keeps chrono order when the next add starts before selection re-renders', async () => {
+    const api = makeMockApi(makeSingleStoryManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    await screen.findByRole('navigation', { name: 'Main navigation' });
+    await screen.findByTestId('msv-root');
+    await waitFor(() => {
+      expect(document.querySelector('.nav-chapter-title')?.textContent).toContain('Chapter One');
+    });
+
+    const addBtn = () => document.querySelector('[data-testid="msv-add-chapter"]') as HTMLButtonElement;
+    const navTitles = () => [...document.querySelectorAll('.nav-chapter-title')].map((el) => (el.textContent ?? '').trim());
+
+    // Chapter One is already selected via last-opened-scene restore. Open
+    // the first prompt the normal way.
+    await act(async () => { addBtn().click(); });
+    const input1 = await openPromptDialog();
+    fireEvent.change(input1, { target: { value: 'Chapter Alpha' } });
+
+    // OK resolves the prompt. The insert runs in the promise continuation
+    // (a microtask), and selection is a normal-priority update that has not
+    // re-rendered yet. Starting the next add in this same turn captures the
+    // pre-Alpha click handler — the CI failure mode for F1#9
+    // (Alpha ends up after Bravo). Both clicks stay inside one act so the
+    // continuation's setState is flushed, but the second click is synchronous
+    // and still sees the pre-render handler.
+    await act(async () => {
+      (document.querySelector('.prompt-modal-ok') as HTMLButtonElement).click();
+      addBtn().click();
+      await Promise.resolve();
+    });
+
+    const input2 = await openPromptDialog();
+    fireEvent.change(input2, { target: { value: 'Chapter Bravo' } });
+    await act(async () => {
+      fireEvent.keyDown(input2, { key: 'Enter' });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    expect(navTitles().filter((t) => /Chapter (One|Alpha|Bravo)/.test(t))).toEqual([
+      'Chapter One',
+      'Chapter Alpha',
+      'Chapter Bravo',
+    ]);
+  });
 });

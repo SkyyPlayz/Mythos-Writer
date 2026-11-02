@@ -19,6 +19,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 
 ### Fixed
 - Confirming a Brainstorm note proposal no longer follows a symbolic link at the destination, so a shortcut in the Notes Vault cannot make the write land outside the vault or overwrite another file. ([#1795](https://github.com/SkyyPlayz/Mythos-Writer/pull/1795))
+- Adding several chapters in a row no longer drops a later chapter in ahead of the one you just created. ([#1791](https://github.com/SkyyPlayz/Mythos-Writer/pull/1791))
 - **Read-aloud no longer ships GPL-licensed phonemizer code.** Kokoro grapheme-to-phoneme is English-only `phonemize` (MIT); the GPL `phonemizer` package is gone from the dependency tree and from packaged builds. ([#1729](https://github.com/SkyyPlayz/Mythos-Writer/pull/1729))
 - A board drag or recolor whose sidecar is a symbolic link no longer throws out of the main process. The board shows the shortcut refusal and returns to the last saved layout, so the drag is not left looking saved. If that notice cannot be delivered, the pending edit stays queued. The link target is left unchanged. ([#1748](https://github.com/SkyyPlayz/Mythos-Writer/pull/1748))
 - On Windows, where the no-follow open flag is zero, a save, an append, a settings read, a manifest read, and a note read reject a symbolic link or junction before the open, and they keep the handle only when it is still the same file. ([#1748](https://github.com/SkyyPlayz/Mythos-Writer/pull/1748))
