@@ -20,30 +20,44 @@
 // - Engine: JS RegExp, flags `g` `m` `u` always, plus `i` when Match case is
 //   off. Never `s`, so `.` does not cross a line break.
 // - Literal mode escapes the query; regex mode compiles it as typed.
-//   Invalid regex -> { error: 'Invalid pattern: …' } and no scan.
+//   Invalid regex -> { error: 'Invalid pattern: …' } and no scan. The user's
+//   pattern is validated on its own before any wrapping, so Whole word can't
+//   turn an invalid pattern into a different valid one.
 // - Whole word wraps the pattern in a Unicode boundary,
 //   (?<![\p{L}\p{N}_])(?:…)(?![\p{L}\p{N}_]), not \b (\b is ASCII-only).
-// - Matching is per line. Text is split on '\n' and a trailing '\r' is not
-//   part of the line, so CRLF files keep every byte and `$` anchors before
-//   the '\r'. No match spans two lines; lookbehind does not see the previous
-//   line. A query containing CR/LF, or a regex with an unescaped \n or \r
-//   escape, is refused because it could never match.
+// - Matching is per line. Lines end at '\r\n', '\n' or a lone '\r' (the
+//   CommonMark line endings); the ending is never part of a line, so every
+//   line-ending byte is kept and `$` anchors before it. No match spans two
+//   lines; lookbehind does not see the previous line. A query containing CR
+//   or LF, or a regex naming \n or \r (unescaped `\n` / `\r`, even inside a
+//   class such as [^\n]), is refused: per line it is either dead or redundant.
 // - Query and replacement are NFC-normalized. A file whose text is not NFC is
 //   skipped and reported 'unusual Unicode, skipped' (no offset remapping in
-//   v1). Input errors are reported before that per-file skip.
+//   v1). Input errors are reported before that per-file skip. A replace whose
+//   result would not be NFC (e.g. a combining mark meeting a new base letter)
+//   is skipped with the same reason, so the matcher never writes a file it
+//   would then refuse to search.
 // - Case folding is the JS default (simple Unicode case folding under `iu`,
 //   no locale). Turkish dotted/dotless i is NOT special-cased: 'i' matches
 //   'i' and 'I' only, never 'İ' (U+0130) or 'ı' (U+0131).
 // - Matches are non-overlapping, left to right. Any zero-length match is
-//   refused with 'pattern matches empty text' (e.g. '^', 'a*', '(?<=a)').
+//   refused with 'pattern matches empty text'. A pattern that matches '' is
+//   refused for every file ('^', 'a*'); one that only matches empty text in
+//   some context ('(?<=a)') is refused for the files where that context occurs.
 // - Zones: the leading frontmatter block (line 0 is exactly '---', closed by
 //   the next line matching /^---[ \t]*$/, as vaultGraph.ts reads it) is not
 //   searched unless includeFrontmatter is set. [[wikilink]] spans (same
-//   grammar as wikiLinkRename.ts) are skipped unless includeWikilinks is set:
-//   a match that touches a span is dropped and the scan retries after it.
+//   grammar as wikiLinkRename.ts) are skipped unless includeWikilinks is set,
+//   in literal and regex mode alike ("plain mode" is plain replace as opposed
+//   to S3's rename): a match that overlaps a span is dropped and the scan
+//   retries one code point after its start (or after the span, when the
+//   match starts inside it). An empty `---`/`---` block counts as
+//   frontmatter, so nothing in it is ever edited by accident.
 // - Replacement tokens (regex mode only): $1..$99, $<name>, $&, $$, expanded
-//   by native String.prototype.replace (no custom token parser). Literal mode
-//   inserts the replacement verbatim, so '$' stays literal.
+//   by the engine's own GetSubstitution through RegExp.prototype[@@replace],
+//   the same code String.prototype.replace runs (no custom token parser),
+//   fed the captures the scan found. Native $` and $' also work and refer to
+//   the match's line. Literal mode inserts the replacement verbatim.
 // - Input caps: query <= 1 KB and replacement <= 10 KB, in UTF-8 bytes. The
 //   S2 IPC schema re-checks them; this module refuses oversize input itself.
 // - Replace plans list replacements in DESCENDING start order, so applying
@@ -226,11 +240,16 @@ export function compileMatcher(options: FindOptions): { regex: RegExp } | { erro
   const checked = checkQuery(options.query, regexMode);
   if ('error' in checked) return checked;
   let source = regexMode ? checked.query : escapeRegExpLiteral(checked.query);
-  if (options.wholeWord === true) source = wrapWholeWord(source);
   const flags = options.matchCase === true ? 'gmu' : 'gimu';
   let regex: RegExp;
   try {
+    // Compile the pattern alone first: wrapped, an unbalanced '[' or ')'
+    // could swallow or close the wrapper and still compile.
     regex = new RegExp(source, flags);
+    if (options.wholeWord === true) {
+      source = wrapWholeWord(source);
+      regex = new RegExp(source, flags);
+    }
   } catch (err) {
     return { error: invalidPattern(err) };
   }
@@ -245,22 +264,19 @@ export function compileMatcher(options: FindOptions): { regex: RegExp } | { erro
 interface LineSpan {
   /** Offset of the line's first code unit. */
   start: number;
-  /** Offset just past the line's content (before '\r\n' or '\n'). */
+  /** Offset just past the line's content (before its '\r\n', '\n' or '\r'). */
   end: number;
 }
 
 function* lineSpans(text: string): Generator<LineSpan> {
+  const eol = /\r\n?|\n/g;
   let start = 0;
-  for (;;) {
-    const nl = text.indexOf('\n', start);
-    if (nl < 0) {
-      yield { start, end: text.length };
-      return;
-    }
-    const end = nl > start && text.charCodeAt(nl - 1) === 0x0d ? nl - 1 : nl;
-    yield { start, end };
-    start = nl + 1;
+  let m: RegExpExecArray | null;
+  while ((m = eol.exec(text)) !== null) {
+    yield { start, end: m.index };
+    start = m.index + m[0].length;
   }
+  yield { start, end: text.length };
 }
 
 function nextCodePointIndex(s: string, i: number): number {
@@ -273,17 +289,19 @@ function nextCodePointIndex(s: string, i: number): number {
 }
 
 interface LineMatch {
-  /** Line content the match was found in (CR stripped). */
+  /** Line content the match was found in (line ending stripped). */
   line: string;
   /** Offset of `line` in the full text. */
   lineStart: number;
   /** Match bounds inside `line`. */
   start: number;
   end: number;
+  /** The engine's match result (captures, groups), for token expansion. */
+  exec: RegExpExecArray;
 }
 
 type ScanResult =
-  | { found: LineMatch[]; truncated: boolean; regex: RegExp; skipped?: undefined }
+  | { found: LineMatch[]; truncated: boolean; skipped?: undefined }
   | { error: string }
   | { skipped: SkipReason };
 
@@ -293,6 +311,8 @@ function scan(text: string, options: FindOptions): ScanResult {
   if (text.normalize('NFC') !== text) return { skipped: UNUSUAL_UNICODE_SKIP };
 
   const re = compiled.regex;
+  // A non-negative number caps the result (fractions round down); anything
+  // else, including NaN and negatives, means no cap.
   const limit =
     typeof options.maxMatches === 'number' && options.maxMatches >= 0
       ? Math.floor(options.maxMatches)
@@ -321,11 +341,11 @@ function scan(text: string, options: FindOptions): ScanResult {
         continue;
       }
       // Truncated means a real match was left out, not "hit the number".
-      if (found.length >= limit) return { found, truncated: true, regex: re };
-      found.push({ line, lineStart: span.start, start, end });
+      if (found.length >= limit) return { found, truncated: true };
+      found.push({ line, lineStart: span.start, start, end, exec: m });
     }
   }
-  return { found, truncated: false, regex: re };
+  return { found, truncated: false };
 }
 
 /** Every match of `options.query` in `text`, ascending. */
@@ -333,34 +353,51 @@ export function planMatches(text: string, options: FindOptions): MatchPlan {
   const result = scan(text, options);
   if ('error' in result) return { matches: [], error: result.error };
   if (result.skipped !== undefined) return { matches: [], skipped: result.skipped };
-  const matches = result.found.map(({ line, lineStart, start, end }) => ({
+  const matches = result.found.map(({ lineStart, start, end, exec }) => ({
     start: lineStart + start,
     end: lineStart + end,
-    text: line.slice(start, end),
+    text: exec[0],
   }));
   return result.truncated ? { matches, truncated: true } : { matches };
 }
 
-/**
- * Expand the replacement for one regex match with native
- * String.prototype.replace. A sticky copy of the regex is run at the match's
- * own position in the same line, so captures, lookbehind and `$&` see
- * exactly what the scan saw. The expansion is the part of the output that
- * stands where the match stood.
- */
-function expandRegexReplacement(
-  sticky: RegExp,
-  line: string,
-  start: number,
-  end: number,
+// The engine's own replace algorithm (GetSubstitution included). Called on a
+// stand-in "regex" whose exec hands back the match the scan already found,
+// so expansion never re-runs the user's pattern.
+const nativeRegExpReplace = RegExp.prototype[Symbol.replace] as unknown as (
+  this: object,
+  subject: string,
   replacement: string,
-): string | null {
-  sticky.lastIndex = start;
-  const out = line.replace(sticky, replacement);
-  // A successful sticky match leaves lastIndex at its end; anything else
-  // means the re-run didn't reproduce the scan's match.
-  if (sticky.lastIndex !== end) return null;
-  return out.slice(start, out.length - (line.length - end));
+) => string;
+
+// $` and $' copy the text around the match, so only they need the whole
+// line as the subject; every other token needs just the match itself.
+// Over-matching here (e.g. "$$`") only costs speed, never correctness.
+const CONTEXT_TOKEN_RE = /\$[`']/;
+
+/**
+ * Expand `replacement` for one regex match with native token handling.
+ * Cost is O(match + replacement) unless it uses $` or $', which cost
+ * O(line) per match as they must copy the line.
+ */
+function expandRegexReplacement(found: LineMatch, replacement: string): string {
+  const { exec, line, start, end } = found;
+  const withContext = CONTEXT_TOKEN_RE.test(replacement);
+  const subject = withContext ? line : exec[0];
+  const result = Object.assign(Array.from(exec), {
+    index: withContext ? start : 0,
+    input: subject,
+    groups: exec.groups,
+  });
+  const standIn = {
+    flags: '',
+    global: false,
+    unicode: true,
+    lastIndex: 0,
+    exec: () => result,
+  };
+  const out = nativeRegExpReplace.call(standIn, subject, replacement);
+  return withContext ? out.slice(start, out.length - (line.length - end)) : out;
 }
 
 /**
@@ -383,28 +420,27 @@ export function planReplace(
   const ticked =
     selection === undefined ? null : new Set(selection.map((r) => `${r.start}:${r.end}`));
   // Without a '$' the native expansion is the replacement itself.
-  const sticky =
-    options.regex === true && replacement.includes('$')
-      ? new RegExp(result.regex.source, result.regex.flags.replace('g', '') + 'y')
-      : null;
+  const expand = options.regex === true && replacement.includes('$');
 
   const replacements: Replacement[] = [];
-  for (const { line, lineStart, start, end } of result.found) {
-    const absStart = lineStart + start;
-    const absEnd = lineStart + end;
+  for (const found of result.found) {
+    const absStart = found.lineStart + found.start;
+    const absEnd = found.lineStart + found.end;
     if (ticked !== null && !ticked.has(`${absStart}:${absEnd}`)) continue;
-    let expanded = replacement;
-    if (sticky !== null) {
-      const e = expandRegexReplacement(sticky, line, start, end, replacement);
-      if (e === null) return { error: `${INVALID_PATTERN_PREFIX}: replacement could not be planned` };
-      expanded = e;
-    }
-    replacements.push({ start: absStart, end: absEnd, text: line.slice(start, end), replacement: expanded });
+    replacements.push({
+      start: absStart,
+      end: absEnd,
+      text: found.exec[0],
+      replacement: expand ? expandRegexReplacement(found, replacement) : replacement,
+    });
   }
   replacements.reverse();
 
   const applied = applyReplacements(text, replacements);
   if ('error' in applied) return applied;
+  if (replacements.length > 0 && applied.nextText.normalize('NFC') !== applied.nextText) {
+    return { nextText: text, replacements: [], skipped: UNUSUAL_UNICODE_SKIP };
+  }
   return result.truncated
     ? { nextText: applied.nextText, replacements, truncated: true }
     : { nextText: applied.nextText, replacements };

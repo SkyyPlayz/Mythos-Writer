@@ -905,3 +905,159 @@ describe('purity and determinism', () => {
     expect(one.regex).not.toBe(two.regex);
   });
 });
+
+// Regressions from the adversarial review of the first tip. Each test below
+// failed (or hung) against that tip or against a mutant the suite let live.
+describe('review regressions', () => {
+  it('validates a regex before the Whole word wrap, so an invalid pattern is never accepted', () => {
+    for (const query of ['[', 'a)|(b', '(?<x>a']) {
+      const plan = planMatches('x)y a b', { query, regex: true, wholeWord: true });
+      expect(plan.matches).toEqual([]);
+      expect(plan.error?.startsWith('Invalid pattern')).toBe(true);
+    }
+  });
+
+  it('reports only the engine reason for an invalid pattern, never the pattern itself', () => {
+    const plan = planMatches('a', { query: 'secret(b', regex: true });
+    expect(plan.error).toBe('Invalid pattern: Unterminated group');
+  });
+
+  it('expands $ tokens in linear time: 5 MB line, 5,000 matches, $1 replacement', () => {
+    const line = 'Mara '.padEnd(1000, 'z').repeat(5000);
+    expect(line.length).toBe(5_000_000);
+    const t0 = performance.now();
+    const plan = planReplace(line, { query: '(Mara)', regex: true, replacement: '<$1>' });
+    const ms = performance.now() - t0;
+    if ('error' in plan) throw new Error(plan.error);
+    expect(plan.replacements).toHaveLength(5000);
+    expect(plan.nextText.slice(0, 8)).toBe('<Mara> z');
+    // The first tip took ~12 s here; the plan's no-progress watchdog is 2 s.
+    expect(ms).toBeLessThan(2000);
+  });
+
+  it('expands every token exactly as native String.prototype.replace does on that line', () => {
+    const line = 'say Mara Vey now';
+    const query = '(?<first>M\\w+) (V\\w+)';
+    for (const replacement of ['$2, $1', '$<first>!', '[$&]', '$$1', "$`|$'", '$3$0$<nope>', '$', '$$$']) {
+      const plan = planReplace(line, { query, regex: true, matchCase: true, replacement });
+      if ('error' in plan) throw new Error(plan.error);
+      expect(plan.nextText).toBe(line.replace(new RegExp(query, 'mu'), replacement));
+    }
+  });
+
+  it('treats a lone CR as a line ending, so no match spans a CR-only line break', () => {
+    expect(planMatches('a\rb', { query: 'a\\sb', regex: true }).matches).toEqual([]);
+    expect(planMatches('a\rb', { query: 'a[^x]b', regex: true }).matches).toEqual([]);
+    expect(planMatches('foo\rbar', { query: '^bar', regex: true }).matches).toEqual([
+      { start: 4, end: 7, text: 'bar' },
+    ]);
+    const plan = planReplace('Mara\rMara\r\nMara\n', { query: 'Mara', replacement: 'Mira' });
+    if ('error' in plan) throw new Error(plan.error);
+    expect(plan.nextText).toBe('Mira\rMira\r\nMira\n');
+  });
+
+  it('skips a replace whose result would not be NFC, with the same unusual-Unicode reason', () => {
+    const text = 'x\u0301 test'; // NFC already: there is no precomposed x-acute
+    expect(text.normalize('NFC')).toBe(text);
+    expect(planMatches(text, { query: 'x' }).matches).toHaveLength(1);
+    expect(planReplace(text, { query: 'x', replacement: 'e' })).toEqual({
+      nextText: text,
+      replacements: [],
+      skipped: UNUSUAL_UNICODE_SKIP,
+    });
+  });
+
+  it('steps over a surrogate pair when retrying after a dropped wikilink match (no endless loop)', () => {
+    expect(planMatches('\u{1F600}[[x]] y', { query: '.\\[\\[x', regex: true }).matches).toEqual([]);
+    expect(planMatches('\u{1F600}a[[x]] \u{1F600}a', { query: '\\p{Extended_Pictographic}a\\[?', regex: true }).matches).toEqual([
+      { start: 9, end: 12, text: '\u{1F600}a' },
+    ]);
+  });
+
+  it('retries one code point later when a dropped match started before the link', () => {
+    expect(planMatches('ab[[c]]', { query: 'ab\\[\\[c|b', regex: true }).matches).toEqual([
+      { start: 1, end: 2, text: 'b' },
+    ]);
+  });
+
+  it('keeps a match that only touches a link edge without overlapping it', () => {
+    expect(planMatches('a[[b]]', { query: 'a' }).matches).toEqual([{ start: 0, end: 1, text: 'a' }]);
+    expect(planMatches('[[b]]a', { query: 'a' }).matches).toEqual([{ start: 5, end: 6, text: 'a' }]);
+  });
+
+  it('documents that a greedy match running into a link is dropped whole, not shortened', () => {
+    expect(planMatches('abc [[x]] def', { query: '.+', regex: true }).matches).toEqual([
+      { start: 9, end: 13, text: ' def' },
+    ]);
+  });
+
+  it('skips wikilinks in regex mode too unless includeWikilinks is set', () => {
+    const text = 'See [[Mara]] here';
+    expect(planMatches(text, { query: '\\[\\[Mara\\]\\]', regex: true }).matches).toEqual([]);
+    expect(
+      planMatches(text, { query: '\\[\\[Mara\\]\\]', regex: true, includeWikilinks: true }).matches,
+    ).toEqual([{ start: 4, end: 12, text: '[[Mara]]' }]);
+  });
+
+  it('refuses a pattern that matches empty text for every file, even text where it never fires', () => {
+    expect(planMatches('abc', { query: '^$', regex: true })).toEqual({ matches: [], error: EMPTY_MATCH_ERROR });
+    expect(compileMatcher({ query: '^$', regex: true })).toEqual({ error: EMPTY_MATCH_ERROR });
+  });
+
+  it('lets a literal query contain a backslash followed by n or r', () => {
+    expect(planMatches('C:\\new\\raw', { query: '\\new' }).matches).toEqual([{ start: 2, end: 6, text: '\\new' }]);
+    expect(planMatches('C:\\new\\raw', { query: '\\raw' }).matches).toHaveLength(1);
+  });
+
+  it('counts UTF-8 bytes exactly at every encoding-width boundary', () => {
+    const accepts = (q: string) => planMatches('x', { query: q, matchCase: true }).error !== QUERY_TOO_LONG_ERROR;
+    expect(accepts('\u007f'.repeat(1024))).toBe(true);
+    expect(accepts('\u007f'.repeat(1025))).toBe(false);
+    expect(accepts('\u0080'.repeat(512))).toBe(true);
+    expect(accepts('\u0080'.repeat(513))).toBe(false);
+    expect(accepts('\u07ff'.repeat(512))).toBe(true);
+    expect(accepts('\u07ff'.repeat(513))).toBe(false);
+    expect(accepts('\u0800'.repeat(341) + 'a')).toBe(true);
+    expect(accepts('\u0800'.repeat(342))).toBe(false);
+    expect(accepts('\u{10000}'.repeat(256))).toBe(true);
+    expect(accepts('\u{10000}'.repeat(257))).toBe(false);
+    expect(accepts('\u{1F600}'.repeat(256))).toBe(true);
+    expect(accepts('\u{1F600}'.repeat(256) + 'a')).toBe(false);
+  });
+
+  it('refuses a replacement that is over the cap raw even though its NFC form fits', () => {
+    const nfd = 'e\u0301'.repeat(4000); // 12,000 bytes raw, 8,000 bytes as NFC
+    expect(planReplace('a', { query: 'a', replacement: nfd })).toEqual({ error: REPLACEMENT_TOO_LONG_ERROR });
+  });
+
+  it('caps with maxMatches 0 and fractions, and treats negative or NaN as no cap', () => {
+    const text = 'a a a';
+    expect(planMatches(text, { query: 'a', maxMatches: 0 })).toEqual({ matches: [], truncated: true });
+    expect(planMatches(text, { query: 'a', maxMatches: 1.5 }).matches).toHaveLength(1);
+    expect(planMatches(text, { query: 'a', maxMatches: 1.5 }).truncated).toBe(true);
+    expect(planMatches(text, { query: 'a', maxMatches: -1 })).toEqual(planMatches(text, { query: 'a' }));
+    expect(planMatches(text, { query: 'a', maxMatches: Number.NaN })).toEqual(planMatches(text, { query: 'a' }));
+    expect(planMatches('b', { query: 'a', maxMatches: 0 })).toEqual({ matches: [] });
+  });
+
+  it('refuses negative, fractional and NaN replacement offsets', () => {
+    const r = (start: number, end: number): Replacement => ({ start, end, text: 'a', replacement: 'X' });
+    for (const bad of [r(-3, 1), r(0.5, 1), r(0, 1.5), r(Number.NaN, 1), r(0, Number.NaN)]) {
+      expect(applyReplacements('abc', [bad])).toEqual({ error: 'replacement range is out of bounds' });
+    }
+  });
+
+  it('closes frontmatter only on a line that is exactly --- (plus trailing spaces or tabs)', () => {
+    const text = '---\ntitle: x\n----\n---foo\n--- \t\nbody';
+    expect(frontmatterRange(text)).toEqual({ start: 0, end: text.indexOf('\nbody') });
+    expect(frontmatterRange('---\na\n----\nb')).toBeNull();
+    expect(frontmatterRange('---\na\n---foo\nb')).toBeNull();
+    // Same closer grammar as vaultGraph.ts ([ \t]*): other whitespace does not close.
+    expect(frontmatterRange('---\na\n---\u00a0\nb')).toBeNull();
+    expect(frontmatterRange('---\na\n---\f\nb')).toBeNull();
+  });
+
+  it('never lets a wikilink span cross a line break', () => {
+    expect(wikilinkRanges('[[a\nb]]')).toEqual([]);
+  });
+});
