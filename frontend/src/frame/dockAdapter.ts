@@ -11,7 +11,9 @@ import {
   type ITabRenderer,
   type TabPartInitParameters,
 } from 'dockview-react';
-import 'dockview-react/dist/styles/dockview.css';
+// Held as text and inserted only when the frame mounts. A side-effect import would put these
+// rules in the stable document, and every Accent breathe tick would recalc them.
+import dockviewCss from 'dockview-react/dist/styles/dockview.css?inline';
 import {
   CENTER_PANEL_ID,
   type DockEdge,
@@ -128,6 +130,7 @@ export class FrameHosts {
 // ─── Scoped styles ──────────────────────────────────────────────────────────
 
 const STYLE_ID = 'mythos-widget-frame-styles';
+const DOCKVIEW_CSS_ID = 'mythos-dockview-css';
 /** Space between a widget's card and its inner neighbour (today's 10 px glass-card gutter). Part of the widget's size. */
 export const FRAME_WIDGET_GUTTER = 10;
 const THEME_CLASS = 'mythos-dockview-theme';
@@ -198,7 +201,16 @@ export const FRAME_STYLES = `
 .mythos-widget-frame .nav-rail--pop { z-index: 100; }
 `;
 
+function ensureDockviewCss(doc: Document): void {
+  if (doc.getElementById(DOCKVIEW_CSS_ID)) return;
+  const style = doc.createElement('style');
+  style.id = DOCKVIEW_CSS_ID;
+  style.textContent = dockviewCss;
+  doc.head.appendChild(style);
+}
+
 function ensureFrameStyles(doc: Document): void {
+  ensureDockviewCss(doc);
   if (doc.getElementById(STYLE_ID)) return;
   const style = doc.createElement('style');
   style.id = STYLE_ID;
