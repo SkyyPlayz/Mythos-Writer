@@ -487,9 +487,31 @@ const isDoubleOpener = (text: string, i: number): boolean =>
   text[i] === '“' || (text[i] === '"' && !isInchMark(text, i));
 
 /** Index of the closer of the double quote opening at `i`, searched before `limit`; -1 if none. */
+/**
+ * A straight `"` after a digit inside speech (`“I saw a 12" ruler,” she said.`)
+ * is an inch mark when the speech is still closed later: by a `”` for curly
+ * speech, or by a straight `"` that follows its own punctuation (`edge,"`).
+ * With no such closer (`"Meet me at 5" she said.`) it is the closing quote.
+ */
+function isInchInSpeech(text: string, opener: number, j: number, limit: number): boolean {
+  if (!isInchMark(text, j)) return false;
+  let k = j + 1;
+  while (k < limit && text[k] !== '"' && text[k] !== '”' && text[k] !== '“') k++;
+  if (k >= limit) return false;
+  if (text[opener] === '“') return text[k] === '”';
+  return text[k] === '"' && ',.!?…—–-'.includes(text[k - 1]);
+}
+
 function doubleCloserOf(text: string, i: number, limit: number): number {
   let j = i + 1;
-  while (j < limit && !(text[j] === '”' || (text[j] === '"' && !isPrimeInch(text, j)))) j++;
+  while (
+    j < limit &&
+    !(
+      text[j] === '”' ||
+      (text[j] === '"' && !isPrimeInch(text, j) && !isInchInSpeech(text, i, j, limit))
+    )
+  )
+    j++;
   return j < limit ? j : -1;
 }
 

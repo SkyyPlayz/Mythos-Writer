@@ -510,6 +510,23 @@ describe('punctuation-consistency', () => {
 });
 
 describe('dialogue tint', () => {
+  it('does not end speech at a lone inch mark when the line closes later', () => {
+    const curly = '“I saw a 12" ruler and felt the edge,” she said.';
+    expect(hits('dialogue', curly)).toEqual(['“I saw a 12" ruler and felt the edge,”']);
+    expect(hits('filter-words', curly)).toEqual([]);
+    const straight = '"I saw a 12" ruler and felt the edge," she said.';
+    expect(hits('dialogue', straight)).toEqual(['"I saw a 12" ruler and felt the edge,"']);
+    expect(hits('filter-words', straight)).toEqual([]);
+    // Feet-and-inches keeps working.
+    const feet = '“He’s 6\'2" and felt huge,” she said.';
+    expect(hits('dialogue', feet)).toEqual(['“He’s 6\'2" and felt huge,”']);
+    expect(hits('filter-words', feet)).toEqual([]);
+    // Controls: a quote after a number with no later closer, or before a new
+    // speech opener, still closes the line.
+    expect(hits('dialogue', '"Meet me at 5" she said.')).toEqual(['"Meet me at 5"']);
+    expect(hits('dialogue', '"At 5" she said, "go."')).toEqual(['"At 5"', '"go."']);
+  });
+
   it('spans from the opening to the closing quote inclusive', () => {
     expect(hits('dialogue', '“Hi,” she said, “there.” Then "bye" too.')).toEqual([
       '“Hi,”',
