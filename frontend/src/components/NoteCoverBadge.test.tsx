@@ -142,7 +142,8 @@ describe('NoteCoverBadge', () => {
     const badge = css.match(/\.note-cover__badge \{([\s\S]*?)\n\}/)?.[1] ?? '';
     expect(badge).toContain('background: var(--n1');
     expect(badge).toContain('color: #0b0d17');
-    expect(badge).toContain('font-size: 8.5px');
+    // #1773 T1: the mockup's 8.5px badge sits on the 12px floor of the type scale.
+    expect(badge).toContain('font-size: var(--text-xs)');
     expect(badge).toContain('font-weight: 700');
     const remove = css.match(/\.note-cover__remove \{([\s\S]*?)\n\}/)?.[1] ?? '';
     expect(remove).toContain('width: 18px');

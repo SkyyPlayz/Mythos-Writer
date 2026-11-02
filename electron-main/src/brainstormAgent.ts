@@ -276,10 +276,11 @@ export function writeFacts(
 // ─── Extraction side-call ───
 
 /**
- * System prompt for the extraction side-call (sent by the IPC handler in
- * main.ts). Keep the JSON shape on a single line — it nudges the model toward
- * compact output, which matters because the response is one JSON array with a
- * bounded output budget.
+ * System prompt for the LLM extraction side-call. main.ts no longer sends it:
+ * the IPC handler runs the no-AI brainstormExtractScript.ts (PLAN-AI-MODES
+ * M-1); this path stays for the optional AI refine. Keep the JSON shape on a
+ * single line — it nudges the model toward compact output, which matters
+ * because the response is one JSON array with a bounded output budget.
  *
  * Inclusion policy: report everything with an honest confidence score and let
  * the extractionConfidence >= 0.6 filter in runExtractionSideCall do the

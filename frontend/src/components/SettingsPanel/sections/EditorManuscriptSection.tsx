@@ -83,15 +83,15 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
       <Card title="Text colors" sub="Story and notes match by default — split them to style each on its own.">
         {txRows.map((r) => (
           <div key={r.k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0' }}>
-            <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{r.k}</span>
-            <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{r.v}</span>
+            <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>{r.k}</span>
+            <span style={{ fontSize: 'var(--text-xs)', color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{r.v}</span>
             <ColorWheel value={r.v} onChange={r.on} data-testid={`lnas-tx-${r.k.replace(/\s+/g, '-').toLowerCase()}`} />
           </div>
         ))}
         {/* M28 (§13): Wiki links color — theme slot B by default; a custom pick
             emits the --wiki-c token (cleared again by "Theme color"). */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0' }}>
-          <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Wiki links</span>
+          <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>Wiki links</span>
           {S.txtCfg.wiki ? (
             <div
               role="button"
@@ -106,9 +106,9 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
               Theme color
             </div>
           ) : (
-            <span style={{ fontSize: 10, color: '#7686a2' }}>Theme (slot B)</span>
+            <span style={{ fontSize: 'var(--text-xs)', color: '#7686a2' }}>Theme (slot B)</span>
           )}
-          <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.txtCfg.wiki ?? ''}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.txtCfg.wiki ?? ''}</span>
           <ColorWheel
             value={S.txtCfg.wiki ?? '#9b5fff'}
             onChange={(v) => patch({ txtCfg: { ...S.txtCfg, wiki: v } })}
@@ -116,7 +116,7 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 7, borderTop: '1px solid rgba(255,255,255,.06)', marginTop: 6 }}>
-          <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Separate story &amp; notes colors</span>
+          <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>Separate story &amp; notes colors</span>
           <NeonToggle
             on={S.txtCfg.split}
             testId="lnas-txsplit"
@@ -136,8 +136,8 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
         {pc.mode === 'custom' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 4px' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Page texture image</div>
-              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1, wordBreak: 'break-all' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: '#aebad0' }}>Page texture image</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 1, wordBreak: 'break-all' }}>
                 {pc.textureUrl ? pc.textureUrl.split(/[\\/]/).pop() : 'No image chosen — cover-fit over the page'}
               </div>
             </div>
@@ -158,8 +158,8 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
         {pc.mode !== 'off' && pc.mode !== 'scroll' && pc.mode !== 'custom' && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 6px' }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Background color</span>
-              <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{pc.bg}</span>
+              <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>Background color</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{pc.bg}</span>
               <ColorWheel value={pc.bg} onChange={(v) => setPc({ bg: v })} data-testid="lnas-pagebg" />
             </div>
             <div style={{ marginBottom: 11 }}>
@@ -173,15 +173,15 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
         {pc.mode === 'scroll' && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 6px' }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Scroll color</span>
-              <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.scrollTint}</span>
+              <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>Scroll color</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.scrollTint}</span>
               <ColorWheel value={S.scrollTint} gradient={SCROLL_WHEEL_GRADIENT} onChange={(v) => patch({ scrollTint: v })} data-testid="lnas-scrolltint" />
             </div>
             <div style={{ marginBottom: 8 }}>
               <NeonSlider label="Scroll opacity" value={S.scrollOp} min={30} max={100} unit="%" onChange={(v) => patch({ scrollOp: v })} testId="lnas-scrollop" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Glowing archaic symbols</span>
+              <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#aebad0' }}>Glowing archaic symbols</span>
               <NeonToggle on={!!pc.sym} onClick={() => setPc({ sym: !pc.sym })} testId="lnas-pagesym" />
             </div>
           </>

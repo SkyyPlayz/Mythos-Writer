@@ -23,7 +23,7 @@
     "dist:mac": "npm run kokoro:fetch && electron-vite build && electron-builder --mac dmg zip --publish never",
     "dist:mac:release": "npm run kokoro:fetch && electron-vite build && electron-builder --mac dmg zip",
     "dist:linux": "npm run kokoro:fetch && electron-vite build && electron-builder --linux --publish never",
-    "build:electron": "electron-vite build",
+    "build:electron": "electron-vite build && node scripts/check-denied-deps.mjs --bundle out",
     "start": "electron .",
     "package": "npm run kokoro:fetch && electron-builder --win zip",
     "lint": "npm run lint -w frontend",

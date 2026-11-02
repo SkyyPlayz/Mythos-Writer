@@ -9,7 +9,7 @@
   border-left: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
   padding: 16px 12px;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -21,7 +21,7 @@
 }
 
 .scene-history-pane h2 {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   margin: 0;
   letter-spacing: 0.01em;
@@ -92,7 +92,7 @@
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: lowercase;
   letter-spacing: 0.02em;
   background: rgba(111, 138, 255, 0.12);
@@ -117,13 +117,13 @@
 
 .scene-history-delta {
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #9aa1ad);
 }
 
 .scene-history-restore {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   background: transparent;
   color: var(--text-primary, #e7e9ee);
   border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.1));

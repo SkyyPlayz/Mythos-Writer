@@ -48,7 +48,7 @@ export default function NotesBoardSection({ settings, setSettings, setSavedOk }:
             setSavedOk(false);
           }}
         />
-        <div style={{ fontSize: 10.5, color: '#7686a2', marginTop: 10, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 10, lineHeight: 1.5 }}>
           Past 68% cards drop their text preview, and past 44% they become coloured blocks — a map
           of the board. Zooming out further than 40% keeps that map but draws more of it at once.
         </div>

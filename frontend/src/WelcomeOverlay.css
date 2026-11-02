@@ -30,14 +30,14 @@
 
 .welcome-overlay__title {
   font-family: 'Lora', Georgia, serif;
-  font-size: 30px;
+  font-size: var(--text-3xl);
   font-weight: 600;
   color: #f0f3fc;
   margin-top: 16px;
 }
 
 .welcome-overlay__tagline {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: #9fb0c8;
   margin-top: 5px;
 }
@@ -78,7 +78,7 @@
   position: absolute;
   top: 13px;
   right: 13px;
-  font-size: 8.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.1em;
   color: #0b0d17;
@@ -93,14 +93,14 @@
 }
 
 .welcome-overlay__card-title {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: #eef2fb;
   margin-top: 10px;
 }
 
 .welcome-overlay__card-desc {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: #8e9db8;
   line-height: 1.55;
   margin-top: 5px;
@@ -108,14 +108,14 @@
 }
 
 .welcome-overlay__card-act {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--n1, #00f0ff);
   margin-top: 8px;
 }
 
 .welcome-overlay__skip {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: #8e9db8;
   margin-top: 26px;
   cursor: pointer;
