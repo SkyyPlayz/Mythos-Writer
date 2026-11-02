@@ -189,7 +189,10 @@ export async function epubToBlocks(
   for (const idref of spine) {
     const item = items.get(idref);
     if (!item) continue;
-    const isHtml = /x?html|xml/.test(item.type) || /\.(x?html?|xml)$/i.test(item.href);
+    // Story text is XHTML or HTML only. A substring match on "xml" also
+    // accepted the NCX (`application/x-dtbncx+xml`) and imported it as a chapter.
+    const isHtml = item.type === 'application/xhtml+xml' || item.type === 'text/html'
+      || /\.(x?html?|xml)$/i.test(item.href);
     if (!isHtml || /\bnav\b/.test(item.props)) continue;
     const entry = reader.file(resolveHref(opfDir, item.href));
     if (!entry) {

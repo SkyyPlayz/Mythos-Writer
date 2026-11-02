@@ -34,6 +34,8 @@ interface EpubDoc {
   body: string;
   linear?: boolean;
   nav?: boolean;
+  /** OPF media-type. Defaults to application/xhtml+xml. */
+  mediaType?: string;
 }
 
 async function makeEpub(docs: EpubDoc[], opts: { title?: string; opfPath?: string; extraFiles?: number; opfTail?: string } = {}): Promise<Buffer> {
@@ -44,7 +46,7 @@ async function makeEpub(docs: EpubDoc[], opts: { title?: string; opfPath?: strin
   zip.file('META-INF/container.xml',
     `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">`
     + `<rootfiles><rootfile full-path="${opfPath}" media-type="application/oebps-package+xml"/></rootfiles></container>`);
-  const manifest = docs.map((d) => `<item id="${d.id}" href="${d.href}" media-type="application/xhtml+xml"${d.nav ? ' properties="nav"' : ''}/>`).join('');
+  const manifest = docs.map((d) => `<item id="${d.id}" href="${d.href}" media-type="${d.mediaType ?? 'application/xhtml+xml'}"${d.nav ? ' properties="nav"' : ''}/>`).join('');
   const spine = docs.map((d) => `<itemref idref="${d.id}"${d.linear === false ? ' linear="no"' : ''}/>`).join('');
   zip.file(opfPath,
     `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">`
@@ -122,6 +124,21 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
   it('without dc:title the fallback title is used', async () => {
     const { story } = await parseEpubStory(await makeEpub(THREE_CHAPTERS), 'From File');
     expect(story.title).toBe('From File');
+  });
+
+  it('an NCX spine item yields no chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'ncx',
+        href: 'toc.ncx',
+        mediaType: 'application/x-dtbncx+xml',
+        body: '<h1>NCX Ghost Chapter</h1><p>This navigation file is not a chapter.</p>',
+      },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/NCX Ghost Chapter/);
   });
 
   it('warns about a missing spine document and still imports the rest', async () => {
