@@ -547,6 +547,19 @@ describe('dialogue tint', () => {
     expect(hits('filter-words', mixed)).toEqual([]);
   });
 
+  it('never closes straight speech on the closer of a later curly quote', () => {
+    expect(hits('dialogue', '"Meet me at 5" she said. “Hi,”')).toEqual(['"Meet me at 5"', '“Hi,”']);
+    const narration = '"Meet me at 5" she said. He felt odd. “Go,” he said.';
+    expect(hits('dialogue', narration)).toEqual(['"Meet me at 5"', '“Go,”']);
+    expect(hits('filter-words', narration)).toEqual(['felt']);
+    // A curly pair nested inside straight speech is passed over, not taken as the closer.
+    expect(hits('dialogue', '"Call him “Al” now," she said.')).toEqual(['"Call him “Al” now,"']);
+  });
+
+  it('does not close curly speech on a straight quote', () => {
+    expect(hits('dialogue', '“Hi," she said.')).toEqual(['“Hi," she said.']);
+  });
+
   it('spans from the opening to the closing quote inclusive', () => {
     expect(hits('dialogue', '“Hi,” she said, “there.” Then "bye" too.')).toEqual([
       '“Hi,”',

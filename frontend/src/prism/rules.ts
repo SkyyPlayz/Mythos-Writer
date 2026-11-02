@@ -491,11 +491,13 @@ const isDoubleOpener = (text: string, i: number): boolean =>
  * `limit`; -1 if none. One forward scan, so every measurement in a line
  * (`“The 12" and 14" boards,”`) is passed over on the way to the real closer:
  * - Curly speech (`“`) closes only at `”`.
- * - Straight speech closes at a `”` or at a straight `"` that does not follow
- *   a digit. A `"` after a digit (`12"`) is a measurement, except that the
- *   first one closes the line when nothing better follows: no later `"`
- *   (`"Meet me at 5" she said.`), or a later `"` that opens new speech rather
- *   than following its own punctuation (`"At 5" she said, "go."`). A
+ * - Straight speech closes only at a straight `"` that does not follow a
+ *   digit, never at a `”`; a curly pair inside it (`"Call him “Al” now,"`)
+ *   is passed over. A `"` after a digit (`12"`) is a measurement, except that
+ *   the first one closes the line when nothing better follows: no later `"`
+ *   (`"Meet me at 5" she said.`), a later `"` that opens new speech rather
+ *   than following its own punctuation (`"At 5" she said, "go."`), or a `“`
+ *   that opens new curly speech (`"Meet me at 5" she said. “Hi,”`). A
  *   feet-and-inches mark (`6'2"`) never closes.
  */
 function doubleCloserOf(text: string, i: number, limit: number): number {
@@ -506,7 +508,7 @@ function doubleCloserOf(text: string, i: number, limit: number): number {
   let firstInch = -1;
   for (let j = i + 1; j < limit; j++) {
     const c = text[j];
-    if (c === '”') return j;
+    if (c === '“' && firstInch >= 0) return firstInch;
     if (c !== '"') continue;
     if (isInchMark(text, j)) {
       if (firstInch < 0 && !isPrimeInch(text, j)) firstInch = j;
