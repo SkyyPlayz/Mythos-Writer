@@ -2007,12 +2007,16 @@ export type BookSyncEvent =
   | 'book-file-malformed'
   | 'book-file-profiles-fence'
   | 'book-file-profiles-duplicate'
-  | 'book-file-sync-skipped';
+  | 'book-file-sync-skipped'
+  | 'mythos-file-write-failed';
 
-/** Renderer notice for one skipped book.md. Event code and story id only. */
+/**
+ * Renderer notice. Story skips carry an event code and a story id.
+ * A mythos.json write failure carries the event code only.
+ */
 export interface BookSyncWarning {
   event: BookSyncEvent;
-  storyId: string;
+  storyId?: string;
 }
 
 export interface Manifest {

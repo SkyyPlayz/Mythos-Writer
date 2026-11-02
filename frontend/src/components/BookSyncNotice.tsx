@@ -4,12 +4,13 @@ export type BookSyncEvent =
   | 'book-file-malformed'
   | 'book-file-profiles-fence'
   | 'book-file-profiles-duplicate'
-  | 'book-file-sync-skipped';
+  | 'book-file-sync-skipped'
+  | 'mythos-file-write-failed';
 
-/** Event code and story id. No path and no profile body. */
+/** Story skips include a story id. A mythos.json write failure is the event code only. */
 export interface BookSyncWarning {
   event: BookSyncEvent;
-  storyId: string;
+  storyId?: string;
 }
 
 export type ManifestSaveOutcome =
@@ -23,6 +24,7 @@ const BOOK_SYNC_EVENTS: readonly BookSyncEvent[] = [
   'book-file-profiles-fence',
   'book-file-profiles-duplicate',
   'book-file-sync-skipped',
+  'mythos-file-write-failed',
 ];
 
 function isBookSyncEvent(value: string): value is BookSyncEvent {
@@ -47,16 +49,20 @@ export function manifestSaveOutcome(result: unknown): ManifestSaveOutcome {
     if (!item || typeof item !== 'object') continue;
     const event = (item as { event?: unknown }).event;
     const storyId = (item as { storyId?: unknown }).storyId;
-    if (typeof event !== 'string' || typeof storyId !== 'string') continue;
-    if (/[/\\]/.test(event) || /[/\\]/.test(storyId)) continue;
-    if (!isBookSyncEvent(event)) continue;
+    if (typeof event !== 'string' || !isBookSyncEvent(event) || /[/\\]/.test(event)) continue;
+    if (storyId === undefined) {
+      if (event === 'mythos-file-write-failed') warnings.push({ event });
+      continue;
+    }
+    if (typeof storyId !== 'string' || /[/\\]/.test(storyId)) continue;
     warnings.push({ event, storyId });
   }
   return { ok: true, warnings };
 }
 
 function noticeText(warning: BookSyncWarning): string {
-  const id = warning.storyId;
+  if (warning.event === 'mythos-file-write-failed') return 'The story list could not be updated.';
+  const id = warning.storyId ?? 'a story';
   switch (warning.event) {
     case 'book-file-cas-exhausted':
       return `Couldn't update the book file for story ${id} just now. The change stays with the story and will be written on the next save.`;

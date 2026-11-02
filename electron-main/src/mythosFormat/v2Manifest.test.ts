@@ -1294,7 +1294,7 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
       fs.writeFileSync(bookPath, `${original}\n<!-- racer ${races} -->\n`);
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    let saved: { bytes: number; warnings: Array<{ event: string; storyId: string }> } | undefined;
+    let saved: { bytes: number; warnings: Array<{ event: string; storyId?: string }> } | undefined;
     let warnPayloads: unknown[] = [];
     try {
       saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
@@ -1407,7 +1407,7 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
       }
       return orig.call(fs, p, ...(args as [BufferEncoding?]));
     }) as typeof fs.readFileSync);
-    let saved: { bytes: number; warnings: Array<{ event: string; storyId: string }> } | undefined;
+    let saved: { bytes: number; warnings: Array<{ event: string; storyId?: string }> } | undefined;
     try {
       saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
     } finally {
@@ -1549,6 +1549,41 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
     expect(blocked).toContain('Second');
     expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  it('through writeManifest, a mythos.json write failure warns with the event code only and does not throw', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('MythosWrite');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'New Title';
+    story.updatedAt = '2026-09-01T00:00:00.000Z';
+    const mythosPath = path.join(mythosRoot, 'mythos.json');
+    const beforeMythos = fs.readFileSync(mythosPath, 'utf8');
+    const orig = fs.renameSync;
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(((from: fs.PathLike, to: fs.PathLike) => {
+      if (String(to) === mythosPath) {
+        const err = new Error(`${mythosPath} ENOSPC Trade paperback`) as NodeJS.ErrnoException;
+        err.code = 'ENOSPC';
+        throw err;
+      }
+      return orig.call(fs, from, to);
+    }) as typeof fs.renameSync);
+    let saved: ReturnType<typeof saveThroughWriteManifest> | undefined;
+    expect(() => {
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    }).not.toThrow();
+    spy.mockRestore();
+    expect(saved?.warnings).toEqual([{ event: 'mythos-file-write-failed' }]);
+    const warningJson = JSON.stringify(saved?.warnings);
+    expect(warningJson).not.toContain(mythosPath);
+    expect(warningJson).not.toContain(bookPath);
+    expect(warningJson).not.toContain('ENOSPC');
+    expect(warningJson).not.toContain('Trade paperback');
+    expect(warningJson).not.toContain('New Title');
+    expect(Object.keys(saved?.warnings[0] ?? {})).toEqual(['event']);
+    expect(fs.readFileSync(mythosPath, 'utf8')).toBe(beforeMythos);
   });
 
   it('a vault-open reindex leaves a malformed book.md untouched and still warns', () => {

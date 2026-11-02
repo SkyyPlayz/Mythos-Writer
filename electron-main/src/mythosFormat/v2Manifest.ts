@@ -1023,7 +1023,13 @@ export function syncCanonicalFromManifest(
     const storiesChanged =
       JSON.stringify(mythos.stories) !== JSON.stringify(nextRefs);
     if (storiesChanged) {
-      writeMythosFile(mythosRoot, { ...mythos, stories: nextRefs });
+      try {
+        writeMythosFile(mythosRoot, { ...mythos, stories: nextRefs });
+      } catch {
+        const warning: BookSyncWarning = { event: 'mythos-file-write-failed' };
+        warnings.push(warning);
+        console.warn(JSON.stringify(warning));
+      }
     }
   } catch {
     /* canonical sync never throws; a story that failed is already skipped */
