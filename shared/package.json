@@ -8,6 +8,7 @@
     "./vaultNameSanitizer": "./vaultNameSanitizer.ts",
     "./wikiLinkRename": "./wikiLinkRename.ts",
     "./aiSuggestOnly": "./aiSuggestOnly.ts",
-    "./openRouterPolicy": "./openRouterPolicy.ts"
+    "./openRouterPolicy": "./openRouterPolicy.ts",
+    "./findReplace": "./findReplace.ts"
   }
 }
