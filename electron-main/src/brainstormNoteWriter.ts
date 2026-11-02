@@ -9,6 +9,7 @@ import {
   sanitizeWikilinks,
   type KnownNoteNames,
 } from './noteRelationships.js';
+import { writeVaultFileAtomic } from './vault.js';
 import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 
 export const STORY_VAULT_GUARD_ERROR = 'STORY_VAULT_GUARD_ERROR';
@@ -241,15 +242,14 @@ function assertWriteTarget(notesVaultRoot: string, storyVaultRoot: string, desti
 
 export function writeNoteProposal(args: WriteNoteProposalArgs): { status: 'written'; path: string } {
   const now = args.now ?? new Date().toISOString();
-  const target = assertWriteTarget(args.notesVaultRoot, args.storyVaultRoot, args.proposal.destinationPath);
+  assertWriteTarget(args.notesVaultRoot, args.storyVaultRoot, args.proposal.destinationPath);
   // Collected at write time (not proposal time) so a note deleted between
   // extraction and confirm can no longer be linked.
   const existingNoteNames = collectNotesVaultNoteNames(args.notesVaultRoot);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(
-    target,
+  writeVaultFileAtomic(
+    args.notesVaultRoot,
+    args.proposal.destinationPath,
     renderProposalMarkdown(args.proposal, now, args.suggestedDestination, existingNoteNames),
-    'utf-8',
   );
   return { status: 'written', path: args.proposal.destinationPath };
 }
