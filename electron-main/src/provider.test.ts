@@ -9,7 +9,10 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }));
 
 // listModels uses nodeFetch from undici (bypasses Electron's Chromium networking — SKY-11225).
-vi.mock('undici', () => ({ fetch: vi.fn() }));
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: vi.fn(),
+}));
 
 import Anthropic from '@anthropic-ai/sdk';
 import { fetch as undici_fetch } from 'undici';
@@ -25,6 +28,10 @@ import {
   PROVIDER_CAPABILITIES,
   getVoiceProvider,
   listModels,
+  verifyOpenRouterKey,
+  displayUrl,
+  setAiMasterGate,
+  AI_DISABLED_MESSAGE,
   DEFAULT_BASE_URLS,
   createThinkStripper,
   stripThinkBlocks,
@@ -1361,11 +1368,7 @@ describe('listModels (§6)', () => {
   });
 
   function makeJsonResponse(body: unknown, status = 200) {
-    return Promise.resolve({
-      ok: status >= 200 && status < 300,
-      status,
-      json: () => Promise.resolve(body),
-    } as unknown as Response);
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
   }
 
   it('returns { ok: false } when SSRF guard blocks the URL (no fetch called)', async () => {
@@ -1464,6 +1467,96 @@ describe('listModels (§6)', () => {
     const [url] = mockFetch.mock.calls[0] as [string];
     expect(url).toContain('127.0.0.1:11434');
   });
+
+  // PLAN-AI-MODES M-1: Test connection probes Anthropic through listModels.
+  // ANTHROPIC_BASE_URL is cleared so a developer's gateway env can't move the host.
+  describe('anthropic', () => {
+    beforeEach(() => {
+      vi.stubEnv('ANTHROPIC_BASE_URL', '');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('lists Anthropic models at api.anthropic.com/v1/models when no baseUrl given', async () => {
+      mockFetch.mockReturnValue(
+        makeJsonResponse({ data: [{ id: 'claude-sonnet-4-6' }, { id: 'claude-opus-4-8' }] }),
+      );
+      const result = await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      expect(result).toEqual({ ok: true, models: ['claude-sonnet-4-6', 'claude-opus-4-8'] });
+      const [url, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.anthropic.com/v1/models');
+      expect(opts.method ?? 'GET').toBe('GET');
+      expect(DEFAULT_BASE_URLS.anthropic).toBeUndefined();
+    });
+
+    it('sends Anthropic x-api-key + anthropic-version headers, not Bearer', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [] }));
+      await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = opts.headers as Record<string, string>;
+      expect(headers['x-api-key']).toBe('sk-ant-api03-test');
+      expect(headers['anthropic-version']).toBe('2023-06-01');
+      expect(headers['Authorization']).toBeUndefined();
+    });
+
+    it('keeps Anthropic headers off other kinds', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [] }));
+      await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' });
+      const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = opts.headers as Record<string, string>;
+      expect(headers['x-api-key']).toBeUndefined();
+      expect(headers['anthropic-version']).toBeUndefined();
+    });
+
+    it('sends an Anthropic key only to the SDK host, never to a caller baseUrl', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [{ id: 'claude-sonnet-4-6' }] }));
+      await listModels({ kind: 'anthropic', baseUrl: 'https://attacker.example/v1', apiKey: 'sk-ant-api03-test' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe('https://api.anthropic.com/v1/models');
+    });
+
+    it('follows ANTHROPIC_BASE_URL like the SDK, through the SSRF guard', async () => {
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'https://gateway.example.com/');
+      mockFetch.mockReturnValue(makeJsonResponse({ data: [{ id: 'claude-sonnet-4-6' }] }));
+      await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      const [url] = mockFetch.mock.calls[0] as [string];
+      expect(url).toBe('https://gateway.example.com/v1/models');
+
+      mockFetch.mockClear();
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'http://169.254.169.254');
+      const blocked = await listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+      expect(blocked.ok).toBe(false);
+      expect((blocked as { ok: false; error: string }).error).toMatch(/link-local/);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('reports the HTTP status of a non-2xx answer', async () => {
+      mockFetch.mockReturnValue(makeJsonResponse({}, 401));
+      const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-bad' });
+      expect(result).toMatchObject({ ok: false, status: 401 });
+    });
+
+    it('gives Anthropic the 5 s cloud timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        mockFetch.mockImplementation((_url: string, init: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () =>
+              reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+          }),
+        );
+        const pending = listModels({ kind: 'anthropic', apiKey: 'sk-ant-api03-test' });
+        await vi.advanceTimersByTimeAsync(5_000);
+        const result = await pending;
+        expect(result.ok).toBe(false);
+        expect((result as { ok: false; error: string }).error).toMatch(/Anthropic at https:\/\/api\.anthropic\.com\/v1 did not respond within 5 seconds/);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
 
 // ─── validateBaseUrl (§5) ─────────────────────────────────────────────────────
@@ -1548,11 +1641,7 @@ describe('listModels (§6)', () => {
   });
 
   function makeJsonResponse(body: unknown, status = 200) {
-    return Promise.resolve({
-      ok: status >= 200 && status < 300,
-      status,
-      json: () => Promise.resolve(body),
-    } as unknown as Response);
+    return Promise.resolve(new Response(JSON.stringify(body), { status }));
   }
 
   it('returns { ok: false } when SSRF guard blocks the URL (no fetch called)', async () => {
@@ -1653,6 +1742,133 @@ describe('listModels (§6)', () => {
   });
 });
 
+// ─── displayUrl / verifyOpenRouterKey (PLAN-AI-MODES M-1 review) ─────────────
+
+describe('displayUrl', () => {
+  it('keeps origin + path and drops user:pass@, ?token= and #hash', () => {
+    expect(displayUrl('https://user:pass@llm.example:8443/v1/?token=abc#frag')).toBe('https://llm.example:8443/v1');
+  });
+
+  it('trims a trailing slash', () => {
+    expect(displayUrl('http://localhost:11434/')).toBe('http://localhost:11434');
+  });
+
+  it('never echoes an unparsable input', () => {
+    const shown = displayUrl('not a url sk-secret');
+    expect(shown).toBe('<invalid URL>');
+    expect(shown).not.toContain('sk-secret');
+  });
+});
+
+describe('listModels error copy hides URL secrets', () => {
+  const mockFetch3 = undici_fetch as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('names the endpoint without userinfo or query on HTTP errors', async () => {
+    mockFetch3.mockResolvedValue(new Response('{}', { status: 500 }));
+    const result = await listModels({ kind: 'custom', baseUrl: 'https://user:hunter2@llm.example/v1?token=abc123' });
+    expect(result.ok).toBe(false);
+    const msg = (result as { ok: false; error: string }).error;
+    expect(msg).toContain('https://llm.example/v1');
+    expect(msg).not.toContain('hunter2');
+    expect(msg).not.toContain('abc123');
+  });
+
+  it('names the endpoint without userinfo or query on network errors', async () => {
+    mockFetch3.mockRejectedValue(new TypeError('fetch failed'));
+    const result = await listModels({ kind: 'lmstudio', baseUrl: 'http://me:hunter2@127.0.0.1:1234/v1?token=abc123' });
+    const msg = (result as { ok: false; error: string }).error;
+    expect(msg).toContain('http://127.0.0.1:1234/v1');
+    expect(msg).not.toContain('hunter2');
+    expect(msg).not.toContain('abc123');
+  });
+
+  it('refuses redirects on the model-list GET', async () => {
+    mockFetch3.mockResolvedValue(new Response(JSON.stringify({ data: [] })));
+    await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
+    const [, opts] = mockFetch3.mock.calls[0] as [string, { redirect?: string }];
+    expect(opts.redirect).toBe('error');
+  });
+});
+
+describe('verifyOpenRouterKey', () => {
+  const mockFetch4 = undici_fetch as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    setAiMasterGate(() => true);
+  });
+
+  it('sends the key as Bearer to {origin}/api/v1/key only', async () => {
+    mockFetch4.mockResolvedValue(new Response(JSON.stringify({ data: { label: 'k' } })));
+    const result = await verifyOpenRouterKey({ baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'sk-or-v1-test' });
+    expect(result).toEqual({ ok: true });
+    expect(mockFetch4).toHaveBeenCalledTimes(1);
+    const [url, opts] = mockFetch4.mock.calls[0] as [string, { method?: string; redirect?: string; headers: Record<string, string> }];
+    expect(url).toBe('https://openrouter.ai/api/v1/key');
+    expect(opts.method ?? 'GET').toBe('GET');
+    expect(opts.redirect).toBe('error');
+    expect(opts.headers['Authorization']).toBe('Bearer sk-or-v1-test');
+  });
+
+  it('reports HTTP 401 with its status', async () => {
+    mockFetch4.mockResolvedValue(new Response('{"error":{"code":401}}', { status: 401 }));
+    const result = await verifyOpenRouterKey({ baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'sk-or-v1-bad' });
+    expect(result).toMatchObject({ ok: false, status: 401 });
+    expect((result as { ok: false; error: string }).error).toMatch(/HTTP 401/);
+  });
+
+  it('is master-gated: gate off sends nothing', async () => {
+    setAiMasterGate(() => false);
+    const result = await verifyOpenRouterKey({ baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'sk-or-v1-test' });
+    expect(result).toEqual({ ok: false, error: AI_DISABLED_MESSAGE });
+    expect(mockFetch4).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing to an SSRF-blocked base', async () => {
+    const result = await verifyOpenRouterKey({ baseUrl: 'http://169.254.169.254/api/v1', apiKey: 'sk-or-v1-test' });
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toMatch(/link-local/);
+    expect(mockFetch4).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing to a host that is not OpenRouter', async () => {
+    const result = await verifyOpenRouterKey({ baseUrl: 'https://openrouter.ai.evil.example/api/v1', apiKey: 'sk-or-v1-test' });
+    expect(result.ok).toBe(false);
+    expect(mockFetch4).not.toHaveBeenCalled();
+  });
+
+  it('always checks the key over https, even for an http:// OpenRouter base', async () => {
+    mockFetch4.mockResolvedValue(new Response(JSON.stringify({ data: { label: 'k' } })));
+    for (const baseUrl of ['http://openrouter.ai/api/v1', 'http://openrouter.ai:80/api/v1']) {
+      await verifyOpenRouterKey({ baseUrl, apiKey: 'sk-or-v1-test' });
+    }
+    expect(mockFetch4.mock.calls.map(([url]) => url)).toEqual([
+      'https://openrouter.ai/api/v1/key',
+      'https://openrouter.ai/api/v1/key',
+    ]);
+  });
+
+  it('keeps userinfo and query out of the request and the error copy', async () => {
+    mockFetch4.mockResolvedValue(new Response('{}', { status: 500 }));
+    const result = await verifyOpenRouterKey({
+      baseUrl: 'https://me:hunter2@openrouter.ai/api/v1?token=abc123',
+      apiKey: 'sk-or-v1-test',
+    });
+    const [url] = mockFetch4.mock.calls[0] as [string];
+    expect(url).toBe('https://openrouter.ai/api/v1/key');
+    const msg = (result as { ok: false; error: string }).error;
+    expect(msg).not.toContain('hunter2');
+    expect(msg).not.toContain('abc123');
+  });
+});
+
 // ─── <think> stripper (SKY-11240) ────────────────────────────────────────────
 
 describe('createThinkStripper / stripThinkBlocks (SKY-11240)', () => {
@@ -1708,6 +1924,9 @@ describe('effectiveMaxTokens (SKY-11276)', () => {
     expect(effectiveMaxTokens('custom', 1024, 'http://localhost:9999/v1')).toBe(1024 + REASONING_TOKEN_RESERVE);
     // Remote custom endpoint (a paid aggregator) must NOT get silent headroom.
     expect(effectiveMaxTokens('custom', 1024, 'https://openrouter.ai/api/v1')).toBe(1024);
+    // A hostname that only starts with "127." is remote, not loopback.
+    expect(effectiveMaxTokens('custom', 1024, 'http://127.attacker.example/v1')).toBe(1024);
+    expect(effectiveMaxTokens('custom', 1024, 'http://127.0.0.1.nip.io/v1')).toBe(1024);
   });
 
   it('leaves the answer budget unchanged for cloud providers', () => {

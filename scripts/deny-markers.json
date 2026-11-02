@@ -1,0 +1,18 @@
+{
+  "byteMarkers": [
+    "eSpeakNG",
+    "espeak-ng",
+    "espeak_ng",
+    "piper-phonemize",
+    "sherpa-onnx",
+    "libspeechd",
+    "enable-speech-dispatcher"
+  ],
+  "packageNameMarkers": ["kokoro-js", "phonemizer", "espeak", "sherpa-onnx", "pinyin-pro"],
+  "scriptRanges": {
+    "kana": { "start": 12352, "end": 12543, "ceiling": 4 },
+    "hangul": { "start": 44032, "end": 55215, "ceiling": 4 },
+    "cyrillic": { "start": 1024, "end": 1279, "ceiling": 92 },
+    "cjk": { "start": 19968, "end": 40959, "ceiling": 12 }
+  }
+}

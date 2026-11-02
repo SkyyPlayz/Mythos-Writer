@@ -20,14 +20,14 @@
 
 .new-story-modal__title {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-header);
 }
 
 .new-story-modal__hint {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   line-height: 1.45;
 }
@@ -39,7 +39,7 @@
 }
 
 .new-story-modal__label {
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
@@ -51,7 +51,7 @@
   background: var(--bg-inset);
   color: var(--text-body);
   padding: 8px 10px;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .new-story-modal__plans {
@@ -75,14 +75,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   color: var(--text-body);
   cursor: pointer;
 }
 
 .new-story-modal__muted {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -96,7 +96,7 @@
 .new-story-modal__btn {
   border-radius: 8px;
   padding: 7px 14px;
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   border: 1px solid transparent;
 }

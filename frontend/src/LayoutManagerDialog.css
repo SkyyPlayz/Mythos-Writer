@@ -32,7 +32,7 @@
 
 .layout-manager-title {
   flex: 1;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text, rgba(255,255,255,0.9));
 }
@@ -41,7 +41,7 @@
   background: none;
   border: none;
   color: var(--color-text-muted, rgba(255,255,255,0.4));
-  font-size: 18px;
+  font-size: var(--text-lg);
   cursor: pointer;
   line-height: 1;
   padding: 2px 4px;
@@ -60,7 +60,7 @@
 }
 
 .layout-manager-section-label {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -83,7 +83,7 @@
 
 .layout-manager-row-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text, rgba(255,255,255,0.85));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -101,7 +101,7 @@
 }
 
 .layout-manager-badge {
-  font-size: 9px;
+  font-size: var(--text-xs);
   padding: 1px 5px;
   border-radius: 3px;
   font-weight: 700;
@@ -128,7 +128,7 @@
   border: 1px solid transparent;
   border-radius: 4px;
   color: var(--color-text-muted, rgba(255,255,255,0.45));
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 3px 7px;
   cursor: pointer;
   transition: all 80ms;
@@ -157,7 +157,7 @@
   border: 1px solid var(--color-accent, #00f0ff);
   border-radius: 4px;
   color: var(--color-text, rgba(255,255,255,0.9));
-  font-size: 13px;
+  font-size: var(--text-sm);
   padding: 3px 8px;
   outline: none;
 }
@@ -181,7 +181,7 @@
   border: 1px solid var(--color-border, rgba(255,255,255,0.15));
   border-radius: 6px;
   color: var(--color-text, rgba(255,255,255,0.9));
-  font-size: 13px;
+  font-size: var(--text-sm);
   padding: 6px 10px;
   outline: none;
   transition: border-color 120ms;
@@ -197,7 +197,7 @@
   color: #000;
   border: none;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 6px 14px;
   cursor: pointer;
@@ -221,7 +221,7 @@
   border: 1px solid var(--color-border, rgba(255,255,255,0.15));
   border-radius: 6px;
   color: var(--color-text, rgba(255,255,255,0.85));
-  font-size: 13px;
+  font-size: var(--text-sm);
   padding: 6px 16px;
   cursor: pointer;
   transition: background 80ms;
@@ -252,14 +252,14 @@
 }
 
 .layout-manager-confirm-title {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text, rgba(255,255,255,0.9));
   margin-bottom: 8px;
 }
 
 .layout-manager-confirm-body {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted, rgba(255,255,255,0.55));
   margin-bottom: 16px;
   line-height: 1.5;
@@ -276,7 +276,7 @@
   border: 1px solid var(--color-border, rgba(255,255,255,0.15));
   border-radius: 6px;
   color: var(--color-text, rgba(255,255,255,0.75));
-  font-size: 13px;
+  font-size: var(--text-sm);
   padding: 6px 16px;
   cursor: pointer;
 }
@@ -286,7 +286,7 @@
   border: none;
   border-radius: 6px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   padding: 6px 16px;
   cursor: pointer;
