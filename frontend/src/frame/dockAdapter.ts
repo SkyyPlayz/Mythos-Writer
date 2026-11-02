@@ -138,6 +138,8 @@ const THEME_CLASS = 'mythos-dockview-theme';
  * - .dv-render-overlay loses its transform/containment/z-index: with them every fixed dialog, popover and
  *   menu rendered inside a widget (Settings, Export, context menus) would be clipped to that widget and
  *   painted under its neighbours. Without them they stack against .desktop-shell__body as in the old shell.
+ * - An open rail popover lifts the rail above dockview's sash (z-index 99). The popover hangs out of the
+ *   rail and otherwise loses its corner to that sash once a locked top widget sits on the boundary.
  * - UI zoom moves from the body row onto each host so dockview's pixel geometry stays unzoomed.
  */
 export const FRAME_STYLES = `
@@ -193,6 +195,7 @@ export const FRAME_STYLES = `
 .mythos-widget-frame .nav-rail[data-orientation="horizontal"] .nav-rail__bottom,
 .mythos-widget-frame .nav-rail[data-orientation="horizontal"] .nav-rail__tools { flex-direction: row; }
 .mythos-widget-frame .nav-rail[data-orientation="horizontal"] .nav-rail__divider { display: none; }
+.mythos-widget-frame .nav-rail--pop { z-index: 100; }
 `;
 
 function ensureFrameStyles(doc: Document): void {
