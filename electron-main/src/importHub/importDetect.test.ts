@@ -14,7 +14,7 @@ vi.mock('./htmlBlocks.js', () => ({
 }));
 
 import { assessImportPath, type AssessedImportPath } from './importSafety.js';
-import { detectImportSource } from './importDetect.js';
+import { detectImportSource, FOLDER_SCAN_MAX_ENTRIES, FOLDER_TOO_BIG_ERROR } from './importDetect.js';
 
 let tmp: string;
 
@@ -135,6 +135,25 @@ describe('detectImportSource — folders', () => {
   it('detects a Markdown folder with a file nested up to depth 4', () => {
     write('Vault/a/b/c/d/deep.md', '# Deep');
     expect(detectImportSource(assessed(path.join(tmp, 'Vault')))).toEqual({ ok: true, kind: 'markdown-folder' });
+  });
+
+  it('stops the whole scan at the entry cap (no readdir of queued siblings) and says the folder is too big', () => {
+    const big = path.join(tmp, 'Big');
+    const half = Math.ceil(FOLDER_SCAN_MAX_ENTRIES / 2) + 1;
+    for (const sub of ['a', 'b']) {
+      fs.mkdirSync(path.join(big, sub), { recursive: true });
+      for (let i = 0; i < half; i++) fs.writeFileSync(path.join(big, sub, `f${i}.bin`), '');
+    }
+    // A sibling queued after the cap is hit must never be read.
+    fs.mkdirSync(path.join(big, 'c'));
+    fs.writeFileSync(path.join(big, 'c', 'late.md'), '# late');
+    const spy = vi.spyOn(fs, 'readdirSync');
+    try {
+      expect(detectImportSource(assessed(big))).toEqual({ ok: false, error: FOLDER_TOO_BIG_ERROR });
+      expect(spy.mock.calls.some(([p]) => String(p).endsWith(`${path.sep}c`))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('ignores Markdown deeper than depth 4', () => {

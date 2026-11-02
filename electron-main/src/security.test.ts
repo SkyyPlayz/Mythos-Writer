@@ -509,5 +509,8 @@ describe('isAllowedRendererNavigation (#1765)', () => {
     expect(isAllowedRendererNavigation('http://localhost:5173.attacker.example/', dev)).toBe(false);
     expect(isAllowedRendererNavigation('https://localhost:5173/', dev)).toBe(false);
     expect(isAllowedRendererNavigation('http://localhost:5173/', { ...posix, devServerUrl: 'not a url' })).toBe(false);
+    // Same origin but renderer-made content, not the dev server.
+    expect(isAllowedRendererNavigation('blob:http://localhost:5173/0b1c2d3e', dev)).toBe(false);
+    expect(isAllowedRendererNavigation('filesystem:http://localhost:5173/temporary/x.html', dev)).toBe(false);
   });
 });

@@ -163,7 +163,11 @@ export function isAllowedRendererNavigation(
     // Compare parsed origins, never a string prefix: `http://localhost:5173@evil.example/`
     // starts with the dev URL but its host is evil.example.
     try {
-      if (parsed.origin === new URL(opts.devServerUrl).origin && parsed.origin !== 'null') return true;
+      // http(s) only: `blob:http://localhost:5173/<id>` shares the origin but
+      // is renderer-made HTML, not the dev server.
+      const dev = new URL(opts.devServerUrl);
+      if ((parsed.protocol === 'http:' || parsed.protocol === 'https:')
+        && parsed.protocol === dev.protocol && parsed.origin === dev.origin) return true;
     } catch {
       /* a malformed dev URL allows nothing */
     }

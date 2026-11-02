@@ -36,6 +36,15 @@ describe('plainTextToBlocks', () => {
     ]);
   });
 
+  it('a long unwrapped paragraph never joins the short line before it (dialogue)', () => {
+    const long = `${'The rain kept on through the night and the lanterns guttered one by one along the road. '.repeat(3)}`.trim();
+    // Blank-line paragraphs with hard-wrapped lines (one blank per three lines).
+    const text = `The night came down\nover the road.\n\n"Wait," she said.\n${long}\n\nThe next morning\ncame quietly.`;
+    expect(blocksToProse(plainTextToBlocks(text))).toBe(
+      `The night came down over the road.\n\n"Wait," she said.\n\n${long}\n\nThe next morning came quietly.`,
+    );
+  });
+
   it('with no blank lines at all, every line is a paragraph', () => {
     expect(blocksToProse(plainTextToBlocks('First.\nSecond.\n  Third, indented.\n'))).toBe('First.\n\nSecond.\n\nThird, indented.');
   });

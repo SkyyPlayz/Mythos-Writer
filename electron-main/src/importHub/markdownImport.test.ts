@@ -586,6 +586,14 @@ describe('markdownFolderToPlan — plain text files', () => {
     ]);
   });
 
+  it('reads .text files like .txt (detection accepts them, so the import must too)', async () => {
+    const plan = await markdownFolderToPlan(folder('TextExt', {
+      'Notes/ideas.text': 'First idea.\n\nSecond idea.',
+    }), 'TextExt');
+    expect(plan.notes).toEqual([{ title: 'ideas', folder: 'Notes', body: 'First idea.\n\nSecond idea.' }]);
+    expect(plan.warnings.join(' ')).not.toMatch(/attachment/i);
+  });
+
   it('reads .txt notes as escaped Markdown paragraphs', async () => {
     const plan = await markdownFolderToPlan(folder('TxtNotes', {
       'Notes/todo.txt': '\t# not a heading\n1. not a list\n*not italic*',

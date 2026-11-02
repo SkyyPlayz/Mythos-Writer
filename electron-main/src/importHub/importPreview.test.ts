@@ -100,6 +100,10 @@ describe('countWords', () => {
     expect(countWords('x < y and y > z')).toBe(5);
   });
 
+  it('inline formatting inside a word does not split it', () => {
+    expect(countWords('co<u>operate</u> and un**believ**able and half*way* and re~~do~~')).toBe(7);
+  });
+
   it('ignores Markdown syntax', () => {
     expect(countWords('**Bold** start and *italic* end.')).toBe(5);
     expect(countWords('# Heading here\n\n> quoted words\n\n- list item')).toBe(6);

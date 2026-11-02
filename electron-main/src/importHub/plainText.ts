@@ -93,8 +93,9 @@ function pageToBlocks(page: string, blankLineMode: boolean): RichBlock[] {
       out.push(lineBlock(line));
       continue;
     }
-    // A line too long to be hard-wrapped ends its paragraph.
-    if (para.length && para[para.length - 1].length > MAX_WRAPPED_LINE) flush();
+    // A line too long to be hard-wrapped is a paragraph of its own: it ends
+    // the paragraph before it, and nothing after it joins it.
+    if (para.length && (para[para.length - 1].length > MAX_WRAPPED_LINE || line.length > MAX_WRAPPED_LINE)) flush();
     para.push(line);
   }
   flush();

@@ -25,7 +25,9 @@ const FOLDER_NOTE_EXTENSIONS = new Set([...MARKDOWN_EXTENSIONS, ...TEXT_EXTENSIO
 const SKIPPED_DIRS = new Set(['.obsidian', '.git', 'node_modules', '.trash']);
 export const MARKDOWN_FOLDER_MAX_DEPTH = 4;
 /** Directory entries examined before giving up on a huge tree. */
-const FOLDER_SCAN_MAX_ENTRIES = 20000;
+export const FOLDER_SCAN_MAX_ENTRIES = 20000;
+export const FOLDER_TOO_BIG_ERROR =
+  'This folder is too big for Mythos to look through. Choose the smaller folder that holds your notes or manuscript.';
 
 const ZIP_KIND_LABEL: Record<'docx' | 'epub', { label: string; ext: string }> = {
   docx: { label: 'a Word document', ext: '.docx' },
@@ -82,7 +84,9 @@ function detectDirectory(assessed: AssessedImportPath): ImportDetection {
         }
       }
       for (const entry of entries) {
-        if (++seen > FOLDER_SCAN_MAX_ENTRIES) break;
+        // Stop the whole scan, not just this directory: every sibling still
+        // queued would cost another readdirSync on the main process.
+        if (++seen > FOLDER_SCAN_MAX_ENTRIES) return { ok: false, error: FOLDER_TOO_BIG_ERROR };
         // Dirent.isDirectory() is false for symlinks, so links are never followed.
         if (entry.isFile() && FOLDER_NOTE_EXTENSIONS.has(extOf(entry.name))) {
           return { ok: true, kind: 'markdown-folder' };

@@ -35,9 +35,9 @@ export const MARKDOWN_IMPORT_MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 /** Directory entries examined before the walk stops (huge trees). */
 const MAX_WALK_ENTRIES = 50000;
 
-const NOTE_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'txt']);
+const NOTE_EXTENSIONS = new Set(['md', 'markdown', 'mdown', 'mkd', 'txt', 'text']);
 /** Plain-text files: read as text, never as Markdown. */
-const PLAIN_TEXT_EXTENSIONS = new Set(['txt']);
+const PLAIN_TEXT_EXTENSIONS = new Set(['txt', 'text']);
 const SKIPPED_DIRS = new Set(['.obsidian', '.git', '.trash', 'node_modules', '__macosx']);
 /** Logseq's own folder (backups, version files) beside a graph's pages/ and journals/. */
 const LOGSEQ_GRAPH_DIRS = new Set(['pages', 'journals']);

@@ -97,14 +97,16 @@ export function countWords(markdown: string): number {
   // `[`, `<` or `](` must not rescan to the end from each position): word
   // counting runs synchronously in the main process. Link text keeps its
   // brackets (they never form a word on their own); only the `](target)` is
-  // dropped, and only simple tags (<u>, </em> …) are stripped.
+  // dropped, and only simple tags (<u>, </em> …) are stripped. Inline marks
+  // and tags are removed without a separator, so `co<u>operate</u>` and
+  // `un**believ**able` stay one word.
   const plain = markdown
     .replace(/\]\([^()\s]{0,2048}\)/g, '] ')
-    .replace(/<\/?[A-Za-z][A-Za-z0-9]{0,15}>/g, ' ')
+    .replace(/<\/?[A-Za-z][A-Za-z0-9]{0,15}>/g, '')
     .replace(/\s\{\.(?:center|right|justify)\}\s*$/gm, '')
     .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)/gm, '')
     .replace(/\\([\\`*_{}[\]()#+\-.!<>~|])/g, '$1')
-    .replace(/[*_~`]+/g, ' ');
+    .replace(/[*_~`]+/g, '');
   let n = 0;
   for (const token of plain.split(/\s+/)) {
     if (/[\p{L}\p{N}]/u.test(token)) n++;
