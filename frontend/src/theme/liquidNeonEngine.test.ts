@@ -20,6 +20,7 @@ import {
   matchWallpaperIndex,
   stepMatchWallpaper,
   classicStarfieldPickIndex,
+  resolveVaultLiquidNeonV2,
   LIQUID_NEON_V2_DEFAULTS,
   type LiquidNeonV2Settings,
 } from './liquidNeonEngine';
@@ -217,6 +218,36 @@ describe('Theme match wallpaper cycle (SKY-11589)', () => {
     const t = compute({ wpPick: { classic: 1 } });
     expect(t['--wppos']).toBe(matchWallpaperList(classic, COSMIC)[1].position);
     expect(compute({ wp: 'deep' })['--wppos']).toBe('center');
+  });
+
+  it('#1774: missing accentBreathe normalizes to true; stored false is kept; garbage reads true', () => {
+    expect(LIQUID_NEON_V2_DEFAULTS.accentBreathe).toBe(true);
+    expect(normalizeLiquidNeonV2(null).accentBreathe).toBe(true);
+    expect(normalizeLiquidNeonV2({}).accentBreathe).toBe(true);
+    expect(normalizeLiquidNeonV2({ accentBreathe: false }).accentBreathe).toBe(false);
+    expect(normalizeLiquidNeonV2({ accentBreathe: true }).accentBreathe).toBe(true);
+    for (const junk of [null, 'false', 0, 'off']) {
+      expect(normalizeLiquidNeonV2({ accentBreathe: junk } as unknown as Partial<LiquidNeonV2Settings>).accentBreathe).toBe(true);
+    }
+  });
+
+  it('#1774: a vault snapshot without accentBreathe inherits the global value', () => {
+    const vault = { setKey: 'cyber', intensity: 70 } as Partial<LiquidNeonV2Settings>;
+    // Pre-#1774 snapshot + global off → off; nothing else in the snapshot changes.
+    const off = resolveVaultLiquidNeonV2(vault, { accentBreathe: false });
+    expect(off).toEqual({ setKey: 'cyber', intensity: 70, accentBreathe: false });
+    expect(normalizeLiquidNeonV2(off).accentBreathe).toBe(false);
+    expect(vault).not.toHaveProperty('accentBreathe');
+    // An explicit vault value wins over the global one, either way.
+    expect(resolveVaultLiquidNeonV2({ ...vault, accentBreathe: true }, { accentBreathe: false })?.accentBreathe).toBe(true);
+    expect(resolveVaultLiquidNeonV2({ ...vault, accentBreathe: false }, { accentBreathe: true })?.accentBreathe).toBe(false);
+    // Fresh profile: no global key either → on.
+    expect(resolveVaultLiquidNeonV2(vault, {})?.accentBreathe).toBe(true);
+    expect(resolveVaultLiquidNeonV2(vault, undefined)?.accentBreathe).toBe(true);
+    // No vault snapshot → the global settings as they are.
+    const global = { accentBreathe: false } as Partial<LiquidNeonV2Settings>;
+    expect(resolveVaultLiquidNeonV2(undefined, global)).toBe(global);
+    expect(resolveVaultLiquidNeonV2(undefined, undefined)).toBeUndefined();
   });
 
   it('normalize drops garbage picks and keeps valid ones', () => {
@@ -447,7 +478,9 @@ describe('preset import/export (§3; prototype 7191–7192)', () => {
       ambMode: 'snow',
       frameAnim: 'cycle',
       intensity: 90, // NOT part of the preset payload
+      accentBreathe: false, // #1774: personal, NOT part of the preset payload
     });
+    expect(JSON.parse(json)).not.toHaveProperty('accentBreathe');
     const parsed = parseLiquidNeonPreset(json)!;
     expect(parsed).toEqual({
       slots: [...LIQUID_NEON_PRESETS.cyber.c],
@@ -473,6 +506,18 @@ describe('preset import/export (§3; prototype 7191–7192)', () => {
 
   it('valid JSON with none of the five keys → null', () => {
     expect(parseLiquidNeonPreset('{"foo":"bar"}')).toBeNull();
+  });
+
+  it('#1774: export omits accentBreathe even when false', () => {
+    const json = exportLiquidNeonPreset({ accentBreathe: false });
+    expect(JSON.parse(json)).not.toHaveProperty('accentBreathe');
+  });
+
+  it('#1774: parse ignores accentBreathe; a file with only accentBreathe returns null', () => {
+    expect(parseLiquidNeonPreset(JSON.stringify({ accentBreathe: false }))).toBeNull();
+    const parsed = parseLiquidNeonPreset(JSON.stringify({ wp: 'deep', accentBreathe: true }))!;
+    expect(parsed).toEqual({ wp: 'deep' });
+    expect(parsed).not.toHaveProperty('accentBreathe');
   });
 
   it('garbage-typed fields are dropped, valid ones survive', () => {
@@ -505,6 +550,16 @@ describe('per-vault default theme (§3; prototype cardH 7111)', () => {
     expect(res.liquidNeonV2.wp).toBe('match');
     // The rest of the settings survive the switch.
     expect(res.liquidNeonV2.intensity).toBe(80);
+  });
+
+  it('#1774: vaultDefaultThemePatch keeps accentBreathe:false', () => {
+    const res = vaultDefaultThemePatch(
+      { '/vaults/A/Story Vault': 'ice' },
+      { setKey: 'classic', accentBreathe: false },
+      '/vaults/A/Story Vault',
+    )!;
+    expect(res.liquidNeonV2.setKey).toBe('ice');
+    expect(res.liquidNeonV2.accentBreathe).toBe(false);
   });
 
   it('null when the vault has no stored default or the key is unknown', () => {
@@ -549,6 +604,15 @@ describe('Interface card engine hooks (Beta 4 M1)', () => {
     applyLiquidNeonV2Tokens({ reduceMotion: true }, COSMIC, el);
     resetLiquidNeonV2Tokens(el);
     expect(el.classList.contains('ln-reduce-motion')).toBe(false);
+  });
+
+  it('#1774: apply stamps data-ln-breathe and reset clears it', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({}, COSMIC, el);
+    // jsdom has no matchMedia → the driver's fail-safe keeps it off.
+    expect(el.getAttribute('data-ln-breathe')).toBe('off');
+    resetLiquidNeonV2Tokens(el);
+    expect(el.hasAttribute('data-ln-breathe')).toBe(false);
   });
 
   it('default uiTextCol emits no text tokens (v1 clamped values keep owning them)', () => {

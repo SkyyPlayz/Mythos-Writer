@@ -10,6 +10,7 @@ import { scheduleTextBacking, textBackingToken } from './textBacking';
 // Resolves to frontend/src/theme.ts (file wins over this directory's index-less
 // folder). CF-6: the body-text contrast clamp is shared with the v1 engine.
 import { enforceContrastFloor } from '../theme';
+import { stopAccentBreathe, syncAccentBreathe } from './accentBreathe';
 
 export interface LiquidNeonPageCfg {
   /**
@@ -103,6 +104,8 @@ export interface LiquidNeonV2Settings {
   density: LiquidNeonDensity;
   /** Beta 4 M1 — Reduce motion: one switch stops motes + neon animation (§14.9 #9). */
   reduceMotion: boolean;
+  /** #1774 Accent breathe — personal; never part of LiquidNeonPresetFile. */
+  accentBreathe: boolean;
   /** App (UI chrome) text color — separate from manuscript txtCfg (prototype uiTextCol, 7189). */
   uiTextCol: string;
   /** Button/chip text color (prototype uiBtnCol, 7190). */
@@ -151,6 +154,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   ambColor: null,
   density: 'comfortable',
   reduceMotion: false,
+  accentBreathe: true,
   uiTextCol: '#c8d3e7',
   uiBtnCol: '#cdd8ea',
   uiDens: 1,
@@ -191,6 +195,23 @@ export function hexA(hex: string, a: number): string {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')';
 }
 
+/**
+ * #1774: the liquidNeonV2 to apply for a vault — its SKY-11237 per-vault
+ * snapshot when it has one, else the global settings. Accent breathe is a
+ * personal setting, and snapshots saved before #1774 have no accentBreathe
+ * key, so a missing key inherits the global value instead of normalizing to
+ * on (a fresh profile with no global key either still defaults on). Every
+ * other field of the snapshot is left as stored.
+ */
+export function resolveVaultLiquidNeonV2<T extends Partial<LiquidNeonV2Settings>>(
+  vaultLn: T | null | undefined,
+  globalLn: T | null | undefined,
+): T | undefined {
+  if (!vaultLn) return globalLn ?? undefined;
+  if (vaultLn.accentBreathe !== undefined) return vaultLn;
+  return { ...vaultLn, accentBreathe: globalLn?.accentBreathe !== false };
+}
+
 /** Merge a partial (persisted settings) over the defaults, depth-1 for the two nested cfgs. */
 export function normalizeLiquidNeonV2(partial?: Partial<LiquidNeonV2Settings> | null): LiquidNeonV2Settings {
   const d = LIQUID_NEON_V2_DEFAULTS;
@@ -205,6 +226,7 @@ export function normalizeLiquidNeonV2(partial?: Partial<LiquidNeonV2Settings> | 
   return {
     ...d,
     ...partial,
+    accentBreathe: partial.accentBreathe !== false,
     slots,
     wp,
     wpPick: normalizeWpPick(partial.wpPick),
@@ -352,6 +374,21 @@ export function vaultDefaultThemePatch(
 }
 
 /**
+ * The six slot colors the tokens (and the #1774 breathe driver) are built
+ * from: an empty slot 4–6 falls back to the prototype's padding colors
+ * (short palettes). Slots 1–3 have no fallback. Shared so the driver can
+ * never blend a different palette than the one the tokens show.
+ */
+function tokenSlots(S: LiquidNeonV2Settings): string[] {
+  return [S.slots[0], S.slots[1], S.slots[2], S.slots[3] || '#ff9a3d', S.slots[4] || '#2fe6c8', S.slots[5] || '#3d9bff'];
+}
+
+/** Glow intensity factor I (prototype 3935): reduceGlow caps the contribution. */
+function glowIntensity(S: LiquidNeonV2Settings): number {
+  return S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
+}
+
+/**
  * Compute every Liquid Neon CSS custom property from settings — exact port of
  * the prototype's `themeStyle` (HTML 3948–3966) plus `--ln-scrim` (3967's
  * scrim opacity, namespaced: the app already owns `--scrim` as a modal
@@ -362,10 +399,9 @@ export function computeLiquidNeonV2Tokens(
   cosmicUrl: string,
 ): Record<string, string> {
   const S = normalizeLiquidNeonV2(settings);
-  const I = S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
-  const [c1, c2, c3] = S.slots;
-  const c4 = S.slots[3] || '#ff9a3d', c5 = S.slots[4] || '#2fe6c8', c6 = S.slots[5] || '#3d9bff';
-  const allSlots = [c1, c2, c3, c4, c5, c6];
+  const I = glowIntensity(S);
+  const allSlots = tokenSlots(S);
+  const [c1, c2, c3, c4, c5, c6] = allSlots;
   const tokens: Record<string, string> = {
     '--n1': c1, '--n2': c2, '--n3': c3,
     '--b1': hexA(c1, .3 + .4 * I), '--b2': hexA(c2, .3 + .4 * I), '--b3': hexA(c3, .3 + .4 * I),
@@ -575,6 +611,12 @@ export function applyLiquidNeonV2Tokens(
   // solve its text-backing; every re-apply after that is served from cache by
   // `textBackingToken` above.
   scheduleTextBacking(tokens['--wp'], S.scrim, S.glassA, el);
+  // #1774 Accent breathe: hand the driver the raw alphas behind the 20
+  // --b/--g/--gs/--bh/--glowH tokens written above (theme/accentBreathe.ts).
+  const I = glowIntensity(S);
+  syncAccentBreathe({ enabled: S.accentBreathe && !S.reduceMotion, slots: tokenSlots(S),
+    aB: .3 + .4 * I, aG: .18 + .5 * I, aGs: .05 + .13 * I,
+    glowRh: Math.round((S.glowR || 26) / 2) }, el);
   return tokens;
 }
 
@@ -587,4 +629,6 @@ export function resetLiquidNeonV2Tokens(el: HTMLElement = document.documentEleme
   el.removeAttribute('data-ln-btn-text');
   el.removeAttribute('data-ln-amb');
   el.classList.remove('ln-reduce-motion');
+  stopAccentBreathe();
+  el.removeAttribute('data-ln-breathe');
 }
