@@ -394,6 +394,60 @@ describe('writeNoteProposal', () => {
     }
   });
 
+  it('refuses a leaf symlink and does not write through it', () => {
+    if (process.platform === 'win32') return;
+    const notesRoot = makeTmp('mythos-notes-leaf-');
+    const storyRoot = makeTmp('mythos-story-leaf-');
+    const outside = makeTmp('mythos-outside-leaf-');
+    try {
+      const destDir = path.join(notesRoot, 'Universes', 'Argent', 'Characters');
+      fs.mkdirSync(destDir, { recursive: true });
+      const outsideFile = path.join(outside, 'secret.md');
+      fs.writeFileSync(outsideFile, 'orig');
+      fs.symlinkSync(outsideFile, path.join(destDir, 'Lyra Storm.md'));
+
+      expect(() =>
+        writeNoteProposal({
+          proposal: makeProposal(),
+          notesVaultRoot: notesRoot,
+          storyVaultRoot: storyRoot,
+          now: NOW,
+        }),
+      ).toThrow(/symlink leaf not allowed on write/);
+      expect(fs.readFileSync(outsideFile, 'utf-8')).toBe('orig');
+    } finally {
+      fs.rmSync(notesRoot, { recursive: true, force: true });
+      fs.rmSync(storyRoot, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a parent directory symlink that escapes the Notes Vault', () => {
+    if (process.platform === 'win32') return;
+    const notesRoot = makeTmp('mythos-notes-parent-');
+    const storyRoot = makeTmp('mythos-story-parent-');
+    const outside = makeTmp('mythos-outside-parent-');
+    try {
+      const argentDir = path.join(notesRoot, 'Universes', 'Argent');
+      fs.mkdirSync(argentDir, { recursive: true });
+      fs.symlinkSync(outside, path.join(argentDir, 'Characters'));
+
+      expect(() =>
+        writeNoteProposal({
+          proposal: makeProposal(),
+          notesVaultRoot: notesRoot,
+          storyVaultRoot: storyRoot,
+          now: NOW,
+        }),
+      ).toThrow(/symlink|Path traversal denied/);
+      expect(fs.readdirSync(outside)).toEqual([]);
+    } finally {
+      fs.rmSync(notesRoot, { recursive: true, force: true });
+      fs.rmSync(storyRoot, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it('throws STORY_VAULT_GUARD_ERROR and creates no file when destination escapes into Story Vault', () => {
     const root = makeTmp('mythos-root-');
     const notesRoot = path.join(root, 'Notes Vault');
