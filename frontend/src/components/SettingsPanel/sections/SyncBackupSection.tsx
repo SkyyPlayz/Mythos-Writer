@@ -86,8 +86,8 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
       <M24Card title="Cloud sync">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#eef2fb' }}>Cloud sync</div>
-            <div style={{ fontSize: 11, color: '#8e9db8', marginTop: 2 }}>
+            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: '#eef2fb' }}>Cloud sync</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8', marginTop: 2 }}>
               End-to-end encrypted. Conflicts keep both versions.
             </div>
           </div>
@@ -106,14 +106,14 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11.5, color: '#aebad0', width: 70, flex: 'none' }}>Provider</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: '#aebad0', width: 70, flex: 'none' }}>Provider</span>
           <select
             disabled
             data-testid="sync-cloud-provider"
             style={{
               width: 190, height: 28, background: 'rgba(255,255,255,.05)',
               border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.4))', borderRadius: 8,
-              color: '#dbe4f5', fontSize: 11.5, padding: '0 8px', cursor: 'not-allowed',
+              color: '#dbe4f5', fontSize: 'var(--text-xs)', padding: '0 8px', cursor: 'not-allowed',
             }}
             defaultValue="mythos-cloud"
           >
@@ -122,7 +122,7 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
           <span
             data-testid="sync-coming-soon"
             style={{
-              fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em', flex: 'none',
+              fontSize: 'var(--text-xs)', fontWeight: 700, letterSpacing: '0.09em', flex: 'none',
               borderRadius: 5, padding: '2px 7px', color: '#ffd319',
               border: '1px solid rgba(255,211,25,.45)',
             }}
@@ -136,7 +136,7 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
       </M24Card>
 
       <M24Card title="Vault location">
-        <div style={{ fontSize: 11, color: '#8e9db8' }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8' }}>
           Your vaults are plain files on disk, and they stay on this machine. Nothing is
           uploaded and no account is required — you own the folder.
         </div>
@@ -162,7 +162,7 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
       </M24Card>
 
       <M24Card title="Backup & restore points">
-        <div style={{ fontSize: 11, color: '#8e9db8', marginBottom: 10 }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8', marginBottom: 10 }}>
           One file with your settings, vault manifests and app-private data (snapshots, suggestion history).
           Scene and note markdown lives in your vault folders and copies with them.
         </div>
@@ -207,7 +207,7 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
             'A broken app state? Restore from backup above — settings, manifests and history come back; your markdown is untouched.',
             'A moved or missing vault? Point Vaults → Vault paths at the folder, or use the move wizard to relocate it properly.',
           ].map((step) => (
-            <li key={step} style={{ fontSize: 11, color: '#aebad0' }}>{step}</li>
+            <li key={step} style={{ fontSize: 'var(--text-xs)', color: '#aebad0' }}>{step}</li>
           ))}
         </ol>
       </M24Card>

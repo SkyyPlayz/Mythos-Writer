@@ -63,7 +63,7 @@
 }
 
 .sdp-agent-badge {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 4px;
@@ -87,7 +87,7 @@
 
 /* Severity badge for continuity issues */
 .sdp-severity-badge {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   padding: 2px 7px;
   border-radius: 4px;
@@ -121,7 +121,7 @@
 }
 
 .sdp-target-path {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--accent, #a78bfa);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -143,7 +143,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1;
   transition: background 0.15s, color 0.15s;
 }
@@ -170,7 +170,7 @@
 }
 
 .sdp-section-title {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -179,7 +179,7 @@
 }
 
 .sdp-rationale {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-secondary, #cbd5e1);
   margin: 0;
   line-height: 1.55;
@@ -193,7 +193,7 @@
 }
 
 .sdp-confidence-label {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #94a3b8);
   white-space: nowrap;
 }
@@ -214,7 +214,7 @@
 }
 
 .sdp-confidence-pct {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #94a3b8);
   min-width: 28px;
   text-align: right;
@@ -231,7 +231,7 @@
 .sdp-before-summary {
   cursor: pointer;
   padding: 7px 9px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-secondary, #cbd5e1);
   list-style-position: inside;
@@ -242,7 +242,7 @@
   padding: 9px;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--text-secondary, #cbd5e1);
   border-top: 1px solid var(--border, #2d3748);
@@ -261,13 +261,13 @@
 
 .sdp-budget-held-icon {
   color: var(--state-warning);
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.4;
   flex-shrink: 0;
 }
 
 .sdp-budget-held-text {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--severity-medium-text);
   line-height: 1.5;
 }
@@ -283,7 +283,7 @@
 .sdp-wikilink-badge {
   background: var(--color-archive-hint, #7c9ef5);
   color: var(--text-on-accent);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   border-radius: 4px;
   padding: 1px 6px;
@@ -294,12 +294,12 @@
 .sdp-wikilink-link {
   color: var(--color-archive-hint, #7c9ef5);
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .sdp-wikilink-anchor {
   color: var(--text-muted, #888);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-style: italic;
 }
 
@@ -317,7 +317,7 @@
 }
 
 .sdp-continuity-label {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted, #64748b);
   text-transform: uppercase;
@@ -330,7 +330,7 @@
   background: var(--bg-elevated, #1a1f2e);
   border: 1px solid var(--border, #1e2433);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary, #94a3b8);
   white-space: pre-wrap;
   word-break: break-word;
@@ -344,7 +344,7 @@
 }
 
 .sdp-prose-summary {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #94a3b8);
   cursor: pointer;
   user-select: none;
@@ -356,7 +356,7 @@
   background: var(--bg-elevated, #1a1f2e);
   border: 1px solid var(--border, #1e2433);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary, #94a3b8);
   white-space: pre-wrap;
   word-break: break-word;
@@ -367,7 +367,7 @@
 /* Audit trail */
 .sdp-audit-loading,
 .sdp-audit-empty {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #64748b);
   margin: 0;
 }
@@ -385,14 +385,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .sdp-audit-action {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: capitalize;
 }
 
@@ -416,7 +416,7 @@
 
 .sdp-btn {
   padding: 5px 12px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
   border-radius: 5px;
   border: 1px solid var(--border, #2d3748);
@@ -482,7 +482,7 @@
 }
 
 .sdp-sc-title {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary, #e2e8f0);
 }
@@ -495,7 +495,7 @@
 
 .sdp-sc-lane,
 .sdp-sc-linked-note {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-secondary, #94a3b8);
 }
 
@@ -506,7 +506,7 @@
 }
 
 .sdp-sc-tag {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 500;
   padding: 2px 6px;
   border-radius: 4px;

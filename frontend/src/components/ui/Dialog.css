@@ -84,7 +84,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   line-height: 1;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-xs);

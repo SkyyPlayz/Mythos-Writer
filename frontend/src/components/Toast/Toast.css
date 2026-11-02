@@ -14,7 +14,7 @@
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-sm, 6px);
   padding: 0.55rem 1rem;
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   z-index: var(--z-toast);
   white-space: nowrap;
@@ -51,7 +51,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   padding: 0 0.25rem;
   color: inherit;
   opacity: 0.8;
@@ -65,7 +65,7 @@
 
 .app-toast__dismiss {
   margin-left: 0.25rem;
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 /* Raise the bottom offset when a second toast is stacked above the primary */
