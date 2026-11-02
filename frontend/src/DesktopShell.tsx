@@ -17,6 +17,7 @@ import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStor
 import {
   applyLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
+  resolveVaultLiquidNeonV2,
   vaultDefaultThemePatch,
   type LiquidNeonPageCfg,
   type LiquidNeonV2Settings,
@@ -1546,9 +1547,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           cachedSettings = themed;
           setAppSettings(themed);
           window.api.settingsSet(themed).catch(() => {});
-          // SKY-11237: per-vault appearance overrides the preset's liquidNeonV2.
+          // SKY-11237: per-vault appearance overrides the preset's liquidNeonV2
+          // (#1774: a snapshot without accentBreathe inherits the global one).
           const switchedVaultApp = s.vaultAppearance?.[switchedVaultRoot];
-          void applyLiquidNeonV2Theme(switchedVaultApp?.liquidNeonV2 ?? vaultPatch.liquidNeonV2);
+          void applyLiquidNeonV2Theme(resolveVaultLiquidNeonV2(switchedVaultApp?.liquidNeonV2, vaultPatch.liquidNeonV2));
           // SKY-9262 (P0.5): name the vault by its single story's title when it
           // has one — the raw directory name is only the fallback.
           showLnToast(
@@ -1560,7 +1562,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } else {
           // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
           // v1 axis tokens so v2 values win where both define a property.
-          void applyLiquidNeonV2Theme(initVaultApp?.liquidNeonV2 ?? s.liquidNeonV2);
+          void applyLiquidNeonV2Theme(resolveVaultLiquidNeonV2(initVaultApp?.liquidNeonV2, s.liquidNeonV2));
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
@@ -6759,7 +6761,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               applyLiquidNeonTokens(lg);
             }
             // Beta 3 Liquid Neon (M1): re-apply v2 slot-engine tokens on save.
-            void applyLiquidNeonV2Theme(savedVaultApp?.liquidNeonV2 ?? s.liquidNeonV2);
+            void applyLiquidNeonV2Theme(resolveVaultLiquidNeonV2(savedVaultApp?.liquidNeonV2, s.liquidNeonV2));
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
