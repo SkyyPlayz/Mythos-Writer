@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import SettingsPanel from './SettingsPanel';
 import { writeDefaultRichPref } from './noteViewPrefs';
 import { DEFAULT_BG_GRADIENT } from './theme';
+import { LIQUID_NEON_V2_DEFAULTS, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
 
 const defaultSettings: AppSettings = {
   apiKey: '',
@@ -2877,6 +2878,58 @@ describe('SKY-3218 nav-bar configuration', () => {
       // SKY-11237 store gets the same slice, so the pick survives a relaunch per vault.
       expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 0 });
       expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
+    });
+
+    it('#1774: Accent breathe off live-persists globally and per vault', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />);
+      await waitForModelKeys();
+
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      fireEvent.click(screen.getByTestId('lnas-accentbreathe'));
+      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+      const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+      expect(saved.liquidNeonV2?.accentBreathe).toBe(false);
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.accentBreathe).toBe(false);
+    });
+
+    it('#1774: a pre-#1774 vault snapshot (no accentBreathe) shows the global value; explicit vault values win', async () => {
+      const pre1774 = { ...LIQUID_NEON_V2_DEFAULTS } as Partial<LiquidNeonV2Settings>;
+      delete pre1774.accentBreathe;
+      mockSettingsGet.mockResolvedValue({
+        ...defaultSettings,
+        liquidNeonV2: { ...LIQUID_NEON_V2_DEFAULTS, accentBreathe: false },
+        vaultAppearance: {
+          '/vaults/alpha': { theme: 'dark', liquidNeonV2: pre1774 as LiquidNeonV2Settings },
+          '/vaults/beta': { theme: 'dark', liquidNeonV2: { ...LIQUID_NEON_V2_DEFAULTS, accentBreathe: true } },
+        },
+      });
+      const { rerender } = await renderSettingsOnDefault(
+        <SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />,
+      );
+      await waitFor(() => expect(screen.getByTestId('lnas-accentbreathe')).toHaveAttribute('aria-checked', 'false'));
+
+      // Vault switch while open (hydrated overlay path): beta stores true.
+      rerender(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/beta" />);
+      await flushAsyncEffects();
+      await waitFor(() => expect(screen.getByTestId('lnas-accentbreathe')).toHaveAttribute('aria-checked', 'true'));
+
+      // …and back to the pre-#1774 snapshot: global off again.
+      rerender(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />);
+      await flushAsyncEffects();
+      await waitFor(() => expect(screen.getByTestId('lnas-accentbreathe')).toHaveAttribute('aria-checked', 'false'));
+    });
+
+    it('#1774: fresh profile (no accentBreathe anywhere) shows Accent breathe on', async () => {
+      const pre1774 = { ...LIQUID_NEON_V2_DEFAULTS } as Partial<LiquidNeonV2Settings>;
+      delete pre1774.accentBreathe;
+      mockSettingsGet.mockResolvedValue({
+        ...defaultSettings,
+        liquidNeonV2: pre1774 as LiquidNeonV2Settings,
+        vaultAppearance: { '/vaults/alpha': { theme: 'dark', liquidNeonV2: pre1774 as LiquidNeonV2Settings } },
+      });
+      await renderSettingsOnDefault(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />);
+      await waitFor(() => expect(screen.getByTestId('lnas-accentbreathe')).toHaveAttribute('aria-checked', 'true'));
     });
   });
 
