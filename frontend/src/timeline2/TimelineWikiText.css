@@ -82,7 +82,7 @@
   border-radius: 5px;
   display: flex;
   flex: none;
-  font-size: 8.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   gap: 2px;
   height: 14px;

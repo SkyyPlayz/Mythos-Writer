@@ -56,7 +56,7 @@ const cardSt = (current: boolean, borrowed = false): CSSProperties => ({
 });
 
 const accessChipSt = (mode: AccessMode): CSSProperties => ({
-  fontSize: 9,
+  fontSize: 'var(--text-xs)',
   fontWeight: 700,
   letterSpacing: '0.04em',
   flex: 'none',
@@ -386,12 +386,12 @@ export default function VaultLinkingColumns() {
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{n.displayName}</span>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: '#e6ecf9' }}>{n.displayName}</span>
                     {borrowedXl && (
                       <span
                         data-testid={`from-chip-notes-${n.id}`}
                         style={{
-                          fontSize: 9, fontWeight: 700, color: CROSS_VAULT_GREEN,
+                          fontSize: 'var(--text-xs)', fontWeight: 700, color: CROSS_VAULT_GREEN,
                           border: `1px dashed ${CROSS_VAULT_GREEN}`, borderRadius: 6, padding: '1px 6px',
                         }}
                       >
@@ -399,7 +399,7 @@ export default function VaultLinkingColumns() {
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 2 }}>
                     {linked.length > 0 ? `Linked to: ${linked.join(', ')}` : 'Not linked'}
                   </div>
                 </div>
@@ -413,7 +413,7 @@ export default function VaultLinkingColumns() {
                   {access === 'rw' ? 'Read & write' : 'Read only'}
                 </button>
                 {current && (
-                  <span style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--n1,#00f0ff)', flex: 'none' }}>Current</span>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--n1,#00f0ff)', flex: 'none' }}>Current</span>
                 )}
                 <div onClick={(e) => e.stopPropagation()}>
                   <VaultOverflowMenu
@@ -446,7 +446,7 @@ export default function VaultLinkingColumns() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="notes-hidden-list">
               {hiddenNotes.map((n) => (
                 <div key={`hidden-${n.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 11px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}>
-                  <span style={{ flex: 1, fontSize: 11, color: '#8e9db8' }}>{n.displayName}</span>
+                  <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#8e9db8' }}>{n.displayName}</span>
                   <button type="button" className="m24-btn" data-testid={`notes-unhide-${n.id}`} onClick={() => onRevealHiddenTarget(notesAbsPath(n))}>
                     Unhide
                   </button>
@@ -509,12 +509,12 @@ export default function VaultLinkingColumns() {
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{s.displayName}</span>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: '#e6ecf9' }}>{s.displayName}</span>
                     {borrowedXl && (
                       <span
                         data-testid={`from-chip-story-${s.id}`}
                         style={{
-                          fontSize: 9, fontWeight: 700, color: CROSS_VAULT_GREEN,
+                          fontSize: 'var(--text-xs)', fontWeight: 700, color: CROSS_VAULT_GREEN,
                           border: `1px dashed ${CROSS_VAULT_GREEN}`, borderRadius: 6, padding: '1px 6px',
                         }}
                       >
@@ -522,14 +522,14 @@ export default function VaultLinkingColumns() {
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 2 }}>
                     {pairedNotes ? `Linked to: ${pairedNotes.displayName}` : 'Not linked'}
                     {pairedNotesHidden && (
                       <button
                         type="button"
                         data-testid={`story-target-hidden-${s.id}`}
                         onClick={(e) => { e.stopPropagation(); if (pairedNotes) onRevealHiddenTarget(notesAbsPath(pairedNotes)); }}
-                        style={{ marginLeft: 6, fontSize: 9.5, color: '#ffb020', background: 'none', border: '1px solid rgba(255,176,32,.4)', borderRadius: 6, padding: '1px 5px', cursor: 'pointer' }}
+                        style={{ marginLeft: 6, fontSize: 'var(--text-xs)', color: '#ffb020', background: 'none', border: '1px solid rgba(255,176,32,.4)', borderRadius: 6, padding: '1px 5px', cursor: 'pointer' }}
                       >
                         target hidden — reveal
                       </button>
@@ -546,7 +546,7 @@ export default function VaultLinkingColumns() {
                   {access === 'rw' ? 'Read & write' : 'Read only'}
                 </button>
                 {current && (
-                  <span style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--n1,#00f0ff)', flex: 'none' }}>Current</span>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--n1,#00f0ff)', flex: 'none' }}>Current</span>
                 )}
                 <div onClick={(e) => e.stopPropagation()}>
                   <VaultOverflowMenu
@@ -569,7 +569,7 @@ export default function VaultLinkingColumns() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="story-hidden-list">
               {hiddenStory.map((s) => (
                 <div key={`hidden-${s.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 11px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}>
-                  <span style={{ flex: 1, fontSize: 11, color: '#8e9db8' }}>{s.displayName}</span>
+                  <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: '#8e9db8' }}>{s.displayName}</span>
                   <button type="button" className="m24-btn" data-testid={`story-unhide-${s.id}`} onClick={() => onRevealHiddenTarget(storyAbsPath(s))}>
                     Unhide
                   </button>

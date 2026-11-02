@@ -20,7 +20,7 @@
   border-radius: 999px;
   background: var(--bg-inset, rgba(255, 255, 255, 0.04));
   color: var(--text-dim);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s, color 0.12s;
 }

@@ -5,13 +5,13 @@
 
 .avd-title {
   font-family: 'Lora', Georgia, serif;
-  font-size: 19px;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--text-header, #f0f3fc);
 }
 
 .avd-subtitle {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #8e9db8);
   margin-top: 3px;
   line-height: 1.55;
@@ -23,7 +23,7 @@
 
 .avd-field-label,
 .avd-section-label {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.13em;
   color: var(--text-muted, #7686a2);
@@ -43,7 +43,7 @@
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
   border-radius: 10px;
   color: #eef2fb;
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   padding: 0 11px;
 }
 
@@ -61,7 +61,7 @@
 }
 
 .avd-preview__label {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.13em;
   color: var(--text-muted, #7686a2);
@@ -82,11 +82,11 @@
 
 .avd-preview__folder-icon {
   flex: none;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .avd-preview__folder-label {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #dbe4f5;
 }
@@ -99,7 +99,7 @@
 }
 
 .avd-preview__chip {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #8e9db8);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
@@ -111,7 +111,7 @@
 }
 
 .avd-hint {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #8e9db8);
   line-height: 1.55;
   margin-top: 9px;
@@ -123,13 +123,13 @@
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px dashed rgba(255, 255, 255, 0.14);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted, #8e9db8);
   line-height: 1.55;
 }
 
 .avd-error {
   margin-top: 13px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--state-danger, #ff5c85);
 }
