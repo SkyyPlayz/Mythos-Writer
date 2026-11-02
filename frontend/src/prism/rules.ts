@@ -941,7 +941,9 @@ function checkDialogueTags(a: Analysis): PrismFinding[] {
       // a comma, dash, ellipsis, ! or ? (a full stop ends the sentence).
       const closed = e - s >= 2 && '”"’\''.includes(text[e - 1]);
       const last = closed ? text[e - 2] : undefined;
-      if (closed && last !== undefined && ',—–-…!?'.includes(last)) {
+      // A dotted ellipsis ("Wait...") trails off like `…`; one full stop does not.
+      const dotted = closed && text.slice(e - 4, e - 1) === '...';
+      if (closed && last !== undefined && (dotted || ',—–-…!?'.includes(last))) {
         let cursor = e;
         let count = 0;
         for (let t = firstTokenFrom(a.tokens, lo, hi, e); t < hi && count < TAG_WINDOW_WORDS; t++) {
@@ -1050,6 +1052,9 @@ function checkPunctuationConsistency(a: Analysis): PrismFinding[] {
     const text = a.paragraphs[p].text;
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
+      // A straight mark right after a digit is a measurement (6'2", 12"),
+      // not a quote or apostrophe, so it says nothing about the scene's style.
+      if ((c === '"' || c === "'") && isInchMark(text, i)) continue;
       if (c === '"') straightDouble.push([p, i, i + 1]);
       else if (c === '“' || c === '”') curlyDouble.push([p, i, i + 1]);
       else if (c === "'") straightSingle.push([p, i, i + 1]);

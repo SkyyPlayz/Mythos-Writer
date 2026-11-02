@@ -364,6 +364,14 @@ describe('dialogue-tags', () => {
     expect(hits('dialogue-tags', 'He quietly asked, "Why?"')).toEqual(['quietly asked']);
   });
 
+  it('reads a tag after speech that trails off in a dotted or Unicode ellipsis', () => {
+    expect(hits('dialogue-tags', '“Wait...” she hissed.')).toEqual(['hissed']);
+    expect(hits('dialogue-tags', '"Wait..." she hissed.')).toEqual(['hissed']);
+    expect(hits('dialogue-tags', '“Wait…” she hissed.')).toEqual(['hissed']);
+    // Control: a single full stop still ends the sentence before the tag.
+    expect(hits('dialogue-tags', '“Wait.” She hissed at the cat.')).toEqual([]);
+  });
+
   it('leaves plain tags, acceptable tags and action beats alone', () => {
     expect(
       hits('dialogue-tags', '“Fine,” she said. “Why?” he asked. “Down,” she whispered.')
@@ -473,6 +481,16 @@ describe('punctuation-consistency', () => {
     expect(found.map((f) => text.slice(f.from, f.to))).toEqual(['--']);
     expect(found[0].message).toBe('Mixed dash styles: this scene mostly uses em dashes (—)');
     expect(hits('punctuation-consistency', 'Go – now. Wait—')).toEqual(['–']);
+  });
+
+  it('does not count inch and prime marks after a digit as quotes or apostrophes', () => {
+    expect(run('punctuation-consistency', '“He’s 6\'2" tall,” she said.')).toEqual([]);
+    expect(run('punctuation-consistency', '“A 12" blade,” Tom’s note read.')).toEqual([]);
+    // Control: a straight quote that is not a measurement is still flagged.
+    expect(hits('punctuation-consistency', '“He’s 6\'2" tall,” she said. "Go."')).toEqual([
+      '"',
+      '"',
+    ]);
   });
 
   it('stays quiet when a scene is consistent', () => {
