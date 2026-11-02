@@ -242,6 +242,27 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(JSON.stringify(story)).not.toMatch(/SVG Param Chapter|NCX Padded Chapter/);
   });
 
+  it('a whitespace-only media type uses the extension fallback, and .xml stays out', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'xml',
+        href: 'notes.xml',
+        mediaType: '   ',
+        body: '<h1>Blank Xml Chapter</h1><p>Not a chapter.</p>',
+      },
+      {
+        id: 'xh',
+        href: 'blank.xhtml',
+        mediaType: ' \t ',
+        body: '<h1>Blank Xhtml Chapter</h1><p>Still read.</p>',
+      },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Blank Xhtml Chapter']);
+    expect(story.chapters[0].scenes[0].prose).toBe('Still read.');
+    expect(JSON.stringify(story)).not.toMatch(/Blank Xml Chapter/);
+  });
+
   it('an empty media-type .xhtml item is still a chapter', async () => {
     const buf = await makeEpub([
       { id: 'c1', href: 'ch1.xhtml', mediaType: '', body: '<h1>Untyped Chapter</h1><p>Still read.</p>' },

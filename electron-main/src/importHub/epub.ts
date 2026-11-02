@@ -119,11 +119,12 @@ function attr(tag: string, name: string): string | undefined {
   return m ? decodeEntities(m[1] ?? m[2] ?? '') : undefined;
 }
 
-/** Base media type for the chapter allowlist: trim, drop `;` parameters, lowercase. */
+/** Normalize once, at parse time: trim, cut at the first `;`, lowercase. */
 function spineMediaType(raw: string | undefined): string {
   const trimmed = (raw ?? '').trim();
-  const head = trimmed.split(';', 1)[0] ?? '';
-  return head.trim().toLowerCase();
+  const cutAt = trimmed.indexOf(';');
+  const base = cutAt === -1 ? trimmed : trimmed.slice(0, cutAt);
+  return base.toLowerCase();
 }
 
 /** OPF-relative href → zip entry path (resolves `../`, decodes %XX, drops #fragments). */
@@ -196,9 +197,9 @@ export async function epubToBlocks(
   for (const idref of spine) {
     const item = items.get(idref);
     if (!item) continue;
-    // item.type is the normalized base (spineMediaType). A declared type must
-    // be XHTML or HTML. NCX and SVG stay out even when the href is .xhtml.
-    // An empty base may use .xhtml, .html, or .htm — never plain .xml.
+    // Exact allowlist on the type already normalized at parse time.
+    // An empty type, including one that was only whitespace, may use the
+    // file name: .xhtml, .html, or .htm. A .xml name stays out.
     const isHtml = item.type === 'application/xhtml+xml' || item.type === 'text/html'
       || (item.type === '' && /\.(xhtml|html|htm)$/i.test(item.href));
     if (!isHtml || /\bnav\b/.test(item.props)) continue;
