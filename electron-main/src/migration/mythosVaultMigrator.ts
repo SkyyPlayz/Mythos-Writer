@@ -36,7 +36,7 @@ import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import type { Manifest, SceneEntry, StoryEntry } from '../ipc.js';
 import { migrateManifest } from '../manifest.js';
-import { readSceneFile, writeFileAtomic } from '../vault.js';
+import { readSceneFile, vaultRelPath, writeVaultFileAtomic, writeVaultOrSkip } from '../vault.js';
 import { listVersions } from '../versions.js';
 import { listSnapshots } from '../snapshots.js';
 import { deriveProjectName } from '../mythosVault.js';
@@ -133,8 +133,9 @@ export function suggestMigrationTarget(storyVaultRoot: string, notesVaultRoot: s
 export const MIGRATION_INCOMPLETE_MARKER = '.mythos-migration-incomplete';
 
 export function writeIncompleteMigrationMarker(targetRoot: string, sourceStoryVault: string): void {
-  writeFileAtomic(
-    path.join(targetRoot, MIGRATION_INCOMPLETE_MARKER),
+  writeVaultFileAtomic(
+    targetRoot,
+    MIGRATION_INCOMPLETE_MARKER,
     `${JSON.stringify(
       { sourceStoryVault, startedAt: new Date().toISOString(), migratorVersion: MIGRATOR_VERSION },
       null,
@@ -207,6 +208,8 @@ export interface MigrationReport {
     mismatches: string[];
   };
   error?: string;
+  /** Files the copy skipped because the destination was a symbolic link. */
+  skippedSymlinks?: string[];
 }
 
 interface SourceManifest {
@@ -656,6 +659,7 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
       chapters: [],
       scenes: [],
     };
+    const skippedSymlinks: string[] = [];
     for (const layout of layouts) {
       counts.stories += 1;
       const spine: BookSpinePart = { dir: partDirName(1), chapters: [] };
@@ -686,8 +690,9 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
           // POV lives on the manifest card OR in the old file's frontmatter.
           const fmPov = typeof s.sourceFm.pov === 'string' ? s.sourceFm.pov : undefined;
           const pov = s.scene.card?.pov ?? fmPov;
-          writeFileAtomic(
-            path.join(storyVaultPath, ...s.newRelPath.split('/')),
+          writeVaultOrSkip(
+            storyVaultPath,
+            s.newRelPath,
             serializeV2SceneFile({
               id: s.scene.id,
               title: s.scene.title,
@@ -701,6 +706,7 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
               },
               prose: s.prose,
             }),
+            skippedSymlinks,
           );
           newChapter.scenes.push({
             ...s.scene,
@@ -713,8 +719,9 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
         newManifest.chapters.push(newChapter);
         newManifest.scenes.push(...newChapter.scenes);
       }
-      writeFileAtomic(
-        path.join(storyVaultPath, layout.folder, BOOK_FILENAME),
+      writeVaultOrSkip(
+        storyVaultPath,
+        `${layout.folder}/${BOOK_FILENAME}`,
         serializeBookFile({
           id: layout.story.id,
           title: layout.story.title,
@@ -723,6 +730,7 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
           updatedAt: nowStr,
           spine: [spine],
         }),
+        skippedSymlinks,
       );
       newManifest.stories.push(newStory);
 
@@ -744,9 +752,11 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
       }
       if (comments.length > 0) {
         counts.comments += comments.length;
-        writeFileAtomic(
-          path.join(storyVaultPath, layout.folder, 'comments.json'),
+        writeVaultOrSkip(
+          storyVaultPath,
+          `${layout.folder}/comments.json`,
           `${JSON.stringify({ version: 1, comments }, null, 2)}\n`,
+          skippedSymlinks,
         );
       }
 
@@ -956,7 +966,8 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
 
     // 8. Regenerable manifest cache — so first open carries entities,
     //    relationships, suggestions refs, smart folders, board references.
-    writeFileAtomic(manifestCachePathFor(storyVaultPath), JSON.stringify(newManifest));
+    const manifestCachePath = manifestCachePathFor(storyVaultPath);
+    writeVaultFileAtomic(storyVaultPath, vaultRelPath(storyVaultPath, manifestCachePath), JSON.stringify(newManifest));
 
     // 8b. Write initial vault registries so ensureVaultRegistry() on first open
     //     finds the correct grouped paths instead of falling back to flat defaults.
@@ -1052,6 +1063,7 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
       notesVaultPath,
       counts,
       verified: { scenesChecked, notesChecked, mismatches },
+      skippedSymlinks,
       ...(mismatches.length > 0
         ? { error: `Verification found ${mismatches.length} mismatch(es); the original vault is untouched.` }
         : {}),

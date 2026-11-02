@@ -233,6 +233,7 @@ interface MythosMigrationRunResult {
     notesChecked: number;
     mismatches: string[];
   };
+  skippedSymlinks?: string[];
 }
 
 interface EntityRelation {
@@ -1177,7 +1178,7 @@ interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
     readVault: (path: string) => Promise<{ content: string; path: string }>;
-    writeVault: (path: string, content: string) => Promise<{ path: string; bytes: number }>;
+    writeVault: (path: string, content: string) => Promise<{ path: string; bytes: number; error?: string; code?: string }>;
     listVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> }>;
     deleteVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     readManifest: () => Promise<unknown>;
@@ -1623,7 +1624,7 @@ interface Window {
       ok?: boolean;
       auditId?: string;
       newSuggestionId?: string;
-      reason?: 'suggest_only';
+      reason?: 'suggest_only' | 'note_not_found' | 'excerpt_not_found' | 'manuscript_target' | 'not_allowlisted' | 'resolve_failed' | 'unresolved_relation' | 'unknown_kind' | 'no_manifest';
       error?: string;
     }>;
     archiveIgnoreList: () => Promise<unknown>;
@@ -1762,7 +1763,7 @@ interface Window {
     // symmetry. All paths resolve under the separately-configured notes vault
     // root via safeVaultIpcJoin on the main side.
     readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
-    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
+    writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { path: string; bytes: number; error: string; code?: string }>;
     // SKY-11360: brainstorm/idea board — agent state stored in the Agent Vault
     // (not the Notes Vault). The main process owns the path.
     brainstormBoard: {
@@ -1808,6 +1809,9 @@ interface Window {
       patch: { x?: number; y?: number; w?: number; h?: number },
     ) => Promise<{ key: string; id: string }>;
     notesBoardPatchColors: (folderPath: string, itemPath: string, color: string | null) => Promise<{ key: string; id: string }>;
+    onNotesBoardWriteRefused?: (
+      cb: (info: { folderRelPath: string; code: string; message: string }) => void,
+    ) => () => void;
     notesBoardFurnitureCreate: (folderPath: string, item: Record<string, unknown>) => Promise<{ item: Record<string, unknown> & { id: string } }>;
     notesBoardFurnitureUpdate: (folderPath: string, furnitureId: string, patch: Record<string, unknown>) => Promise<{ item: (Record<string, unknown> & { id: string }) | null }>;
     notesBoardFurnitureDelete: (folderPath: string, furnitureId: string) => Promise<{ ok: true }>;
@@ -1978,8 +1982,8 @@ interface Window {
     dailyNoteGetStreak: () => Promise<{ streakDays: number; todayExists: boolean }>;
     // SKY-193: Tag Wrangler
     notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
-    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
-    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
+    notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number; skipped?: string[] }>;
+    notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number; skipped?: string[] }>;
     // SKY-55: per-scene / per-tier notes (sceneId may be a tier-prefixed node key)
     notesGet?: (sceneId: string) => Promise<{ content: string }>;
     notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
@@ -2076,7 +2080,7 @@ interface Window {
     // M12.B3 (SKY-10738): checkType selects Check 1 (story_internal) vs
     // Check 2 (story_vault, default) — the panel's "Continuity pass ▾".
     archiveScanContinuity: (sceneId: string, text: string, scope?: string, checkType?: string) => Promise<void>;
-    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only' }>;
+    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' | 'suggest_only' | 'manuscript_target' | 'not_allowlisted' | 'resolve_failed' | 'unresolved_relation' | 'unknown_kind' | 'no_manifest' }>;
     archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
         id: string;

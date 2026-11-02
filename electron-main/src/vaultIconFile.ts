@@ -9,7 +9,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { writeFileAtomic } from './vault.js';
+import { writeVaultFileAtomic } from './vault.js';
 
 const ALLOWED_VAULT_ICON_MIME: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -64,7 +64,7 @@ export function importVaultIconFile(
     if (stat.size > MAX_VAULT_ICON_BYTES) return { file: null };
     const data = fs.readFileSync(sourcePath);
     const fileName = `${VAULT_ICON_BASENAME}${path.extname(sourcePath).toLowerCase()}`;
-    writeFileAtomic(path.join(mythosRoot, fileName), data);
+    writeVaultFileAtomic(mythosRoot, fileName, data);
     removeVaultIconFiles(mythosRoot, fileName);
     return { file: fileName };
   } catch {

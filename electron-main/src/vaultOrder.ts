@@ -16,7 +16,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from './vault.js';
+import { writeVaultFileAtomic } from './vault.js';
 
 export const ORDER_FILE_NAME = '.vb-order.json';
 
@@ -57,7 +57,7 @@ export function readOrderMap(vaultRoot: string): VaultOrderMap {
 }
 
 export function writeOrderMap(vaultRoot: string, map: VaultOrderMap): void {
-  writeFileAtomic(path.join(vaultRoot, ORDER_FILE_NAME), JSON.stringify(map, null, 2));
+  writeVaultFileAtomic(vaultRoot, ORDER_FILE_NAME, JSON.stringify(map, null, 2));
 }
 
 /**

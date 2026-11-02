@@ -8,8 +8,8 @@
 //
 // Push counter: unique channels among resolved `.send` arguments in main
 // (string literal, same-file const, or imported CONST.PROP). That is the
-// 56-count. Following a same-file helper that `.send`s its parameter
-// (ai-activity update/terminal) is the other method and yields 58. Listeners
+// 57-count. Following a same-file helper that `.send`s its parameter
+// (ai-activity update/terminal) is the other method and yields 59. Listeners
 // for those two helper channels are matched. push-without-listener walks the
 // combined set (direct sends ∪ helper sends), so dropping either listener is
 // a new gap.
@@ -58,11 +58,14 @@ const ALLOWLIST: readonly Gap[] = [
 
 const CENSUS = {
   pushCounter: PUSH_COUNTER,
-  ipcChannelKeys: 406,
+  // +1 notesBoard:writeRefused. The debounced sidecar flush runs after
+  // notesBoard:patchLayout has already resolved, so a refusal cannot be the
+  // invoke result. Main pushes it and preload listens. Not a new gap.
+  ipcChannelKeys: 407,
   handlerChannels: 385,
   mainListenerChannels: 10,
-  directSendChannels: 56,
-  helperSendChannels: 58,
+  directSendChannels: 57,
+  helperSendChannels: 59,
   allowlist: 9,
 } as const;
 
@@ -164,12 +167,24 @@ function readProductionSources(root: string): SourceFile[] {
   });
 }
 
-function lineOf(src: string, index: number): number {
-  let line = 1;
-  for (let i = 0; i < index && i < src.length; i++) {
-    if (src[i] === '\n') line++;
+function newlinePositions(src: string): number[] {
+  const newlines: number[] = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '\n') newlines.push(i);
   }
-  return line;
+  return newlines;
+}
+
+/** 1-based line of `index`. `newlines` holds every `\n` index in the same source. */
+function lineAt(newlines: readonly number[], index: number): number {
+  let lo = 0;
+  let hi = newlines.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (newlines[mid] < index) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo + 1;
 }
 
 function skipString(src: string, i: number): number {
@@ -266,6 +281,7 @@ interface Binding {
 interface ModuleInfo {
   rel: string;
   src: string;
+  newlines: number[];
   strings: Map<string, Binding[]>;
   objects: Map<string, Binding[]>;
   imports: Map<string, { from: string; exported: string }>;
@@ -378,6 +394,7 @@ function collectModules(files: readonly SourceFile[]): Map<string, ModuleInfo> {
     const info: ModuleInfo = {
       rel: file.rel.split(path.sep).join('/'),
       src,
+      newlines: newlinePositions(src),
       strings: new Map(),
       objects: new Map(),
       imports: new Map(),
@@ -387,7 +404,7 @@ function collectModules(files: readonly SourceFile[]): Map<string, ModuleInfo> {
     while ((match = decl.exec(src))) {
       const name = match[2];
       const at = match.index + match[0].length;
-      const line = lineOf(src, match.index);
+      const line = lineAt(info.newlines, match.index);
       if (src[at] === "'" || src[at] === '"') {
         const end = skipString(src, at);
         const literal = parseStringLiteral(src.slice(at, end));
@@ -468,7 +485,7 @@ function resolveArg(info: ModuleInfo, arg: string, at: number, byRel: Map<string
   if (literal != null) return [literal];
   const member = trimmed.match(/^([A-Za-z_$][A-Za-z0-9_$]*)\.([A-Za-z_$][A-Za-z0-9_$]*)$/);
   if (member) {
-    const obj = bindingValue(info, member[1], lineOf(info.src, at), byRel, 0);
+    const obj = bindingValue(info, member[1], lineAt(info.newlines, at), byRel, 0);
     if (obj.kind === 'object') {
       const value = obj.props.get(member[2]);
       if (value != null) return [value];
@@ -479,7 +496,7 @@ function resolveArg(info: ModuleInfo, arg: string, at: number, byRel: Map<string
   if (!ident) return null;
   const loop = forOfStrings(info.src, ident[1], at);
   if (loop) return loop;
-  const bound = bindingValue(info, ident[1], lineOf(info.src, at), byRel, 0);
+  const bound = bindingValue(info, ident[1], lineAt(info.newlines, at), byRel, 0);
   if (bound.kind === 'string') return [bound.value];
   if (bound.kind === 'strings') return bound.values;
   return null;
@@ -867,7 +884,7 @@ describe('ipc surface contract', () => {
     expect(() => scanSources([{ rel: 'db.ts', text: "ipcRenderer.invoke('nope')" }])).toThrow(/must not open db\.ts/);
   });
 
-  it('counts resolved .send arguments (56), not the helper-following count (58)', () => {
+  it('counts resolved .send arguments (57), not the helper-following count (59)', () => {
     expect(surface.census).toEqual(CENSUS);
   });
 
@@ -902,7 +919,7 @@ describe('ipc surface contract', () => {
     expect(surface.names.handlers).toHaveLength(surface.census.handlerChannels);
     expect(surface.names.mainListeners).toHaveLength(surface.census.mainListenerChannels);
     expect(surface.names.pushChannels).toHaveLength(surface.census.helperSendChannels);
-    expect(surface.census.directSendChannels).toBe(56);
+    expect(surface.census.directSendChannels).toBe(57);
     expect(surface.exposed.filter((line) => line.endsWith(` ${NON_IPC}`))).toEqual(['api isPackaged NON_IPC']);
   });
 

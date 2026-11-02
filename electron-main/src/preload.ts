@@ -997,6 +997,16 @@ contextBridge.exposeInMainWorld('api', {
       key: string;
       id: string;
     }>,
+  onNotesBoardWriteRefused: (
+    cb: (info: { folderRelPath: string; code: string; message: string }) => void,
+  ) => {
+    const handler = (
+      _: Electron.IpcRendererEvent,
+      info: { folderRelPath: string; code: string; message: string },
+    ) => cb(info);
+    ipcRenderer.on('notesBoard:writeRefused', handler);
+    return () => ipcRenderer.removeListener('notesBoard:writeRefused', handler);
+  },
   notesBoardFurnitureCreate: (folderPath: string, item: Record<string, unknown>) =>
     ipcRenderer.invoke('notesBoard:furnitureCreate', { folderPath, item }) as Promise<{
       item: Record<string, unknown> & { id: string };

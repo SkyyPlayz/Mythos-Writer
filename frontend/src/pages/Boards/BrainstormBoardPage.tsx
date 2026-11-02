@@ -129,6 +129,7 @@ export default function BrainstormBoardPage({
       items={items}
       savedLayout={board.savedLayout}
       savedView={board.savedView}
+      layoutEpoch={board.layoutEpoch}
       minZoom={minZoom}
       onItemMove={board.onItemMove}
       onItemResize={board.onItemResize}

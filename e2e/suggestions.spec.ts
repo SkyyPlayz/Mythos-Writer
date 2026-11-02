@@ -243,7 +243,7 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
 
   test('TC-S-01: accept vault suggestion → vault file updated, audit row, snapshot', async () => {
     const id = `tc-s-01-${Date.now()}`;
-    const targetPath = 'suggestions/tc-s-01.md';
+    const targetPath = 'entities/characters/tc-s-01.md';
     const originalContent = 'ORIGINAL TC-S-01\n';
     const newContent = 'UPDATED BY SUGGESTION TC-S-01\n';
 
@@ -405,7 +405,7 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
 
   test('TC-S-03: apply vault suggestion then rollback → file restored', async () => {
     const id = `tc-s-03-${Date.now()}`;
-    const targetPath = 'suggestions/tc-s-03.md';
+    const targetPath = 'entities/characters/tc-s-03.md';
     const originalContent = 'ORIGINAL TC-S-03\n';
     const newContent = 'UPDATED BY TC-S-03\n';
 
@@ -629,7 +629,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
           confidence: confidenceByBucket[i % confidenceByBucket.length],
           rationale: `Bulk QA suggestion ${padded} from ${agent}`,
           target_kind: 'vault',
-          target_path: `stories/target${padded}.md`,
+          target_path: `entities/characters/target${padded}.md`,
           target_anchor: null,
           payload_json: JSON.stringify({ prose: `Proposed content for target ${padded}` }),
           status: 'proposed',
@@ -799,7 +799,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
 
   test('AC-EPIC-10: rollback via detail pane restores vault file and reopens for review', async () => {
     const id = `ac-epic-10-${Date.now()}`;
-    const targetPath = 'suggestions/ac-epic-10.md';
+    const targetPath = 'entities/characters/ac-epic-10.md';
     const originalContent = 'ORIGINAL AC-EPIC-10\n';
     const newContent = 'UPDATED AC-EPIC-10\n';
     const targetFullPath = path.join(vaultDir, targetPath);
@@ -929,7 +929,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
 
   test('AC-EPIC-9: detail pane shows populated audit trail entries (SKY-8762)', async () => {
     const id = `ac-epic-9-${Date.now()}`;
-    const targetPath = 'suggestions/ac-epic-9.md';
+    const targetPath = 'entities/characters/ac-epic-9.md';
     const targetFullPath = path.join(vaultDir, targetPath);
     fs.mkdirSync(path.dirname(targetFullPath), { recursive: true });
     fs.writeFileSync(targetFullPath, 'ORIGINAL AC-EPIC-9\n', 'utf-8');

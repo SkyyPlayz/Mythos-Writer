@@ -21,8 +21,10 @@ import {
   moveVaultFile,
   readVaultFile,
   realSafePath,
+  safeVaultJoin,
 } from './vault.js';
 import { SafeIpcError } from './ipcErrors.js';
+import { mapVaultWriteError } from './vault/writeErrors.js';
 import { SESSIONS_DIRNAME } from './mythosFormat/agentSessions.js';
 import { rewriteWikiLinksForRename } from '@mythos-writer/shared/wikiLinkRename';
 import { BOARD_SIDECAR_FILE_NAME, rewriteBoardSidecarTextForRename } from './notesBoard.js';
@@ -70,7 +72,7 @@ interface CascadeFileRef {
  * notes-vault folder, §1) — `includeBoards` is false for the story side.
  */
 function listCascadeFiles(root: string, excludeSessions: boolean, includeBoards: boolean): CascadeFileRef[] {
-  const { items } = listVaultFiles(root);
+  const { items } = listVaultFiles(root, undefined, { includeSymlinkLeaves: true });
   return items
     .filter((f) => !f.isDirectory)
     .filter((f) => !excludeSessions || !isSessionFile(f.path))
@@ -101,8 +103,11 @@ function buildPlan(
       let current: string;
       try {
         current = readVaultFile(root, file.relPath).content;
-      } catch {
-        continue; // unreadable file — leave it alone rather than abort the rename
+      } catch (err) {
+        // An outside link, a loop, or any other traversal denial refuses the
+        // whole rename. A merely unreadable file is left alone.
+        if (err instanceof Error && /Path traversal denied|\(symlink/.test(err.message)) throw err;
+        continue;
       }
       const { content: newContent, count } =
         file.kind === 'board'
@@ -114,6 +119,30 @@ function buildPlan(
     }
   }
   return plan;
+}
+
+function retargetRenamedNote(plan: VaultPlannedChange[], fromPath: string, toPath: string): VaultPlannedChange[] {
+  return plan.map((file) =>
+    file.side === 'notes' && file.relPath === fromPath ? { ...file, relPath: toPath } : file,
+  );
+}
+
+/** Every planned write is checked before the rename, so a link aborts with nothing written. */
+function preflightCascadeWrites(
+  notesRoot: string,
+  storyRoot: string,
+  plan: VaultPlannedChange[],
+): void {
+  for (const file of plan) {
+    const root = file.side === 'notes' ? notesRoot : storyRoot;
+    try {
+      safeVaultJoin(root, file.relPath, { writeMode: true });
+    } catch (err) {
+      const mapped = mapVaultWriteError(err, file.relPath);
+      if (mapped) throw new SafeIpcError(mapped.error);
+      throw err;
+    }
+  }
 }
 
 /**
@@ -159,10 +188,21 @@ export function renameNoteWithCascade(
   // folder moves and case-only renames don't break links — no cascade.
   const cascade = isFileRename && oldStem.toLowerCase() !== newStem.toLowerCase();
 
+  // Plan and refuse symlink writes BEFORE the note moves, so a refusal leaves
+  // the vault byte-for-byte as it was.
+  const plan = cascade
+    ? retargetRenamedNote(buildPlan(notesRoot, storyRoot, oldStem, newStem), fromPath, toPath)
+    : [];
+  // The destination itself is a write. A dangling link there is refused
+  // before the note moves (A12), and every planned rewrite is checked too.
+  preflightCascadeWrites(notesRoot, storyRoot, [
+    { side: 'notes', kind: 'note', relPath: toPath, newContent: '', linkCount: 0, mode: 'update-display' },
+    ...plan,
+  ]);
+
   const result = moveVaultFile(notesRoot, fromPath, toPath);
   if (!result.moved || !cascade) return result;
 
-  const plan = buildPlan(notesRoot, storyRoot, oldStem, newStem);
   applyVaultTransaction({
     notesRoot,
     storyRoot,

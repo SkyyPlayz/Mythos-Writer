@@ -181,6 +181,15 @@ describe('vault IPC adapters', () => {
     );
   });
 
+  it('saveCommentsFile rejects a fulfilled write refusal', async () => {
+    writeVault.mockResolvedValue({
+      path: 'stories/story-1/comments.json',
+      bytes: 0,
+      error: "Couldn't save comments.json: it's a shortcut (symbolic link). Save it under a new name instead.",
+    });
+    await expect(saveCommentsFile('stories/story-1', [mkComment()])).rejects.toThrow(/shortcut \(symbolic link\)/);
+  });
+
   it('saveCommentsFile no-ops without the bridge', async () => {
     delete (window as { api?: unknown }).api;
     await expect(saveCommentsFile('stories/story-1', [mkComment()])).resolves.toBeUndefined();

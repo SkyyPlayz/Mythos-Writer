@@ -70,6 +70,9 @@ const api = {
   }),
   onVaultNotesUpdated: vi.fn((_cb: (data: { count: number; path?: string }) => void) => () => {}),
   onVaultNotesAssetChanged: vi.fn(() => () => {}),
+  onNotesBoardWriteRefused: vi.fn(
+    (_cb: (info: { folderRelPath: string; code: string; message: string }) => void) => () => {},
+  ),
   // SKY-11189 §7/§8
   notesBoardTrashItems: vi.fn(async (
     _folder: string,
@@ -95,6 +98,7 @@ const api = {
 beforeEach(() => {
   vaultItems = [];
   vi.clearAllMocks();
+  api.onNotesBoardWriteRefused.mockImplementation(() => () => {});
   vi.stubGlobal('ResizeObserver', ViewportResizeObserver);
   vi.stubGlobal('window', window);
   (window as unknown as { api: typeof api }).api = api;
@@ -463,5 +467,83 @@ describe('F1#5 — Boards navigable sidebar', () => {
     });
     expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
     expect(await screen.findByTestId('boards-nav-folder-Extra')).toBeTruthy();
+  });
+
+  it('shows a refused board save for this folder', async () => {
+    let deliver: ((info: { folderRelPath: string; code: string; message: string }) => void) | null = null;
+    api.onNotesBoardWriteRefused.mockImplementation((cb) => {
+      deliver = cb;
+      return () => {
+        deliver = null;
+      };
+    });
+    await mountPanel();
+    expect(deliver).not.toBeNull();
+    const message = "Couldn't save .mythos-board.json: it's a shortcut (symbolic link). Save it under a new name instead.";
+    act(() => {
+      deliver?.({ folderRelPath: '', code: 'LEAF_LINK', message });
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('shortcut');
+  });
+
+  it('a refused drag is shown and is not left on the saved layout', async () => {
+    const savedBoard = {
+      id: null,
+      children: [{ path: 'Alice.md', kind: 'note' as const, id: 'alice' }],
+      layout: { 'n:alice': { x: 40, y: 50 } },
+      colors: {},
+      furniture: [],
+      view: { zoom: 100, panX: 0, panY: 0 },
+    };
+    api.notesBoardGet.mockResolvedValue(savedBoard);
+    let deliver: ((info: { folderRelPath: string; code: string; message: string }) => void) | null = null;
+    api.onNotesBoardWriteRefused.mockImplementation((cb) => {
+      deliver = cb;
+      return () => {
+        deliver = null;
+      };
+    });
+    vaultItems = [{ path: 'Alice.md', name: 'Alice.md', isDirectory: false }];
+    try {
+      await mountPanel();
+      await waitFor(() => {
+        const placed = screen.getByLabelText(/^Note card: Alice/) as HTMLElement;
+        expect(placed.style.left).toBe('40px');
+        expect(placed.style.top).toBe('50px');
+      });
+
+      const card = screen.getByLabelText(/^Note card: Alice/);
+      fireEvent.mouseDown(card, { button: 0, clientX: 100, clientY: 100 });
+      await act(async () => {
+        fireEvent.mouseMove(window, { clientX: 260, clientY: 220 });
+        fireEvent.mouseUp(window);
+      });
+      await waitFor(() => expect(api.notesBoardPatchLayout).toHaveBeenCalled());
+      await waitFor(() => {
+        expect(screen.getByLabelText(/^Note card: Alice/).style.left).not.toBe('40px');
+      });
+
+      const message = "Couldn't save .mythos-board.json: it's a shortcut (symbolic link). Save it under a new name instead.";
+      await act(async () => {
+        deliver?.({ folderRelPath: '', code: 'LEAF_LINK', message });
+      });
+
+      expect(screen.getByRole('alert')).toHaveTextContent('shortcut');
+      expect(screen.queryByText('Saved')).toBeNull();
+      await waitFor(() => {
+        const restored = screen.getByLabelText(/^Note card: Alice/) as HTMLElement;
+        expect(restored.style.left).toBe('40px');
+        expect(restored.style.top).toBe('50px');
+      });
+    } finally {
+      api.notesBoardGet.mockResolvedValue({
+        id: null,
+        children: [],
+        layout: {},
+        colors: {},
+        furniture: [],
+        view: { zoom: 100, panX: 0, panY: 0 },
+      });
+    }
   });
 });

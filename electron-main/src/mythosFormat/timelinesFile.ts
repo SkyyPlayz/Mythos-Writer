@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultFileAtomic } from '../vault.js';
 import type { ArcEntry, TimelineSettings } from '../ipc.js';
 
 export const TIMELINES_FILENAME = 'timelines.json';
@@ -84,5 +84,5 @@ export function readTimelinesFile(mythosRoot: string): TimelinesFile {
 }
 
 export function writeTimelinesFile(mythosRoot: string, file: TimelinesFile): void {
-  writeFileAtomic(timelinesFilePath(mythosRoot), `${JSON.stringify(file, null, 2)}\n`);
+  writeVaultFileAtomic(mythosRoot, TIMELINES_FILENAME, `${JSON.stringify(file, null, 2)}\n`);
 }

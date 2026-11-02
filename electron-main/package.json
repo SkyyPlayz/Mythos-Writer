@@ -19,8 +19,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "chokidar": "^5.0.0",
-    "docx": "^9.10.0",
-    "electron-updater": "^6.8.9",
+    "docx": "^9.14.0",
+    "electron-updater": "^6.8.11",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",
     "onnxruntime-web": "^1.30.0",

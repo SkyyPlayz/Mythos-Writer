@@ -4,7 +4,7 @@
 // cascade-delete, and the item-delete stub. Real filesystem via
 // fs.mkdtempSync (no fs mocking), matching vaultIcons.test.ts's pattern.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +17,8 @@ import {
   patchLayout,
   patchColors,
   flushPendingNotesBoardWrites,
+  setBoardWriteRefusalHandler,
+  NOTES_BOARD_DEBOUNCE_MS,
   furnitureCreate,
   furnitureUpdate,
   furnitureDelete,
@@ -67,7 +69,7 @@ describe('resolveId / resolveOrAssignId — notes', () => {
       '---\ntitle: Idea\ntags: [a, b]\n---\n# Idea\n\nSome body text.\n',
     );
     const abs = path.join(root, 'Idea.md');
-    const id = resolveOrAssignId('note', abs);
+    const id = resolveOrAssignId('note', abs, root);
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
 
     const raw = fs.readFileSync(abs, 'utf-8');
@@ -81,13 +83,13 @@ describe('resolveId / resolveOrAssignId — notes', () => {
     expect(isRecentSelfWrite(abs)).toBe(true);
 
     // Idempotent: calling again returns the SAME id, doesn't mint a new one.
-    expect(resolveOrAssignId('note', abs)).toBe(id);
+    expect(resolveOrAssignId('note', abs, root)).toBe(id);
   });
 
   it('assigns an id to a note with no frontmatter at all', () => {
     writeNote(root, 'Bare.md', 'Just prose, no frontmatter.\n');
     const abs = path.join(root, 'Bare.md');
-    const id = resolveOrAssignId('note', abs);
+    const id = resolveOrAssignId('note', abs, root);
     const { frontmatter, prose } = parseFrontmatter(fs.readFileSync(abs, 'utf-8'));
     expect(frontmatter.id).toBe(id);
     expect(prose).toBe('Just prose, no frontmatter.\n');
@@ -114,12 +116,12 @@ describe('resolveId / resolveOrAssignId — folders', () => {
   it('resolveOrAssignId mints and persists a folder id in its own sidecar', () => {
     fs.mkdirSync(path.join(root, 'Characters'));
     const abs = path.join(root, 'Characters');
-    const id = resolveOrAssignId('folder', abs);
+    const id = resolveOrAssignId('folder', abs, root);
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     const sidecar = readSidecar(abs);
     expect(sidecar.id).toBe(id);
     expect(sidecar.version).toBe(2);
-    expect(resolveOrAssignId('folder', abs)).toBe(id);
+    expect(resolveOrAssignId('folder', abs, root)).toBe(id);
   });
 
   it('assigning a folder id does not disturb existing layout/furniture already in its sidecar', () => {
@@ -139,7 +141,7 @@ describe('resolveId / resolveOrAssignId — folders', () => {
         view: { zoom: 100, panX: 0, panY: 0 },
       }),
     );
-    const id = resolveOrAssignId('folder', abs);
+    const id = resolveOrAssignId('folder', abs, root);
     const sidecar = readSidecar(abs);
     expect(sidecar.id).toBe(id);
     expect(sidecar.layout).toEqual({ 'n:existing-id': { x: 1, y: 2 } });
@@ -248,7 +250,7 @@ describe('path→id resolution survives external rename (spec test 3, id-layer h
 
   it('a folder keeps its own id across a real fs.renameSync (sidecar moves with it)', () => {
     fs.mkdirSync(path.join(root, 'Old Folder'));
-    const folderId = resolveOrAssignId('folder', path.join(root, 'Old Folder'));
+    const folderId = resolveOrAssignId('folder', path.join(root, 'Old Folder'), root);
 
     fs.renameSync(path.join(root, 'Old Folder'), path.join(root, 'New Folder'));
 
@@ -770,5 +772,84 @@ describe('rename is a Store B no-op by construction (§2, §15 test 3)', () => {
     expect(board.children).toEqual([{ path: 'Aria.md', kind: 'note', id }]);
     expect(board.layout[`n:${id}`]).toEqual({ x: 90, y: 40 });
     expect(fs.readFileSync(path.join(root, BOARD_SIDECAR_FILE_NAME), 'utf-8')).toBe(before);
+  });
+});
+
+describe('debounced board save when the sidecar is a symlink', () => {
+  let root: string;
+  let outside: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-nb-link-'));
+    outside = path.join(os.tmpdir(), `vb-nb-outside-${process.pid}-${Date.now()}.json`);
+    fs.writeFileSync(outside, '{"secret":"KEEP"}\n');
+    setBoardWriteRefusalHandler(null);
+  });
+
+  afterEach(() => {
+    setBoardWriteRefusalHandler(null);
+    vi.useRealTimers();
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(outside, { force: true });
+  });
+
+  function linkSidecar(): void {
+    writeNote(root, 'Idea.md', '# Idea\n');
+    fs.symlinkSync(outside, path.join(root, BOARD_SIDECAR_FILE_NAME));
+  }
+
+  it('reports a refusal and does not throw or write the link target', () => {
+    linkSidecar();
+    const seen: Array<{ folderRelPath: string; code: string; message: string }> = [];
+    setBoardWriteRefusalHandler((info) => {
+      seen.push(info);
+    });
+    patchLayout(root, '', 'Idea.md', { x: 4, y: 5 });
+
+    expect(() => flushPendingNotesBoardWrites(root)).not.toThrow();
+    expect(seen).toHaveLength(1);
+    expect(seen[0].folderRelPath).toBe('');
+    expect(seen[0].code).toBe('LEAF_LINK');
+    expect(seen[0].message).toContain('shortcut');
+    expect(seen[0].message).not.toContain(root);
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+    expect(fs.lstatSync(path.join(root, BOARD_SIDECAR_FILE_NAME)).isSymbolicLink()).toBe(true);
+    // Delivered, so the refused edit is not still queued as a successful save.
+    flushPendingNotesBoardWrites(root);
+    expect(seen).toHaveLength(1);
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+  });
+
+  it('keeps the edit queued when the refusal is not delivered', () => {
+    linkSidecar();
+    setBoardWriteRefusalHandler(() => false);
+    patchLayout(root, '', 'Idea.md', { x: 4, y: 5 });
+
+    expect(() => flushPendingNotesBoardWrites(root)).not.toThrow();
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+
+    const seen: Array<{ code: string; message: string }> = [];
+    setBoardWriteRefusalHandler((info) => {
+      seen.push(info);
+      return true;
+    });
+    flushPendingNotesBoardWrites(root);
+    expect(seen.map((info) => info.code)).toEqual(['LEAF_LINK']);
+    expect(seen[0].message).toContain('shortcut');
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
+  });
+
+  it('the debounce timer reports the refusal instead of throwing', () => {
+    linkSidecar();
+    const seen: Array<{ code: string }> = [];
+    setBoardWriteRefusalHandler((info) => {
+      seen.push(info);
+    });
+    vi.useFakeTimers();
+    patchLayout(root, '', 'Idea.md', { x: 1, y: 2 });
+
+    expect(() => vi.advanceTimersByTime(NOTES_BOARD_DEBOUNCE_MS)).not.toThrow();
+    expect(seen.map((info) => info.code)).toEqual(['LEAF_LINK']);
+    expect(fs.readFileSync(outside, 'utf-8')).toBe('{"secret":"KEEP"}\n');
   });
 });

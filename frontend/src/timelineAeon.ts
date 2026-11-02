@@ -32,13 +32,13 @@ export const VALID_TIMELINE_MODES: readonly TimelineMode[] = [
 ];
 
 /**
- * UI hide flag. Plotlines, Spreadsheet, Tension, Relationships, and Subway
+ * UI hide flag. Spreadsheet, Tension, Relationships, and Subway
  * stay in the type union and in their view components; they are omitted from
  * the timeline chrome while this set lists them. Empty the set to bring all
- * five back.
+ * four back.
  */
 export const HIDDEN_TIMELINE_MODES: ReadonlySet<TimelineMode> = new Set([
-  'plot', 'spreadsheet', 'tension', 'relations', 'subway',
+  'spreadsheet', 'tension', 'relations', 'subway',
 ]);
 
 /** True when `mode` is offered in the timeline chrome. */

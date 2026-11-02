@@ -143,6 +143,8 @@ describe('CONTRACT: scene_crafter_card HARD-excluded from auto-apply', () => {
     const result = applyVaultWrite(suggestion, '/tmp/non-existent-vault', NOW);
 
     // 'applied' would mean a vault write occurred — that is the prohibited state.
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
     expect(result.finalStatus).toBe('accepted');
     expect(result.snapshotPath).toBeNull();
   });

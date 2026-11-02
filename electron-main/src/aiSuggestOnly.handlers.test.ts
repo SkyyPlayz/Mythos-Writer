@@ -59,8 +59,8 @@ describe('suggest_story_change is refused (T3, T23)', () => {
     db.getSuggestion.mockClear();
   });
 
-  it('archive:confirm returns suggest_only and does not write', () => {
-    const result = handlers[IPC_CHANNELS.ARCHIVE_CONFIRM]({
+  it('archive:confirm returns suggest_only and does not write', async () => {
+    const result = await handlers[IPC_CHANNELS.ARCHIVE_CONFIRM]({
       suggestionId: 'missing-comment',
       action: 'suggest_story_change',
     });
@@ -70,8 +70,8 @@ describe('suggest_story_change is refused (T3, T23)', () => {
     expect(db.getSuggestion).not.toHaveBeenCalled();
   });
 
-  it('resolveContinuityItemById returns suggest_only before lookup', () => {
-    const result = resolveContinuityItemById('missing-flag', 'suggest_story_change', 'AI wrote this.');
+  it('resolveContinuityItemById returns suggest_only before lookup', async () => {
+    const result = await resolveContinuityItemById('missing-flag', 'suggest_story_change', 'AI wrote this.');
     expect(result).toEqual({ ok: false, reason: 'suggest_only' });
     expect(db.getContinuityIssue).not.toHaveBeenCalled();
     expect(db.upsertSuggestion).not.toHaveBeenCalled();
