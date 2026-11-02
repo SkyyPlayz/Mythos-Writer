@@ -5,10 +5,16 @@ ensureRunId();
 
 export default defineConfig({
   test: {
-    // T14 lives in shared/, which has no CI test script. Include it here so
-    // `npm run test -w electron-main` runs the flag source guard. Importing
-    // that file from src/ would pull it under tsconfig rootDir.
-    include: ['src/**/*.test.ts', 'tests/**/*.spec.ts', '../shared/aiSuggestOnly.test.ts'],
+    // shared/ has no CI test script. Include its suites here so
+    // `npm run test -w electron-main` runs them: the T14 flag source guard,
+    // and the FIND-REPLACE S1 matcher. Importing either file from src/ would
+    // pull it under tsconfig rootDir.
+    include: [
+      'src/**/*.test.ts',
+      'tests/**/*.spec.ts',
+      '../shared/aiSuggestOnly.test.ts',
+      '../shared/findReplace.test.ts',
+    ],
     globalSetup: ['./test-utils/tmp-guard.setup.mjs'],
     // Matches frontend/vite.config.ts's testTimeout — vitest's 5000ms default
     // is too tight for fast-check property tests and large fixture builds

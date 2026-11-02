@@ -142,10 +142,23 @@ const NFD_TEXT = 'Café Mara and José'.normalize('NFD');
 describe('fixtures (precondition)', () => {
   it('crlf.md uses CRLF for every line break', () => {
     const bytes = fixtureBytes('crlf.md');
+    const crlf = Buffer.from('\r\n');
+    expect(bytes.includes(crlf)).toBe(true);
     const lf = bytes.filter((b) => b === 0x0a).length;
     const cr = bytes.filter((b) => b === 0x0d).length;
     expect(lf).toBe(5);
     expect(cr).toBe(5);
+    // Every LF byte is the second byte of a CRLF pair. A lone LF (checkout
+    // normalization) or a lone CR fails here.
+    let paired = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] === 0x0a) {
+        expect(bytes[i - 1]).toBe(0x0d);
+        paired += 1;
+      }
+    }
+    expect(paired).toBe(lf);
+    expect(bytes.toString('utf8').includes('\r\n')).toBe(true);
     expect(countCrlf(bytes.toString('utf8'))).toBe(5);
   });
 

@@ -13,8 +13,9 @@
 //   frontmatterRange, wikilinkRanges           (building blocks, also used by tests)
 //
 // Offsets are UTF-16 code-unit indexes into `text` (end exclusive), the same
-// units String.prototype.slice uses. Callers strip a UTF-8 BOM before calling
-// and re-prefix it on write (SECURITY §Encoding bar); offsets are BOM-less.
+// units String.prototype.slice uses. Callers strip a leading UTF-8 BOM before
+// calling. Offsets are relative to that stripped text. This module neither
+// strips nor restores a BOM; S2 must restore it on write (SECURITY §Encoding bar).
 //
 // Semantics
 // - Engine: JS RegExp, flags `g` `m` `u` always, plus `i` when Match case is
