@@ -53,7 +53,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -70,7 +70,7 @@
 .vgv-title {
   color: var(--text-header);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -78,7 +78,7 @@
 .vgv-count {
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -90,7 +90,7 @@
   background: var(--bg-inset);
   color: var(--text-body);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   padding: 4px 8px;
   transition: width 150ms ease, border-color 150ms ease;
 }
@@ -216,13 +216,13 @@
 .vgv-graph-node--keyboard-focused .vgv-node-label {
   fill: var(--text-header);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .vgv-node-label {
   fill: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-anchor: middle;
   dominant-baseline: hanging;
   pointer-events: none;
@@ -265,7 +265,7 @@
   background: var(--bg-inset);
   color: var(--text-body);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .vgv-legend-wrap > button {
@@ -294,7 +294,7 @@
   box-shadow: var(--shadow-panel, 0 8px 24px rgb(0 0 0 / 35%));
   color: var(--text-body);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .vgv-legend-row {
@@ -335,7 +335,7 @@
   background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, .35), rgba(6, 8, 15, .55));
   text-align: center;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .vgv-state--overlay {
@@ -351,7 +351,7 @@
 
 .vgv-error-sub {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* ── Loading skeleton ─────────────────────────────────────────── */
@@ -409,7 +409,7 @@
 .vgv-loading-text {
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* ── Empty state ──────────────────────────────────────────────── */
@@ -451,7 +451,7 @@
 .vgv-empty-wikilink {
   color: var(--text-link, var(--ln-graph-node-default));
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .vgv-empty-cta {
@@ -462,7 +462,7 @@
   background: var(--bg-inset);
   color: var(--text-body);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: border-color 150ms ease, background 150ms ease;
 }
@@ -485,7 +485,7 @@
   background: var(--bg-inset);
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   flex-shrink: 0;
   /* PLAN-058 L6 (82:47): never inherit title-bar drag — avoids a draggable ghost strip. */
   -webkit-app-region: no-drag;
@@ -505,7 +505,7 @@
   background: var(--bg-surface);
   color: var(--text-body);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   cursor: pointer;
   padding: 2px 8px;
 }
@@ -520,7 +520,7 @@
 
 .vgv-truncation-dismiss {
   padding: 2px 6px;
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1;
 }
 
@@ -587,7 +587,7 @@
   padding: 0 8px;
   border-radius: 100px;
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -629,7 +629,7 @@
 }
 
 .vgv-chip-dismiss {
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1;
   opacity: 0.7;
   cursor: pointer;
@@ -650,7 +650,7 @@
 
 .vgv-depth-label {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
   min-width: 60px;
@@ -683,7 +683,7 @@
 
 .vgv-story-cluster-label {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-body);
   white-space: nowrap;
 }
@@ -736,7 +736,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
@@ -757,7 +757,7 @@
   min-width: 38px;
   text-align: center;
   font-family: var(--font-sans);
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-body);
 }
 
@@ -793,7 +793,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
@@ -856,13 +856,13 @@
 }
 
 .vgv-story-card-title {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: #ffe680; /* prototype 430 */
 }
 
 .vgv-story-card-sub {
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: 1px;
 }
@@ -879,12 +879,12 @@
 }
 
 .vgv-physics-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-body);
 }
 
 .vgv-physics-value {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--ln-graph-node-characters, #00f0ff);
 }
@@ -908,13 +908,13 @@
   border-radius: 11px;
   background: color-mix(in srgb, currentcolor 4%, transparent);
   border: 1px solid var(--border-default);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   line-height: 1.5;
 }
 
 .vgv-filters-heading {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -947,7 +947,7 @@
   background: transparent;
   color: var(--text-body);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   text-align: left;
   cursor: pointer;
 }
@@ -986,7 +986,7 @@
 }
 
 .vgv-filter-count {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   min-width: 16px;
   text-align: right;
@@ -1005,7 +1005,7 @@
 .vgv-line-label {
   flex: 1;
   min-width: 0;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--text-body);
 }
 
@@ -1052,7 +1052,7 @@
 /* M26: node-card blurb (prototype 3540: 11.5px / 1.55) */
 .vgv-inspector-blurb {
   margin-top: 8px;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--text-body);
   line-height: 1.55;
 }
@@ -1077,7 +1077,7 @@
 }
 
 .vgv-inspector-title {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-header);
   overflow-wrap: anywhere;
@@ -1086,7 +1086,7 @@
 .vgv-inspector-chip {
   display: inline-block;
   margin-top: 4px;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1096,13 +1096,13 @@
 }
 
 .vgv-inspector-path {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
 
 .vgv-inspector-section {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1111,7 +1111,7 @@
 }
 
 .vgv-inspector-empty {
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -1126,7 +1126,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   text-align: left;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
@@ -1167,7 +1167,7 @@
   background: color-mix(in srgb, currentcolor 4%, transparent);
   color: var(--text-header);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   cursor: pointer;
   flex: none;
@@ -1187,7 +1187,7 @@
   left: 10px;
   bottom: 10px;
   font-family: var(--font-sans);
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--bg-inset);
   border: 1px solid var(--border-default);

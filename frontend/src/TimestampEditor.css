@@ -22,7 +22,7 @@
 }
 
 .te-label {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-header);
   letter-spacing: 0.04em;
@@ -94,7 +94,7 @@
 .te-input-number {
   width: 56px;
   padding: 4px 6px;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-body);
   background: transparent;
   border: 1px solid var(--border-default);
@@ -129,7 +129,7 @@
 .te-select {
   width: 100%;
   padding: 6px 8px;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-body);
   background: transparent;
   border: 1px solid var(--border-default);
@@ -155,7 +155,7 @@
 
 .te-error {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--neon-magenta);
 }
 
@@ -170,7 +170,7 @@
 
 .te-btn {
   padding: 5px 14px;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   border-radius: 4px;
   border: 1px solid transparent;

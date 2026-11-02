@@ -49,7 +49,7 @@
   border: none;
   background: var(--neon-cyan, #00f0ff);
   color: #000;
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -103,7 +103,7 @@
 }
 
 .tp-chevron {
-  font-size: 9px;
+  font-size: var(--text-xs);
   color: var(--text-muted, rgba(255,255,255,0.4));
   display: inline-block;
   width: 10px;
@@ -147,7 +147,7 @@
 }
 
 .tp-tag-count {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--text-muted, rgba(255,255,255,0.35));
   background: var(--glass-bg, rgba(255,255,255,0.06));
   border-radius: 8px;
@@ -170,7 +170,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted, rgba(255,255,255,0.4));
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 1px 3px;
   border-radius: 3px;
   line-height: 1;
@@ -207,7 +207,7 @@
 }
 
 .tp-rename-error {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   color: var(--neon-magenta, #ff3dbb);
   margin-top: 2px;
 }
