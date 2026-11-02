@@ -76,6 +76,8 @@ describe('resolveEffective — truth table', () => {
     expect(resolveEffective(r.input)).toEqual(r.expected);
   });
 
+  // Readable invariants over the same table, kept so a broken row reads as a
+  // broken rule rather than a mismatched object.
   it('never falls back to Full when offline', () => {
     for (const r of TABLE.filter((t) => !t.input.online)) {
       expect(resolveEffective(r.input).effective).not.toBe('full');
@@ -170,6 +172,6 @@ describe('resolveEffective — plan mutants go red', () => {
   });
 
   // "Local allows non-loopback" cannot be expressed here: this function never
-  // sees a provider kind or URL. M1's provider gate enforces loopback-only
-  // with `isLoopbackUrl` on every kind and tests that mutant there.
+  // sees a provider kind or URL. M1's provider gate must enforce loopback-only
+  // with `isLoopbackUrl` on every kind and test that mutant there.
 });

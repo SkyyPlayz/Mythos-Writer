@@ -12,7 +12,8 @@
 //   enough on its own: it trusts ollama / lmstudio / llamacpp whatever their
 //   base URL is.
 // - When the result is Off with reason `offline-no-local` or `no-local`, M1
-//   shows the Settings line and never renders an empty Local Only option.
+//   must show the Settings line and must never render an empty Local Only
+//   option.
 
 /** The mode a user can pick, and the mode the app actually runs in. */
 export type AiMode = 'off' | 'local' | 'full';
@@ -31,7 +32,10 @@ export type AiMode = 'off' | 'local' | 'full';
 export type AiModeReason = 'offline-using-local' | 'offline-no-local' | 'no-local' | 'invalid-mode';
 
 export interface AiModeInput {
-  /** The mode the user picked. */
+  /**
+   * The mode the user picked. Validate a raw stored value with `isAiMode`
+   * first; anything else reaching here resolves to Off (`invalid-mode`).
+   */
   mode: AiMode;
   /** Whether the app is online. Only `true` counts as online. */
   online: boolean;
