@@ -172,6 +172,27 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(JSON.stringify(story)).not.toMatch(/Xml Notes Chapter/);
   });
 
+  it('a declared non-HTML type with an .xhtml href yields no chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'ncx',
+        href: 'toc.xhtml',
+        mediaType: 'application/x-dtbncx+xml',
+        body: '<h1>NCX Xhtml Chapter</h1><p>Navigation named xhtml.</p>',
+      },
+      {
+        id: 'svg',
+        href: 'cover.xhtml',
+        mediaType: 'image/svg+xml',
+        body: '<h1>SVG Xhtml Chapter</h1><p>An svg named xhtml is not a chapter.</p>',
+      },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/NCX Xhtml Chapter|SVG Xhtml Chapter/);
+  });
+
   it('an empty media-type .xhtml item is still a chapter', async () => {
     const buf = await makeEpub([
       { id: 'c1', href: 'ch1.xhtml', mediaType: '', body: '<h1>Untyped Chapter</h1><p>Still read.</p>' },
