@@ -18,7 +18,7 @@
 
 .ui-empty-state-heading {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-header);
 }
@@ -26,7 +26,7 @@
 .ui-empty-state-hint {
   margin: 0;
   max-width: 380px;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-muted);
 }
@@ -38,7 +38,7 @@
   border: 1px solid var(--accent-border);
   background: transparent;
   color: var(--accent);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   transition:
