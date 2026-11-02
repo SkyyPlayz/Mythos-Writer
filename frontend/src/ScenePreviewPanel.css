@@ -7,7 +7,7 @@
 .scene-preview-empty {
   padding: 12px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .scene-preview-panel {
@@ -18,7 +18,7 @@
 }
 
 .scene-preview-breadcrumb {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -29,12 +29,12 @@
 }
 
 .scene-preview-words {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .scene-preview-draft {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 1px 6px;
   border-radius: 10px;
   background: var(--bg-elevated);
@@ -42,7 +42,7 @@
 }
 
 .scene-preview-excerpt {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-body);
   opacity: 0.7;
   line-height: 1.5;

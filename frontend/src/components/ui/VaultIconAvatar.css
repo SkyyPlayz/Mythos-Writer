@@ -13,20 +13,20 @@
 .vault-icon-avatar--sm {
   width: 20px;
   height: 20px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   border-radius: 6px;
 }
 
 .vault-icon-avatar--md {
   width: 28px;
   height: 28px;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .vault-icon-avatar--lg {
   width: 40px;
   height: 40px;
-  font-size: 17px;
+  font-size: var(--text-lg);
   border-radius: 10px;
 }
 
