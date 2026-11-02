@@ -2,10 +2,12 @@
 /**
  * widget-shell-s1b.spec.ts
  *
- * Runs against a beta bundle (widgetShell flag ON), built once into
- * out/widget-shell-beta by the helper below. The profile seeds only vault
- * paths + onboardingComplete; the layout is never seeded — every widget change
- * is made by clicking the real lock toggle and widget menu.
+ * The flag-off case launches the stable bundle (out/main/main.js, widgetShell
+ * OFF) and checks today's shell. The move / duplicate / lock case runs against
+ * a beta bundle (widgetShell ON), built once into out/widget-shell-beta by the
+ * helper below. The profile seeds only vault paths + onboardingComplete; the
+ * layout is never seeded — every widget change is made by clicking the real
+ * lock toggle and widget menu.
  *
  * Asserts only the S1b DOM contract (data-widget-* hosts, widget menu testids,
  * role=tab with [data-widget-tab]); the only dockview selector is `.dv-tab`,
@@ -203,6 +205,58 @@ async function chooseMenuItem(page: Page, widgetId: string, item: string): Promi
   await menu.getByRole('menuitem', { name: item, exact: true }).click();
   await expect(menu).toHaveCount(0);
 }
+
+test.describe('MW-059-S1b widget shell: flag off renders today\'s shell', () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  let tempRoot: string;
+  let app: ElectronApplication | undefined;
+
+  test.beforeAll(() => {
+    if (!fs.existsSync(STABLE_MAIN_JS)) {
+      throw new Error(`stable bundle missing at ${STABLE_MAIN_JS}; run npm run build:electron first`);
+    }
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-widget-s1b-stable-'));
+    seedProfile(path.join(tempRoot, 'userData'), path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
+  });
+
+  test.afterAll(async () => {
+    await closeElectronApp(app);
+    removeTempDirs(tempRoot);
+  });
+
+  test('stable bundle shows the nav rail and story navigator with no widget frame', async () => {
+    const userData = path.join(tempRoot, 'userData');
+    // launchBeta only starts Electron; this entry is the stable bundle (widgetShell off).
+    app = await launchBeta(STABLE_MAIN_JS, userData);
+    const page = await firstWindow(app);
+
+    const nav = page.getByRole('navigation', { name: 'Main navigation' });
+    await expect(nav).toBeVisible({ timeout: 30_000 });
+    await expect(nav.locator('button[aria-label="Story Writer"]')).toBeVisible();
+    await clickStoryNav(page);
+
+    const rail = page.getByTestId('left-rail');
+    await expect(rail).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('widget-frame')).toHaveCount(0);
+    await expect(page.getByTestId('widget-layout-lock-toggle')).toHaveCount(0);
+    await expect(page.locator('[data-widget-id]')).toHaveCount(0);
+    await expect(page.locator('.dv-dockview')).toHaveCount(0);
+
+    const placed = await page.evaluate(() => {
+      const navigation = document.querySelector('nav[aria-label="Main navigation"]');
+      const leftRail = document.querySelector('[data-testid="left-rail"]');
+      return {
+        navParent: navigation?.parentElement?.className ?? '',
+        railInShellLeft: !!leftRail?.closest('.shell-left'),
+        railInWidget: !!leftRail?.closest('[data-widget-id]'),
+      };
+    });
+    expect(placed.navParent).toContain('desktop-shell__body');
+    expect(placed.railInShellLeft).toBe(true);
+    expect(placed.railInWidget).toBe(false);
+  });
+});
 
 test.describe('MW-059-S1b widget shell: move, duplicate, lock keep the editor', () => {
   test.describe.configure({ timeout: 240_000 });
