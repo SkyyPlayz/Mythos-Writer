@@ -6,7 +6,7 @@
 // real resolver fails this file.
 
 import { describe, expect, it } from 'vitest';
-import { resolveEffective } from './aiMode.js';
+import { isAiMode, resolveEffective } from './aiMode.js';
 import type { AiMode, AiModeInput, AiModeResult } from './aiMode.js';
 
 type Cell = 1 | 2 | 3 | 4 | 5 | 'local-online-local';
@@ -30,8 +30,8 @@ function row(
 const OFF: AiModeResult = { effective: 'off' };
 const FULL: AiModeResult = { effective: 'full' };
 const LOCAL: AiModeResult = { effective: 'local' };
-const LOCAL_OFFLINE: AiModeResult = { effective: 'local', reason: 'offline-local' };
-const OFF_OFFLINE_NO_LOCAL: AiModeResult = { effective: 'off', reason: 'no-local-offline' };
+const LOCAL_OFFLINE: AiModeResult = { effective: 'local', reason: 'offline-using-local' };
+const OFF_OFFLINE_NO_LOCAL: AiModeResult = { effective: 'off', reason: 'offline-no-local' };
 const OFF_NO_LOCAL: AiModeResult = { effective: 'off', reason: 'no-local' };
 
 // All 12 combinations of mode × online × localAvailable.
@@ -88,26 +88,31 @@ describe('resolveEffective — truth table', () => {
     }
   });
 
-  it('gives cells 4 and 5 a reason code so M1 can show the Settings line', () => {
-    for (const r of [...rowsFor(4), ...rowsFor(5)]) {
-      const result = resolveEffective(r.input);
-      expect(result.effective).toBe('off');
-      expect(result.reason).toMatch(/^no-local/);
-    }
+  it('gives cells 4 and 5 a no-local reason code so M1 can show the Settings line', () => {
+    for (const r of rowsFor(4)) expect(resolveEffective(r.input)).toEqual(OFF_OFFLINE_NO_LOCAL);
+    for (const r of rowsFor(5)) expect(resolveEffective(r.input)).toEqual(OFF_NO_LOCAL);
   });
 
-  it('returns no reason when the effective mode is the picked mode', () => {
+  it('sets a reason exactly when the effective mode differs from the picked mode', () => {
     for (const r of TABLE) {
       const result = resolveEffective(r.input);
-      if (result.effective === r.input.mode) expect(result.reason).toBeUndefined();
+      if (result.effective === r.input.mode) expect(result.reason, label(r)).toBeUndefined();
+      else expect(result.reason, label(r)).toBeDefined();
     }
   });
 });
 
 describe('resolveEffective — fails closed', () => {
-  it('treats an unknown mode as Off', () => {
-    const input = { mode: 'turbo', online: true, localAvailable: true } as unknown as AiModeInput;
-    expect(resolveEffective(input)).toEqual(OFF);
+  it('treats an unknown mode as Off with reason invalid-mode', () => {
+    for (const mode of ['turbo', '', 'Full', undefined, null, true]) {
+      const input = { mode, online: true, localAvailable: true } as unknown as AiModeInput;
+      expect(resolveEffective(input), String(mode)).toEqual({ effective: 'off', reason: 'invalid-mode' });
+    }
+  });
+
+  it('isAiMode accepts only the three modes', () => {
+    expect(['off', 'local', 'full'].every(isAiMode)).toBe(true);
+    for (const v of ['turbo', 'OFF', '', undefined, null, 0, {}]) expect(isAiMode(v), String(v)).toBe(false);
   });
 
   it('counts only a strict true as online or local', () => {
@@ -124,27 +129,28 @@ describe('resolveEffective — fails closed', () => {
   });
 });
 
-// Each mutant is the real resolver with one plan-named fault injected. The
-// table must disagree with the mutant on every listed cell, so a regression
-// shaped like that mutant turns this suite red.
+// Each mutant is the real resolver with one plan-named fault injected through
+// its input, matching a one-line edit to aiMode.ts. The table must disagree
+// with the mutant on every listed cell, so a regression shaped like that
+// mutant turns this suite red.
 describe('resolveEffective — plan mutants go red', () => {
   type Resolver = (input: AiModeInput) => AiModeResult;
 
   const mutants: { name: string; resolver: Resolver; redCells: Cell[] }[] = [
     {
-      // "offline ignored": the resolver behaves as if always online.
+      // "offline ignored": same as `const online = true` in the source.
       name: 'offline ignored',
       resolver: (i) => resolveEffective({ ...i, online: true }),
       redCells: [3, 4],
     },
     {
-      // Removing the Off short-circuit lets Off fall through to Full.
+      // Deleting the Off short-circuit line sends Off down the Local Only path.
       name: 'Off short-circuit removed',
-      resolver: (i) => resolveEffective(i.mode === 'off' ? { ...i, mode: 'full' } : i),
+      resolver: (i) => resolveEffective(i.mode === 'off' ? { ...i, mode: 'local' } : i),
       redCells: [1],
     },
     {
-      // "empty Local Only shown": Local Only is offered without a probe hit.
+      // "empty Local Only shown": same as `const local = true` in the source.
       name: 'Local Only without a local model',
       resolver: (i) => resolveEffective({ ...i, localAvailable: true }),
       redCells: [4, 5],
@@ -164,6 +170,6 @@ describe('resolveEffective — plan mutants go red', () => {
   });
 
   // "Local allows non-loopback" cannot be expressed here: this function never
-  // sees a provider kind or URL. M1 enforces loopback-only in the provider
-  // gate (`isLocalReserveEligible`) and tests that mutant there.
+  // sees a provider kind or URL. M1's provider gate enforces loopback-only
+  // with `isLoopbackUrl` on every kind and tests that mutant there.
 });
