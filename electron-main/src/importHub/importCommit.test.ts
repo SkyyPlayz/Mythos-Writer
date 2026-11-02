@@ -25,6 +25,7 @@ import {
   IMPORT_MAX_SCENES,
   MAX_IMPORT_TITLE_CHARS,
   MAX_SEGMENT_BYTES,
+  insideRoot,
   safeSegment,
   truncateUtf8,
   type ImportCommitDeps,
@@ -589,6 +590,34 @@ describe('commitImportPlan — legacy vault', () => {
     const scene = readManifest(manifestPath).stories[0].chapters[0].scenes[0];
     for (const seg of scene.path.split('/')) expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(255);
     expect(readSceneFile(root, scene.path).title).toBe(long);
+  });
+});
+
+describe('insideRoot', () => {
+  // Pure path math — no files are touched.
+  const root = path.resolve('import-root', 'vault');
+
+  it('accepts paths strictly inside the root', () => {
+    expect(insideRoot(root, 'Notes.md')).toBe(true);
+    expect(insideRoot(root, 'Imported/Book/Chapter 01/Scene 01.md')).toBe(true);
+    expect(insideRoot(root, 'a/../b.md')).toBe(true);
+    // A name that only starts with dots is a normal file, not a parent hop.
+    expect(insideRoot(root, '..notes/x.md')).toBe(true);
+    expect(insideRoot(root, '...')).toBe(true);
+  });
+
+  it('refuses the root itself and anything that climbs out of it', () => {
+    expect(insideRoot(root, '')).toBe(false);
+    expect(insideRoot(root, '.')).toBe(false);
+    expect(insideRoot(root, '..')).toBe(false);
+    expect(insideRoot(root, '../x.md')).toBe(false);
+    expect(insideRoot(root, 'a/../../x.md')).toBe(false);
+    expect(insideRoot(root, 'a/b/../../../vault-sibling/x.md')).toBe(false);
+  });
+
+  it('treats a leading slash as vault-relative, never as an absolute path', () => {
+    expect(insideRoot(root, '/etc/passwd')).toBe(true);
+    expect(path.resolve(root, ...'/etc/passwd'.split('/')).startsWith(path.resolve(root))).toBe(true);
   });
 });
 

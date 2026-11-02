@@ -181,11 +181,16 @@ function sourceStem(name: string): string {
   return name.replace(/\.(docx|html?|md|markdown|mdown|mkd|txt|text|rtf|epub|scrivx|scriv)$/i, '') || name;
 }
 
-/** True when `rel` resolves inside `root` (belt-and-braces over writeVaultFileAtomic). */
-function insideRoot(root: string, rel: string): boolean {
+/**
+ * True when `rel` (a POSIX vault-relative path) resolves strictly inside
+ * `root` (belt-and-braces over writeVaultFileAtomic). A segment that merely
+ * starts with dots ("..notes") is inside; "..", "../x" and the root itself
+ * are not.
+ */
+export function insideRoot(root: string, rel: string): boolean {
   const abs = path.resolve(root, ...rel.split('/'));
   const r = path.relative(path.resolve(root), abs);
-  return r !== '' && !r.startsWith('..') && !path.isAbsolute(r);
+  return r !== '' && r !== '..' && !r.startsWith(`..${path.sep}`) && !path.isAbsolute(r);
 }
 
 /**
