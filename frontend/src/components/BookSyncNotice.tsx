@@ -1,14 +1,89 @@
-/** Notices returned on the manifest save/read result when a book file was left unchanged. */
-export function bookSyncWarningsFrom(result: unknown): string[] {
-  if (!result || typeof result !== 'object') return [];
-  const record = result as { warnings?: unknown; bookSyncWarnings?: unknown };
-  const raw = record.warnings ?? record.bookSyncWarnings;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((line): line is string => typeof line === 'string' && line.length > 0);
+export type BookSyncEvent =
+  | 'book-file-cas-exhausted'
+  | 'book-file-io'
+  | 'book-file-malformed'
+  | 'book-file-profiles-fence'
+  | 'book-file-profiles-duplicate'
+  | 'book-file-sync-skipped';
+
+/** Event code and story id. No path and no profile body. */
+export interface BookSyncWarning {
+  event: BookSyncEvent;
+  storyId: string;
 }
 
-export function BookSyncNotice({ messages }: { messages: string[] }) {
-  if (messages.length === 0) return null;
+export type ManifestSaveOutcome =
+  | { ok: true; warnings: BookSyncWarning[] }
+  | { ok: false };
+
+const BOOK_SYNC_EVENTS: readonly BookSyncEvent[] = [
+  'book-file-cas-exhausted',
+  'book-file-io',
+  'book-file-malformed',
+  'book-file-profiles-fence',
+  'book-file-profiles-duplicate',
+  'book-file-sync-skipped',
+];
+
+function isBookSyncEvent(value: string): value is BookSyncEvent {
+  return (BOOK_SYNC_EVENTS as readonly string[]).includes(value);
+}
+
+/**
+ * A save result is success only when it is the typed `{ ok: true }` outcome.
+ * An `{ error }` object is a failure, even though the invoke resolved.
+ */
+export function manifestSaveOutcome(result: unknown): ManifestSaveOutcome {
+  if (!result || typeof result !== 'object') return { ok: false };
+  const record = result as { ok?: unknown; error?: unknown; warnings?: unknown; bookSyncWarnings?: unknown };
+  if (record.ok !== true || typeof record.error === 'string') return { ok: false };
+  const raw = Array.isArray(record.warnings)
+    ? record.warnings
+    : Array.isArray(record.bookSyncWarnings)
+      ? record.bookSyncWarnings
+      : [];
+  const warnings: BookSyncWarning[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const event = (item as { event?: unknown }).event;
+    const storyId = (item as { storyId?: unknown }).storyId;
+    if (typeof event !== 'string' || typeof storyId !== 'string') continue;
+    if (/[/\\]/.test(event) || /[/\\]/.test(storyId)) continue;
+    if (!isBookSyncEvent(event)) continue;
+    warnings.push({ event, storyId });
+  }
+  return { ok: true, warnings };
+}
+
+function noticeText(warning: BookSyncWarning): string {
+  const id = warning.storyId;
+  switch (warning.event) {
+    case 'book-file-cas-exhausted':
+      return `Couldn't update the book file for story ${id} just now. The change stays with the story and will be written on the next save.`;
+    case 'book-file-malformed':
+      return `Couldn't update the book file for story ${id}. The file was left unchanged.`;
+    case 'book-file-profiles-fence':
+    case 'book-file-profiles-duplicate':
+      return `Couldn't update the book file for story ${id}. Its profiles section was left unchanged.`;
+    case 'book-file-io':
+    case 'book-file-sync-skipped':
+      return `Couldn't update the book file for story ${id}. The file was left unchanged.`;
+    default: {
+      const _exhaustive: never = warning.event;
+      return _exhaustive;
+    }
+  }
+}
+
+export function BookSyncNotice({ outcome }: { outcome: ManifestSaveOutcome }) {
+  if (!outcome.ok) {
+    return (
+      <div role="status" aria-live="polite" data-testid="book-sync-warning">
+        The save did not finish.
+      </div>
+    );
+  }
+  if (outcome.warnings.length === 0) return null;
   return (
     <div
       role="status"
@@ -24,8 +99,8 @@ export function BookSyncNotice({ messages }: { messages: string[] }) {
         lineHeight: 1.4,
       }}
     >
-      {messages.map((message) => (
-        <p key={message} style={{ margin: '0 0 4px' }}>{message}</p>
+      {outcome.warnings.map((warning) => (
+        <p key={`${warning.event}:${warning.storyId}`} style={{ margin: '0 0 4px' }}>{noticeText(warning)}</p>
       ))}
     </div>
   );

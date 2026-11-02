@@ -2001,6 +2001,20 @@ export interface SmartFolderResult {
   title: string;
 }
 
+export type BookSyncEvent =
+  | 'book-file-cas-exhausted'
+  | 'book-file-io'
+  | 'book-file-malformed'
+  | 'book-file-profiles-fence'
+  | 'book-file-profiles-duplicate'
+  | 'book-file-sync-skipped';
+
+/** Renderer notice for one skipped book.md. Event code and story id only. */
+export interface BookSyncWarning {
+  event: BookSyncEvent;
+  storyId: string;
+}
+
 export interface Manifest {
   schemaVersion: number;
   version: string;
@@ -2023,9 +2037,9 @@ export interface Manifest {
   timeline?: ManifestTimelineEntry[];
   /**
    * Set on a manifest read when a story's book.md was left unchanged.
-   * Not stored in the cache. The save result carries the same text as `warnings`.
+   * Not stored in the cache. Each entry is an event code and a story id.
    */
-  bookSyncWarnings?: string[];
+  bookSyncWarnings?: BookSyncWarning[];
 }
 
 export interface StoryEntry {
@@ -2177,13 +2191,11 @@ export interface ManifestWritePayload {
 }
 
 export interface ManifestWriteResponse {
+  ok: true;
   path: string;
   bytes: number;
-  /**
-   * User-facing notices when a story's book.md was left unchanged.
-   * Absent when every book file was updated. This is not an `{ error }` result.
-   */
-  warnings?: string[];
+  /** Empty when every book file was updated. Never an `{ error }` payload. */
+  warnings: BookSyncWarning[];
 }
 
 export interface AppReadyResponse {

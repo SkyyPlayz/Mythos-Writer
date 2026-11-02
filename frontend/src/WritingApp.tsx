@@ -3,7 +3,7 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState } from './types
 import BlockEditor from './BlockEditor';
 import StoryNavigator from './StoryNavigator';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, bookSyncWarningsFrom } from './components/BookSyncNotice';
+import { BookSyncNotice, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import './WritingApp.css';
 
 function generateId(): string {
@@ -57,7 +57,7 @@ export default function WritingApp() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [bookSyncWarnings, setBookSyncWarnings] = useState<string[]>([]);
+  const [bookSave, setBookSave] = useState<ManifestSaveOutcome>({ ok: true, warnings: [] });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load manifest on mount
@@ -67,7 +67,8 @@ export default function WritingApp() {
         const m = await window.api.readManifest() as Manifest;
         setManifest(m);
         setStories(m.stories ?? []);
-        setBookSyncWarnings(m.bookSyncWarnings ?? []);
+        const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m.bookSyncWarnings ?? [] });
+        setBookSave(read.ok ? read : { ok: true, warnings: [] });
       } catch (e) {
         setError('Failed to load manifest: ' + String(e));
       } finally {
@@ -81,7 +82,7 @@ export default function WritingApp() {
       // SKY-6196: strip scene prose before it crosses the IPC boundary — the
       // in-memory `m` (and React state) keep full content untouched.
       const result = await window.api.writeManifest(stripManifestContentForIpc(m));
-      setBookSyncWarnings(bookSyncWarningsFrom(result));
+      setBookSave(manifestSaveOutcome(result));
     } catch (e) {
       console.error('Failed to persist manifest:', e);
     }
@@ -215,7 +216,7 @@ export default function WritingApp() {
 
   return (
     <div className="writing-app">
-      <BookSyncNotice messages={bookSyncWarnings} />
+      <BookSyncNotice outcome={bookSave} />
       <StoryNavigator
         stories={stories}
         selectedSceneId={selectedScene?.id ?? null}

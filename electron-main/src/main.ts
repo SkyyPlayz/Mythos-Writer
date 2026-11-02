@@ -1243,9 +1243,9 @@ const getAgentVaultRoot = (): string => {
  * truth — copying the vault folder carries all structure (the storage rule).
  */
 /** Notices from the last canonical book sync, for the save/read result. */
-let bookSyncWarningsForRenderer: string[] = [];
+let bookSyncWarningsForRenderer: import('./ipc.js').BookSyncWarning[] = [];
 
-function takeBookSyncWarnings(): string[] {
+function takeBookSyncWarnings(): import('./ipc.js').BookSyncWarning[] {
   const warnings = bookSyncWarningsForRenderer;
   bookSyncWarningsForRenderer = [];
   return warnings;
@@ -2235,10 +2235,7 @@ export const handlers: IpcHandlers = {
     // written (the structure-only, prose-stripped, compact-JSON form) — no
     // second stringify just to report a size.
     const bytes = writeManifest(getManifestPath(), payload.manifest);
-    const warnings = takeBookSyncWarnings();
-    return warnings.length > 0
-      ? { path: getManifestPath(), bytes, warnings }
-      : { path: getManifestPath(), bytes };
+    return { ok: true, path: getManifestPath(), bytes, warnings: takeBookSyncWarnings() };
   },
   [IPC_CHANNELS.VAULT_OPEN_FOLDER]: async () => {
     const result = await dialog.showOpenDialog({

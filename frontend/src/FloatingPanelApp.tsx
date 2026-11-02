@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { applyTheme } from './theme';
 import { DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, bookSyncWarningsFrom } from './components/BookSyncNotice';
+import { BookSyncNotice, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import type { Story, Manifest } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
@@ -78,10 +78,10 @@ function PartnerWritingFloat({ settings }: { settings: AppSettings | null }) {
 export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
-  const [bookSyncWarnings, setBookSyncWarnings] = useState<string[]>([]);
+  const [bookSave, setBookSave] = useState<ManifestSaveOutcome>({ ok: true, warnings: [] });
   const noteManifestWrite = useCallback(async (manifest: Manifest) => {
     const result = await window.api.writeManifest(stripManifestContentForIpc(manifest));
-    setBookSyncWarnings(bookSyncWarningsFrom(result));
+    setBookSave(manifestSaveOutcome(result));
   }, []);
   const [stories, setStories] = useState<Story[]>([]);
   // SKY-2966: track selected scene so the navigator highlights the active scene
@@ -112,7 +112,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const refreshStories = useCallback(() => {
     (window.api.readManifest() as Promise<Manifest>).then((m) => {
       setStories(m?.stories ?? []);
-      setBookSyncWarnings(m?.bookSyncWarnings ?? []);
+      const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m?.bookSyncWarnings ?? [] });
+      setBookSave(read.ok ? read : { ok: true, warnings: [] });
     }).catch(() => {});
   }, []);
 
@@ -398,7 +399,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       </div>
 
       {/* Panel content */}
-      <BookSyncNotice messages={bookSyncWarnings} />
+      <BookSyncNotice outcome={bookSave} />
       <div className="fpa-body">
         {settings !== null ? renderContent() : null}
       </div>

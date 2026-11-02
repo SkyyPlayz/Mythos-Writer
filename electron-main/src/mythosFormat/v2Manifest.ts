@@ -18,6 +18,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type {
+  BookSyncEvent,
+  BookSyncWarning,
   Manifest,
   StoryEntry,
   ChapterEntry,
@@ -905,39 +907,45 @@ function bookMarkdownForSync(story: StoryEntry, folder: string, prevRaw: string 
   return next;
 }
 
-/** User-facing notice when one story's book.md could not be updated. No vault path. */
-export function bookSyncWarningText(
-  kind: 'cas' | 'malformed' | 'profiles' | 'io',
-  title: string,
-  code?: string,
-): string {
-  const name = title.replace(/[\r\n]+/g, ' ').trim().slice(0, 120) || 'this story';
-  switch (kind) {
-    case 'cas':
-      return `Couldn't update the book file for "${name}" just now. The change stays with the story and will be written on the next save.`;
-    case 'malformed':
-      return `Couldn't update the book file for "${name}". The file isn't in a form this version can safely rewrite, so it was left unchanged.`;
-    case 'profiles':
-      return `Couldn't update the book file for "${name}". Its profiles section couldn't be read safely, so the file was left unchanged.`;
-    case 'io':
-      return `Couldn't update the book file for "${name}" (${code ?? 'read error'}). The file was left unchanged.`;
-    default: {
-      const _exhaustive: never = kind;
-      return _exhaustive;
-    }
-  }
+/** One pending book.md edit per story. A later give-up replaces the earlier one. */
+export interface PendingBookEdit {
+  storyId: string;
+  title: string;
+  updatedAt: string;
 }
 
-function recordBookSkip(
-  warnings: string[],
-  skipped: string[] | undefined,
-  event: string,
-  text: string,
-  extra?: Record<string, string>,
-): void {
-  warnings.push(text);
-  skipped?.push(text);
-  console.warn(JSON.stringify({ event, ...extra }));
+const pendingBookEdits = new Map<string, PendingBookEdit>();
+
+export function pendingBookEditFor(storyId: string): PendingBookEdit | undefined {
+  return pendingBookEdits.get(storyId);
+}
+
+export function pendingBookEditCount(): number {
+  return pendingBookEdits.size;
+}
+
+export function _clearPendingBookEditsForTests(): void {
+  pendingBookEdits.clear();
+}
+
+/** Story ids that contain a path separator are not sent to the renderer. */
+function rendererStoryId(storyId: string): string {
+  const clean = storyId.replace(/[\\/]/g, '').slice(0, 80);
+  return clean || 'story';
+}
+
+function rememberPendingEdit(story: StoryEntry): void {
+  pendingBookEdits.set(story.id, {
+    storyId: rendererStoryId(story.id),
+    title: story.title,
+    updatedAt: story.updatedAt,
+  });
+}
+
+function recordBookSkip(warnings: BookSyncWarning[], event: BookSyncEvent, storyId: string): void {
+  const warning: BookSyncWarning = { event, storyId: rendererStoryId(storyId) };
+  warnings.push(warning);
+  console.warn(JSON.stringify(warning));
 }
 
 /**
@@ -946,18 +954,17 @@ function recordBookSkip(
  * content actually changed.
  *
  * Never throws. A compare-and-swap give-up, a read error, or a rewrite
- * refusal skips that story's book.md, records a user-facing warning, and
- * continues. mythos.json is still written so the edit stays pending for the
- * next save. Symlink refusals are skipped without a profile or path in the
- * warning text returned to the renderer (the skipped list keeps the
- * relative name for the existing symlink report).
+ * refusal skips that story's book.md. The skip does not fall through to
+ * another write. Warnings are `{ event, storyId }` only. A give-up stores
+ * one pending edit per story, replaced by the latest title. mythos.json is
+ * still written. Symlink refusals stay on the skipped list and do not write.
  */
 export function syncCanonicalFromManifest(
   mythosRoot: string,
   manifest: Manifest,
   skipped?: string[],
-): string[] {
-  const warnings: string[] = [];
+): BookSyncWarning[] {
+  const warnings: BookSyncWarning[] = [];
   try {
     const mythos = tryReadMythosFile(mythosRoot);
     if (!mythos) return warnings;
@@ -982,41 +989,31 @@ export function syncCanonicalFromManifest(
       const bookRel = vaultRelPath(storyVaultRoot, path.join(storyAbs, BOOK_FILENAME));
       try {
         writeBookFileCas(storyVaultRoot, bookRel, (prevRaw) => bookMarkdownForSync(story, folder, prevRaw));
+        pendingBookEdits.delete(story.id);
       } catch (err) {
         if (isSymlinkWriteRefusal(err)) {
           skipped?.push(symlinkSkipLine(bookRel));
           continue;
         }
         if (isBookFileCasExhausted(err)) {
-          recordBookSkip(
-            warnings,
-            skipped,
-            BOOK_FILE_CAS_EXHAUSTED_EVENT,
-            bookSyncWarningText('cas', story.title),
-          );
+          rememberPendingEdit(story);
+          recordBookSkip(warnings, BOOK_FILE_CAS_EXHAUSTED_EVENT, story.id);
           continue;
         }
         if (isBookFileIoError(err)) {
-          recordBookSkip(
-            warnings,
-            skipped,
-            err.event,
-            bookSyncWarningText('io', story.title, err.code),
-            { code: err.code },
-          );
+          recordBookSkip(warnings, 'book-file-io', story.id);
           continue;
         }
         if (isBookFileRewriteRefused(err)) {
-          const kind = err.event === 'book-file-malformed' ? 'malformed' : 'profiles';
-          recordBookSkip(warnings, skipped, err.event, bookSyncWarningText(kind, story.title));
+          const event: BookSyncEvent = err.event === 'book-file-malformed'
+            ? 'book-file-malformed'
+            : err.event === 'book-file-profiles-duplicate'
+              ? 'book-file-profiles-duplicate'
+              : 'book-file-profiles-fence';
+          recordBookSkip(warnings, event, story.id);
           continue;
         }
-        recordBookSkip(
-          warnings,
-          skipped,
-          'book-file-sync-skipped',
-          bookSyncWarningText('io', story.title),
-        );
+        recordBookSkip(warnings, 'book-file-sync-skipped', story.id);
       }
     }
 
@@ -1040,7 +1037,7 @@ export function saveManifestCanonical(
   manifestPath: string,
   manifest: Manifest,
   mythosRoot: string,
-): { bytes: number; warnings: string[] } {
+): { bytes: number; warnings: BookSyncWarning[] } {
   const bytes = writeManifestRaw(manifestPath, manifest);
   const warnings = syncCanonicalFromManifest(mythosRoot, manifest);
   return { bytes, warnings };

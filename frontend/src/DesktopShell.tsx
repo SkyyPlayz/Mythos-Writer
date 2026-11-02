@@ -26,7 +26,7 @@ import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitche
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
 import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, bookSyncWarningsFrom } from './components/BookSyncNotice';
+import { BookSyncNotice, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import {
   parseSceneNotes,
   serializeSceneNotes,
@@ -657,7 +657,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return next;
   }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [bookSyncWarnings, setBookSyncWarnings] = useState<string[]>([]);
+  const [bookSave, setBookSave] = useState<ManifestSaveOutcome>({ ok: true, warnings: [] });
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
   // is kept separate from WindowChrome's own local `projects` state (same
@@ -1402,7 +1402,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (superseded()) return;
       setManifest(m);
       setStories(m.stories ?? []);
-      setBookSyncWarnings(m.bookSyncWarnings ?? []);
+      const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m.bookSyncWarnings ?? [] });
+      setBookSave(read.ok ? read : { ok: true, warnings: [] });
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
@@ -2036,7 +2037,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // SKY-6196: strip scene prose before it crosses the IPC boundary — the
       // in-memory `m` (and React state) keep full content untouched.
       const saved = await window.api.writeManifest(stripManifestContentForIpc(m));
-      setBookSyncWarnings(bookSyncWarningsFrom(saved));
+      setBookSave(manifestSaveOutcome(saved));
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);
@@ -2662,7 +2663,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const unsub = window.api.onNavigatorManifestChanged(() => {
       (window.api.readManifest() as Promise<Manifest>).then((m) => {
         setStories(m?.stories ?? []);
-        setBookSyncWarnings(m?.bookSyncWarnings ?? []);
+        const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m?.bookSyncWarnings ?? [] });
+        setBookSave(read.ok ? read : { ok: true, warnings: [] });
       }).catch(() => {});
     });
     return () => unsub?.();
@@ -6682,7 +6684,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
           §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
-      <BookSyncNotice messages={bookSyncWarnings} />
+      <BookSyncNotice outcome={bookSave} />
       {/* PLAN-058 L2 (06:55): the title bar is full window width. The nav
           rail starts in the row below and must not cover the top bar.
           Document tabs stay in the main column under that bar. */}

@@ -246,7 +246,7 @@ export function writeVaultFileAtomic(
 }
 
 /** Event code logged when a book.md compare-and-swap gives up. No path, no profile body. */
-export const BOOK_FILE_CAS_EXHAUSTED_EVENT = 'book-file-cas-exhausted';
+export const BOOK_FILE_CAS_EXHAUSTED_EVENT = 'book-file-cas-exhausted' as const;
 
 const BOOK_FILE_CAS_ATTEMPTS = 3;
 
