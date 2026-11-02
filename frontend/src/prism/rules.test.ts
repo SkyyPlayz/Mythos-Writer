@@ -372,6 +372,14 @@ describe('dialogue-tags', () => {
     expect(hits('dialogue-tags', '“Wait.” She hissed at the cat.')).toEqual([]);
   });
 
+  it('treats a capitalised word after a trailing ellipsis as an action beat, like after ! or ?', () => {
+    expect(hits('dialogue-tags', '“Wait...” She laughed.')).toEqual([]);
+    expect(hits('dialogue-tags', '“Wait…” She smiled.')).toEqual([]);
+    expect(hits('dialogue-tags', '“Wait...” Then he laughed.')).toEqual([]);
+    // A name directly followed by the speech verb is still a tag.
+    expect(hits('dialogue-tags', '“Wait...” Elena hissed.')).toEqual(['hissed']);
+  });
+
   it('leaves plain tags, acceptable tags and action beats alone', () => {
     expect(
       hits('dialogue-tags', '“Fine,” she said. “Why?” he asked. “Down,” she whispered.')

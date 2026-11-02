@@ -949,10 +949,11 @@ function checkDialogueTags(a: Analysis): PrismFinding[] {
         for (let t = firstTokenFrom(a.tokens, lo, hi, e); t < hi && count < TAG_WINDOW_WORDS; t++) {
           const tok = a.tokens[t];
           if (tok.to > nextStart || hasTerminatorOrQuote(text, cursor, tok.from)) break;
-          if (count === 0 && (last === '!' || last === '?') && isUpperLetter(tok.text[0])) {
-            // `“Run!” She laughed.` and `“Go!” Then he laughed.` open a new
-            // sentence (an action beat). Only a name directly followed by the
-            // speech verb (`“Go!” Elena hissed.`) is a tag.
+          const mayEndSentence = last === '!' || last === '?' || last === '…' || dotted;
+          if (count === 0 && mayEndSentence && isUpperLetter(tok.text[0])) {
+            // `“Run!” She laughed.`, `“Wait...” She smiled.` and `“Go!” Then he
+            // laughed.` open a new sentence (an action beat). Only a name
+            // directly followed by the speech verb (`“Go!” Elena hissed.`) is a tag.
             if (SUBJECT_PRONOUNS.has(tok.lower)) break;
             const verb = nextInPara(a, tok);
             if (verb && verb.to <= nextStart && onlySpaceBetween(text, tok.to, verb.from)) {
