@@ -905,24 +905,62 @@ function bookMarkdownForSync(story: StoryEntry, folder: string, prevRaw: string 
   return next;
 }
 
+/** User-facing notice when one story's book.md could not be updated. No vault path. */
+export function bookSyncWarningText(
+  kind: 'cas' | 'malformed' | 'profiles' | 'io',
+  title: string,
+  code?: string,
+): string {
+  const name = title.replace(/[\r\n]+/g, ' ').trim().slice(0, 120) || 'this story';
+  switch (kind) {
+    case 'cas':
+      return `Couldn't update the book file for "${name}" just now. The change stays with the story and will be written on the next save.`;
+    case 'malformed':
+      return `Couldn't update the book file for "${name}". The file isn't in a form this version can safely rewrite, so it was left unchanged.`;
+    case 'profiles':
+      return `Couldn't update the book file for "${name}". Its profiles section couldn't be read safely, so the file was left unchanged.`;
+    case 'io':
+      return `Couldn't update the book file for "${name}" (${code ?? 'read error'}). The file was left unchanged.`;
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function recordBookSkip(
+  warnings: string[],
+  skipped: string[] | undefined,
+  event: string,
+  text: string,
+  extra?: Record<string, string>,
+): void {
+  warnings.push(text);
+  skipped?.push(text);
+  console.warn(JSON.stringify({ event, ...extra }));
+}
+
 /**
  * Decompose a manifest write into the canonical v2 files. Cheap by design:
  * mythos.json and each book.md are only rewritten when their serialized
  * content actually changed.
  *
- * A book.md compare-and-swap give-up, a read error, or a rewrite refusal
- * propagates to the caller. The story list is not updated in that case, so
- * the edit does not look saved. Symlink refusals are still skipped. Other
- * sync problems stay inside this function.
+ * Never throws. A compare-and-swap give-up, a read error, or a rewrite
+ * refusal skips that story's book.md, records a user-facing warning, and
+ * continues. mythos.json is still written so the edit stays pending for the
+ * next save. Symlink refusals are skipped without a profile or path in the
+ * warning text returned to the renderer (the skipped list keeps the
+ * relative name for the existing symlink report).
  */
 export function syncCanonicalFromManifest(
   mythosRoot: string,
   manifest: Manifest,
   skipped?: string[],
-): void {
+): string[] {
+  const warnings: string[] = [];
   try {
     const mythos = tryReadMythosFile(mythosRoot);
-    if (!mythos) return;
+    if (!mythos) return warnings;
     const storyVaultRoot = ensureActiveStoryVaultPath(mythosRoot);
     const prevRefs = new Map(mythos.stories.map((s) => [s.id, s]));
     const nextRefs: MythosStoryRef[] = [];
@@ -939,10 +977,6 @@ export function syncCanonicalFromManifest(
         updatedAt: story.updatedAt,
       });
 
-      // book.md — only for stories whose folder exists on disk.
-      // Compare-and-swap so a concurrent profile edit is not overwritten by a
-      // stale snapshot. Giving up, a read error, or a rewrite refusal throws
-      // before mythos.json is updated.
       const storyAbs = path.join(storyVaultRoot, folder);
       if (!fs.existsSync(storyAbs)) continue;
       const bookRel = vaultRelPath(storyVaultRoot, path.join(storyAbs, BOOK_FILENAME));
@@ -954,13 +988,35 @@ export function syncCanonicalFromManifest(
           continue;
         }
         if (isBookFileCasExhausted(err)) {
-          console.warn(JSON.stringify({ event: BOOK_FILE_CAS_EXHAUSTED_EVENT }));
-        } else if (isBookFileIoError(err)) {
-          console.warn(JSON.stringify({ event: err.event, code: err.code }));
-        } else if (isBookFileRewriteRefused(err)) {
-          console.warn(JSON.stringify({ event: err.event }));
+          recordBookSkip(
+            warnings,
+            skipped,
+            BOOK_FILE_CAS_EXHAUSTED_EVENT,
+            bookSyncWarningText('cas', story.title),
+          );
+          continue;
         }
-        throw err;
+        if (isBookFileIoError(err)) {
+          recordBookSkip(
+            warnings,
+            skipped,
+            err.event,
+            bookSyncWarningText('io', story.title, err.code),
+            { code: err.code },
+          );
+          continue;
+        }
+        if (isBookFileRewriteRefused(err)) {
+          const kind = err.event === 'book-file-malformed' ? 'malformed' : 'profiles';
+          recordBookSkip(warnings, skipped, err.event, bookSyncWarningText(kind, story.title));
+          continue;
+        }
+        recordBookSkip(
+          warnings,
+          skipped,
+          'book-file-sync-skipped',
+          bookSyncWarningText('io', story.title),
+        );
       }
     }
 
@@ -969,12 +1025,25 @@ export function syncCanonicalFromManifest(
     if (storiesChanged) {
       writeMythosFile(mythosRoot, { ...mythos, stories: nextRefs });
     }
-  } catch (err) {
-    if (isBookFileCasExhausted(err) || isBookFileIoError(err) || isBookFileRewriteRefused(err)) {
-      throw err;
-    }
-    /* unrelated canonical-sync problems stay off the save path */
+  } catch {
+    /* canonical sync never throws; a story that failed is already skipped */
   }
+  return warnings;
+}
+
+/**
+ * The save sequence every manifest write uses: cache first, then canonical
+ * book sync. The returned warnings are the user-facing notices for stories
+ * whose book.md was left unchanged. This never throws for those cases.
+ */
+export function saveManifestCanonical(
+  manifestPath: string,
+  manifest: Manifest,
+  mythosRoot: string,
+): { bytes: number; warnings: string[] } {
+  const bytes = writeManifestRaw(manifestPath, manifest);
+  const warnings = syncCanonicalFromManifest(mythosRoot, manifest);
+  return { bytes, warnings };
 }
 
 // ─── Creation-path helpers (chapter:create / scene:create version gate) ─────

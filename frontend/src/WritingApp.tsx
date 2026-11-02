@@ -3,6 +3,7 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState } from './types
 import BlockEditor from './BlockEditor';
 import StoryNavigator from './StoryNavigator';
 import { stripManifestContentForIpc } from './manifestIpc';
+import { BookSyncNotice, bookSyncWarningsFrom } from './components/BookSyncNotice';
 import './WritingApp.css';
 
 function generateId(): string {
@@ -56,6 +57,7 @@ export default function WritingApp() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bookSyncWarnings, setBookSyncWarnings] = useState<string[]>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load manifest on mount
@@ -65,6 +67,7 @@ export default function WritingApp() {
         const m = await window.api.readManifest() as Manifest;
         setManifest(m);
         setStories(m.stories ?? []);
+        setBookSyncWarnings(m.bookSyncWarnings ?? []);
       } catch (e) {
         setError('Failed to load manifest: ' + String(e));
       } finally {
@@ -77,7 +80,8 @@ export default function WritingApp() {
     try {
       // SKY-6196: strip scene prose before it crosses the IPC boundary — the
       // in-memory `m` (and React state) keep full content untouched.
-      await window.api.writeManifest(stripManifestContentForIpc(m));
+      const result = await window.api.writeManifest(stripManifestContentForIpc(m));
+      setBookSyncWarnings(bookSyncWarningsFrom(result));
     } catch (e) {
       console.error('Failed to persist manifest:', e);
     }
@@ -211,6 +215,7 @@ export default function WritingApp() {
 
   return (
     <div className="writing-app">
+      <BookSyncNotice messages={bookSyncWarnings} />
       <StoryNavigator
         stories={stories}
         selectedSceneId={selectedScene?.id ?? null}

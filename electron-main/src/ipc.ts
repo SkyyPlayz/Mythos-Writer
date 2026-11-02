@@ -2021,6 +2021,11 @@ export interface Manifest {
   relationships?: EntityRelationship[];
   /** SKY-2463: Per-scene timeline inference results. Absent on pre-timeline vaults. */
   timeline?: ManifestTimelineEntry[];
+  /**
+   * Set on a manifest read when a story's book.md was left unchanged.
+   * Not stored in the cache. The save result carries the same text as `warnings`.
+   */
+  bookSyncWarnings?: string[];
 }
 
 export interface StoryEntry {
@@ -2174,6 +2179,11 @@ export interface ManifestWritePayload {
 export interface ManifestWriteResponse {
   path: string;
   bytes: number;
+  /**
+   * User-facing notices when a story's book.md was left unchanged.
+   * Absent when every book file was updated. This is not an `{ error }` result.
+   */
+  warnings?: string[];
 }
 
 export interface AppReadyResponse {

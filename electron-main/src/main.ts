@@ -516,7 +516,7 @@ import {
 } from './mythosFormat/brainstormBoardToNotes.js';
 import {
   scanMythosStoryVault,
-  syncCanonicalFromManifest,
+  saveManifestCanonical,
   rebuildCacheIfDuplicated,
   nextV2ChapterRelPath,
   nextV2SceneRelPath,
@@ -1242,13 +1242,25 @@ const getAgentVaultRoot = (): string => {
  * per-story book.md spines) are re-synced so the FILES stay the source of
  * truth — copying the vault folder carries all structure (the storage rule).
  */
+/** Notices from the last canonical book sync, for the save/read result. */
+let bookSyncWarningsForRenderer: string[] = [];
+
+function takeBookSyncWarnings(): string[] {
+  const warnings = bookSyncWarningsForRenderer;
+  bookSyncWarningsForRenderer = [];
+  return warnings;
+}
+
 function writeManifest(manifestPath: string, manifest: import('./ipc.js').Manifest): number {
-  const bytes = writeManifestRaw(manifestPath, manifest);
+  if (manifest.bookSyncWarnings) delete manifest.bookSyncWarnings;
   const mythosRoot = mythosRootForStoryVault(getVaultRoot());
   if (mythosRoot !== null && manifestPath === getManifestPath()) {
-    syncCanonicalFromManifest(mythosRoot, manifest);
+    const saved = saveManifestCanonical(manifestPath, manifest, mythosRoot);
+    bookSyncWarningsForRenderer = saved.warnings;
+    return saved.bytes;
   }
-  return bytes;
+  bookSyncWarningsForRenderer = [];
+  return writeManifestRaw(manifestPath, manifest);
 }
 
 // W0.1: settings-backed half of the seed-once marker (see vaultSeeding.ts).
@@ -2210,7 +2222,8 @@ export const handlers: IpcHandlers = {
       schemaVersion: SCHEMA_VERSION,
       entries: cacheEntries,
     });
-    return synced;
+    const warnings = takeBookSyncWarnings();
+    return warnings.length > 0 ? { ...synced, bookSyncWarnings: warnings } : synced;
   },
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload): ManifestWriteResponse => {
     ensureVaultDir();
@@ -2222,7 +2235,10 @@ export const handlers: IpcHandlers = {
     // written (the structure-only, prose-stripped, compact-JSON form) — no
     // second stringify just to report a size.
     const bytes = writeManifest(getManifestPath(), payload.manifest);
-    return { path: getManifestPath(), bytes };
+    const warnings = takeBookSyncWarnings();
+    return warnings.length > 0
+      ? { path: getManifestPath(), bytes, warnings }
+      : { path: getManifestPath(), bytes };
   },
   [IPC_CHANNELS.VAULT_OPEN_FOLDER]: async () => {
     const result = await dialog.showOpenDialog({

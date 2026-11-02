@@ -24,20 +24,18 @@ import {
 } from './v2IdDedupe.js';
 import {
   writeManifest,
+  reindexVault,
   _setBookFileCasBeforeCompareForTests,
-  BookFileCasExhaustedError,
-  BookFileIoError,
 } from '../vault.js';
 import {
   parseBookFile,
   serializeBookFile,
   stringifyFenceJson,
-  BookFileRewriteRefusedError,
   type BookFile,
 } from './bookFile.js';
 import { MAX_BOOK_PROFILES, type BookProfile } from '../bookBuilder.js';
 import { parseV2SceneFile, isSceneFileName } from './sceneFiles.js';
-import { syncCanonicalFromManifest } from './v2Manifest.js';
+import { syncCanonicalFromManifest, saveManifestCanonical, bookSyncWarningText } from './v2Manifest.js';
 import { resolveNotesTierFromManifest } from '../notesTierContext.js';
 
 let tmp: string;
@@ -1185,8 +1183,51 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
   });
 
+  function saveThroughWriteManifest(
+    mythosRoot: string,
+    storyVaultPath: string,
+    manifest: ReturnType<typeof scanMythosStoryVault>,
+  ) {
+    return saveManifestCanonical(resolveManifestPath(storyVaultPath), manifest, mythosRoot);
+  }
+
+  function addSibling(mythosRoot: string, storyVaultPath: string): string {
+    const folder = 'Sibling';
+    const abs = path.join(storyVaultPath, folder);
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+    fs.writeFileSync(
+      path.join(abs, 'book.md'),
+      serializeBookFile({
+        id: 'sibling-story',
+        title: 'Sibling Old',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        spine: [{ dir: 'Part 1', chapters: [{ dir: 'Chapter 01', id: 'ch-sib', title: 'Sib' }] }],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+      '---\nid: sc-sib\ntitle: S\nstatus: draft\n---\ntext\n',
+    );
+    const mythos = readMythosFile(mythosRoot);
+    writeMythosFile(mythosRoot, {
+      ...mythos,
+      stories: [
+        ...mythos.stories,
+        {
+          id: 'sibling-story',
+          title: 'Sibling Old',
+          folder,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    return path.join(abs, 'book.md');
+  }
+
   it('refuses an over-cap profiles fence and leaves the file untouched', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('OverCap');
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('OverCap');
     const manifest = scanMythosStoryVault(mythosRoot);
     const story = manifest.stories.find((s) => s.id === 'profiled-story');
     expect(story).toBeTruthy();
@@ -1202,10 +1243,12 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     fs.writeFileSync(bookPath, blocked);
     story.title = 'New Title';
     story.updatedAt = '2026-06-01T00:00:00.000Z';
-    expect(() => syncCanonicalFromManifest(mythosRoot, manifest)).toThrow(BookFileRewriteRefusedError);
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([bookSyncWarningText('profiles', 'New Title')]);
+    expect(saved.warnings.join('\n')).not.toContain(bookPath);
+    expect(saved.bytes).toBeGreaterThan(0);
     expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
-    expect(story.title).toBe('New Title');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
   });
 
   it('does not invent profiles when book.md is missing', () => {
@@ -1223,8 +1266,8 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     expect(parsed.id).toBe('profiled-story');
   });
 
-  it('a compare-and-swap give-up throws and does not record the title or spine edit', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('Exhaust');
+  it('a compare-and-swap give-up keeps the edit pending and the next save writes it', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Exhaust');
     const original = fs.readFileSync(bookPath, 'utf8');
     const manifest = scanMythosStoryVault(mythosRoot);
     const story = manifest.stories.find((s) => s.id === 'profiled-story');
@@ -1242,17 +1285,10 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
       fs.writeFileSync(bookPath, `${original}\n<!-- racer ${races} -->\n`);
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    let caught: unknown;
+    let saved: { bytes: number; warnings: string[] } | undefined;
     let warnPayloads: unknown[] = [];
     try {
-      expect(() => {
-        try {
-          syncCanonicalFromManifest(mythosRoot, manifest);
-        } catch (err) {
-          caught = err;
-          throw err;
-        }
-      }).toThrow(BookFileCasExhaustedError);
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
       warnPayloads = warn.mock.calls.map((call) => call[0]).filter((line) => {
         return typeof line === 'string' && line.includes('book-file-cas-exhausted');
       });
@@ -1261,14 +1297,10 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
       _setBookFileCasBeforeCompareForTests(null);
     }
     expect(races).toBe(3);
+    expect(saved?.warnings).toEqual([bookSyncWarningText('cas', 'New Title')]);
+    expect(saved?.warnings.join('\n')).not.toContain(bookPath);
     expect(warnPayloads).toEqual([JSON.stringify({ event: 'book-file-cas-exhausted' })]);
-    const payload = JSON.parse(warnPayloads[0] as string) as Record<string, unknown>;
-    expect(Object.keys(payload)).toEqual(['event']);
-    expect(JSON.stringify(payload)).not.toContain(bookPath);
-    expect(JSON.stringify(payload)).not.toContain('Trade paperback');
-    expect(JSON.stringify(payload)).not.toContain('Ash Cycle');
-    expect((caught as Error).message).toBe('book-file-cas-exhausted');
-    expect((caught as Error).message).not.toContain(bookPath);
+    expect(JSON.stringify(warnPayloads[0])).not.toContain(bookPath);
 
     const keptRaw = fs.readFileSync(bookPath, 'utf8');
     expect(keptRaw).not.toContain('New Title');
@@ -1277,14 +1309,22 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     expect(kept.title).toBe('Old Title');
     expect(kept.spine[0].chapters[0].title).toBe('One');
     expect(kept.profiles).toEqual([profile]);
-    expect(kept.extraFrontmatter).toEqual({ series: 'Ash Cycle' });
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
     expect(story.title).toBe('New Title');
     expect(chapter?.title).toBe('Renamed Chapter');
+
+    const retried = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(retried.warnings).toEqual([]);
+    const healed = parseBookFile(fs.readFileSync(bookPath, 'utf8'));
+    expect(healed.title).toBe('New Title');
+    expect(healed.spine[0].chapters[0].title).toBe('Renamed Chapter');
+    expect(healed.profiles).toEqual([profile]);
+    expect(healed.extraFrontmatter).toEqual({ series: 'Ash Cycle' });
+    expect(fs.readFileSync(bookPath, 'utf8')).not.toContain('racer');
   });
 
   it('aborts on EACCES and leaves book.md untouched', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('Eacces');
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Eacces');
     const manifest = scanMythosStoryVault(mythosRoot);
     const before = fs.readFileSync(bookPath, 'utf8');
     const live = manifest.stories.find((s) => s.id === 'profiled-story');
@@ -1301,29 +1341,21 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
       }
       return orig.call(fs, p, ...(args as [BufferEncoding?]));
     }) as typeof fs.readFileSync);
-    let caught: unknown;
+    let saved: { bytes: number; warnings: string[] } | undefined;
     try {
-      expect(() => {
-        try {
-          syncCanonicalFromManifest(mythosRoot, manifest);
-        } catch (err) {
-          caught = err;
-          throw err;
-        }
-      }).toThrow(BookFileIoError);
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
     } finally {
       spy.mockRestore();
     }
-    expect((caught as BookFileIoError).code).toBe('EACCES');
-    expect((caught as Error).message).toBe('book-file-io');
-    expect((caught as Error).message).not.toContain(bookPath);
+    expect(saved?.warnings).toEqual([bookSyncWarningText('io', 'New Title', 'EACCES')]);
+    expect(saved?.warnings.join('\n')).not.toContain(bookPath);
     expect(fs.readFileSync(bookPath, 'utf8')).toBe(before);
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
     expect(live.title).toBe('New Title');
   });
 
   it('aborts on EISDIR and does not replace the path with an empty book', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('Eisdir');
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Eisdir');
     const manifest = scanMythosStoryVault(mythosRoot);
     const story = manifest.stories.find((s) => s.id === 'profiled-story');
     expect(story).toBeTruthy();
@@ -1333,24 +1365,16 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     fs.rmSync(bookPath);
     fs.mkdirSync(bookPath);
     fs.writeFileSync(path.join(bookPath, 'keep.txt'), 'keep');
-    let caught: unknown;
-    expect(() => {
-      try {
-        syncCanonicalFromManifest(mythosRoot, manifest);
-      } catch (err) {
-        caught = err;
-        throw err;
-      }
-    }).toThrow(BookFileIoError);
-    expect((caught as BookFileIoError).code).toBe('EISDIR');
-    expect((caught as Error).message).not.toContain(bookPath);
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([bookSyncWarningText('io', 'New Title', 'EISDIR')]);
+    expect(saved.warnings.join('\n')).not.toContain(bookPath);
     expect(fs.statSync(bookPath).isDirectory()).toBe(true);
     expect(fs.readFileSync(path.join(bookPath, 'keep.txt'), 'utf8')).toBe('keep');
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
   });
 
   it('aborts on malformed spine content and leaves the bytes untouched', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('Malformed');
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Malformed');
     const manifest = scanMythosStoryVault(mythosRoot);
     const story = manifest.stories.find((s) => s.id === 'profiled-story');
     expect(story).toBeTruthy();
@@ -1370,26 +1394,30 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
       '',
     ].join('\n');
     fs.writeFileSync(bookPath, blocked);
-    story.title = 'New Title';
-    story.updatedAt = '2026-06-01T00:00:00.000Z';
-    let caught: unknown;
-    expect(() => {
-      try {
-        syncCanonicalFromManifest(mythosRoot, manifest);
-      } catch (err) {
-        caught = err;
-        throw err;
-      }
-    }).toThrow(BookFileRewriteRefusedError);
-    expect((caught as BookFileRewriteRefusedError).event).toBe('book-file-malformed');
-    expect((caught as Error).message).not.toContain('not json');
-    expect((caught as Error).message).not.toContain(bookPath);
+    const siblingBook = addSibling(mythosRoot, storyVaultPath);
+    const withSibling = scanMythosStoryVault(mythosRoot);
+    const bad = withSibling.stories.find((s) => s.id === 'profiled-story');
+    const sibling = withSibling.stories.find((s) => s.id === 'sibling-story');
+    expect(bad && sibling).toBeTruthy();
+    if (!bad || !sibling) return;
+    fs.writeFileSync(bookPath, blocked);
+    bad.title = 'New Title';
+    bad.updatedAt = '2026-06-01T00:00:00.000Z';
+    sibling.title = 'Sibling New';
+    sibling.updatedAt = '2026-06-01T00:00:00.000Z';
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, withSibling);
+    expect(saved.warnings).toEqual([bookSyncWarningText('malformed', 'New Title')]);
+    expect(saved.warnings.join('\n')).not.toContain(bookPath);
+    expect(saved.warnings.join('\n')).not.toContain('not json');
     expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
+    expect(parseBookFile(fs.readFileSync(siblingBook, 'utf8')).title).toBe('Sibling New');
+    const mythos = readMythosFile(mythosRoot);
+    expect(mythos.stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+    expect(mythos.stories.find((s) => s.id === 'sibling-story')?.title).toBe('Sibling New');
   });
 
   it('aborts on an unrecognized profiles fence and leaves the bytes untouched', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('Unrecognized');
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Unrecognized');
     const manifest = scanMythosStoryVault(mythosRoot);
     const story = manifest.stories.find((s) => s.id === 'profiled-story');
     expect(story).toBeTruthy();
@@ -1403,22 +1431,15 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     fs.writeFileSync(bookPath, blocked);
     story.title = 'New Title';
     story.updatedAt = '2026-06-01T00:00:00.000Z';
-    let caught: unknown;
-    expect(() => {
-      try {
-        syncCanonicalFromManifest(mythosRoot, manifest);
-      } catch (err) {
-        caught = err;
-        throw err;
-      }
-    }).toThrow(BookFileRewriteRefusedError);
-    expect((caught as BookFileRewriteRefusedError).event).toBe('book-file-profiles-fence');
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([bookSyncWarningText('profiles', 'New Title')]);
+    expect(saved.warnings.join('\n')).not.toContain(bookPath);
     expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
   });
 
   it('aborts on a duplicate profiles fence and leaves the bytes untouched', () => {
-    const { mythosRoot, bookPath } = storyWithProfiles('Duplicate');
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Duplicate');
     const manifest = scanMythosStoryVault(mythosRoot);
     const story = manifest.stories.find((s) => s.id === 'profiled-story');
     expect(story).toBeTruthy();
@@ -1430,18 +1451,40 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     fs.writeFileSync(bookPath, blocked);
     story.title = 'New Title';
     story.updatedAt = '2026-06-01T00:00:00.000Z';
-    let caught: unknown;
-    expect(() => {
-      try {
-        syncCanonicalFromManifest(mythosRoot, manifest);
-      } catch (err) {
-        caught = err;
-        throw err;
-      }
-    }).toThrow(BookFileRewriteRefusedError);
-    expect((caught as BookFileRewriteRefusedError).event).toBe('book-file-profiles-duplicate');
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([bookSyncWarningText('profiles', 'New Title')]);
     expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
     expect(blocked).toContain('Second');
-    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Old Title');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  it('a vault-open reindex leaves a malformed book.md untouched and still warns', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Reindex');
+    const blocked = [
+      '---',
+      'id: profiled-story',
+      'title: Old Title',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# Old Title',
+      '',
+      '<!-- mythos:spine',
+      'not json',
+      '-->',
+      '',
+    ].join('\n');
+    fs.writeFileSync(bookPath, blocked);
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    fs.writeFileSync(bookPath, blocked);
+    story.title = 'New Title';
+    const reindexed = reindexVault(storyVaultPath, manifest, null);
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, reindexed.manifest);
+    expect(saved.warnings).toEqual([bookSyncWarningText('malformed', 'New Title')]);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
   });
 });

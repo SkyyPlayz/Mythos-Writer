@@ -236,6 +236,8 @@ export interface Manifest {
   chapters: Chapter[];
   layout?: LayoutPrefs;
   lastOpenedSceneId?: string;
+  /** Present on a manifest read when a book file was left unchanged. */
+  bookSyncWarnings?: string[];
 }
 
 // ─── Timeline v0 types (SKY-2438 / SKY-2463) ────────────────────────────────
