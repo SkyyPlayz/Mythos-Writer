@@ -5,6 +5,9 @@ import { RightSidebarSlotTarget, useRightSidebarSlotOccupied } from './RightSide
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
 
+/** Framed (widget host) sizing: fill the host; the frame sash sets the width. */
+const FRAMED_STYLE = { width: '100%', height: '100%', minWidth: 0, maxWidth: 'none', boxSizing: 'border-box' } as const;
+
 // Kept for DesktopShell backward-compat import
 export const DEFAULT_PANELS: never[] = [];
 export type PanelConfig = RightSidebarPanel;
@@ -32,6 +35,12 @@ interface Props {
   onDockAsTab?: unknown;
   /** Legacy — rendered above content if passed (backward compat during M6 transition). */
   headerContent?: ReactNode;
+  /**
+   * 0.5.9 widget frame (beta flag): the sidebar fills its widget host. The frame owns the width
+   * (sash), so there is no own resize handle; hidden keeps the collapsed strip so "Show right
+   * sidebar" stays reachable by click and keyboard. Absent → today's behaviour, unchanged.
+   */
+  framed?: boolean;
 }
 
 export default function GlobalRightSidebar({
@@ -42,6 +51,7 @@ export default function GlobalRightSidebar({
   neonOverlay,
   children,
   headerContent,
+  framed = false,
 }: Props) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
@@ -77,6 +87,7 @@ export default function GlobalRightSidebar({
         data-testid="grs-edge"
         role="complementary"
         aria-label="Right sidebar (hidden)"
+        style={framed ? FRAMED_STYLE : undefined}
       >
         <button
           className="grs-show-btn"
@@ -95,16 +106,18 @@ export default function GlobalRightSidebar({
       className="grs-sidebar"
       data-testid="global-right-sidebar"
       aria-label="Right sidebar"
-      style={{ width }}
+      style={framed ? FRAMED_STYLE : { width }}
     >
       {neonOverlay}
-      <div
-        className="grs-resize-handle"
-        onMouseDown={handleResizeMouseDown}
-        role="separator"
-        aria-label="Resize right sidebar"
-        aria-orientation="vertical"
-      />
+      {!framed && (
+        <div
+          className="grs-resize-handle"
+          onMouseDown={handleResizeMouseDown}
+          role="separator"
+          aria-label="Resize right sidebar"
+          aria-orientation="vertical"
+        />
+      )}
       <div className="grs-topbar">
         <button
           className="grs-hide-btn"

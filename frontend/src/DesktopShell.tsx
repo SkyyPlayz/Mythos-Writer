@@ -143,6 +143,10 @@ import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
 import { RightSidebarSlotProvider } from './RightSidebarSlot';
 import { PanelDragProvider } from './PanelDragContext';
+import { createPortal } from 'react-dom';
+import { FrameSync, useWidgetFrame, WIDGET_FRAME_ENABLED, type FrameWidgetSize } from './frame/dockAdapter';
+import { CENTER_PANEL_ID, instancesOf, widgetDef, widgetTitle, type DockEdge, type WidgetInstance } from './frame/widgetRegistry';
+import { WidgetMenuButton } from './components/ui/PanelChrome';
 import type { DragSidebar } from './PanelDragContext';
 import SplitEditorPane from './SplitEditorPane';
 import StorySubViewBar from './StorySubViewBar';
@@ -224,6 +228,67 @@ const DIVIDER_WIDTH = 4;
 const GRS_COLLAPSED_STRIP_WIDTH = 36;
 /** PLAN-058 L5: left rail collapsed to a sideways edge strip (px). */
 const LEFT_SIDEBAR_EDGE_WIDTH = 14;
+
+// ─── 0.5.9 widget frame (beta flag, see frame/dockAdapter WIDGET_FRAME_ENABLED); flag off never reaches this code ───
+/** Nav rail widths (AppNavRail.css .nav-rail / .nav-rail--collapsed) used as the rail widget's size. */
+const FRAME_NAV_RAIL_WIDTH = 76;
+const FRAME_NAV_RAIL_SLIM_WIDTH = 54;
+
+/** What a sash grab remembers so release can hand focus back to the editor (POC learning). */
+interface SashEditorToken { editor: Editor; doc: Editor['state']['doc']; from: number; to: number }
+
+function captureEditorForSash(): SashEditorToken | null {
+  const editor = getActiveEditor();
+  if (!editor || editor.isDestroyed || !editor.view.hasFocus()) return null;
+  const { from, to } = editor.state.selection;
+  return { editor, doc: editor.state.doc, from, to };
+}
+
+/** Refocus only if the editor lost focus; restore the selection only if nothing was typed meanwhile. */
+function restoreEditorAfterSash(token: unknown): void {
+  const t = token as SashEditorToken | null;
+  if (!t || t.editor.isDestroyed) return;
+  if (!t.editor.view.hasFocus()) t.editor.view.focus();
+  const { from, to } = t.editor.state.selection;
+  if (t.editor.state.doc === t.doc && (from !== t.from || to !== t.to)) {
+    t.editor.commands.setTextSelection({ from: t.from, to: t.to });
+  }
+}
+
+interface FrameSizeInputs {
+  navRailCollapsed: boolean;
+  leftWidth: number;
+  leftEdgeCollapsed: boolean;
+  grsExpanded: boolean;
+  grsWidth: number;
+}
+
+/** Widget size along the axis perpendicular to its edge, matching today's shell when docked left/right. */
+function frameWidgetSize(inst: WidgetInstance, input: FrameSizeInputs): FrameWidgetSize {
+  const def = widgetDef(inst.kind);
+  const sideways = inst.edge === 'left' || inst.edge === 'right';
+  if (!sideways) {
+    // Top/bottom: a strip, not a column. The rail keeps its bar height; sidebars start shorter than their width.
+    const size = inst.kind === 'navRail' ? def.defaultSize : inst.kind === 'leftSidebar' ? 200 : 240;
+    return { size, minSize: Math.min(def.minSize, size) };
+  }
+  switch (inst.kind) {
+    case 'navRail': {
+      const size = input.navRailCollapsed ? FRAME_NAV_RAIL_SLIM_WIDTH : FRAME_NAV_RAIL_WIDTH;
+      return { size, minSize: Math.min(def.minSize, size) };
+    }
+    case 'leftSidebar':
+      return input.leftEdgeCollapsed
+        ? { size: LEFT_SIDEBAR_EDGE_WIDTH, minSize: LEFT_SIDEBAR_EDGE_WIDTH }
+        : { size: input.leftWidth, minSize: PANEL_MIN_WIDTH };
+    case 'rightSidebar':
+      return input.grsExpanded
+        ? { size: Math.max(200, Math.min(600, input.grsWidth)), minSize: def.minSize }
+        : { size: GRS_COLLAPSED_STRIP_WIDTH, minSize: GRS_COLLAPSED_STRIP_WIDTH };
+    default:
+      return { size: def.defaultSize, minSize: def.minSize };
+  }
+}
 
 /**
  * Compute display widths for left and right panels so the center column
@@ -893,6 +958,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ManuscriptView's unified toolbar (the ONE toolbar — R9) can drive real
   // formatting commands instead of BlockEditor's own (now-removed) toolbar.
   const [sceneLiveEditor, setSceneLiveEditor] = useState<Editor | null>(null);
+  // 0.5.9 widget frame (beta flag): in-memory layout state + dockview adapter. Flag off → inert.
+  const widgetFrameOn = WIDGET_FRAME_ENABLED;
+  const frameSizesRef = useRef<FrameSizeInputs | null>(null);
+  const frameSizeFor = useCallback((inst: WidgetInstance) => (
+    frameSizesRef.current ? frameWidgetSize(inst, frameSizesRef.current) : undefined
+  ), []);
+  const widgetFrame = useWidgetFrame(widgetFrameOn, {
+    sizeFor: frameSizeFor,
+    onSashGrab: captureEditorForSash,
+    onSashRelease: restoreEditorAfterSash,
+  });
+  // POC learning: the editor needs an accessible name once it shares the frame with widgets.
+  useEffect(() => {
+    if (!widgetFrameOn || !sceneLiveEditor || sceneLiveEditor.isDestroyed) return;
+    sceneLiveEditor.view.dom.setAttribute('aria-label', 'Writing editor');
+  }, [widgetFrameOn, sceneLiveEditor]);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
   // SKY-192: entity registry for the auto-linker
   const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
@@ -6636,6 +6717,140 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
   const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Partner' : 'Story'} vault: ${activeVaultBadge}`;
   const navRailConfig = appSettings?.navConfig;
+  const grsExpanded = (grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar) && !(tabShell.activeTab === 'notes' && !notesBrainstormCollapsed);
+  const renderNavRail = (frameProps?: { orientation: 'vertical' | 'horizontal'; layoutLock?: { locked: boolean; onToggle: () => void }; navLabel?: string; popoverToward?: 'left' }) => (
+    <AppNavRail
+      activeSection={activeNavModule}
+      onSectionChange={handleNavModuleChange}
+      onOpenSettings={() => setSettingsOpen(true)}
+      settingsActive={settingsOpen}
+      navItems={navItems}
+      collapsed={navRailCollapsed}
+      onToggleCollapsed={() => persistNavRailCollapsed(!navRailCollapsed)}
+      showLabels={navRailConfig?.showLabels ?? true}
+      showIcons={navRailConfig?.showIcons ?? true}
+      neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
+      stories={navRailStories}
+      onStorySelect={handleRailStorySelect}
+      onNewStory={() => { void createStory(); }}
+      editableItems={railEditItems}
+      onEditableItemsChange={persistNavRailConfigItems}
+      vaults={navRailVaults}
+      onVaultSelect={handleVaultTileSelect}
+      onNewVault={() => { void createMythosVault(); }}
+      onVaultRename={(id) => { void handleVaultRename(id); }}
+      onVaultIconPickImage={handleVaultIconPickImage}
+      onVaultIconSet={handleVaultIconSet}
+      onVaultReveal={handleVaultReveal}
+      onVaultOpenSettings={handleVaultOpenSettings}
+      {...frameProps}
+    />
+  );
+  const renderLeftRail = () => (
+    <LeftRail
+      stories={stories}
+      selectedStory={selectedStory}
+      selectedScene={selectedScene}
+      selectedSceneId={selectedScene?.id ?? null}
+      onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+      onSelectStory={handleSelectStoryFromNavigator}
+      onCreateStory={createStory}
+      onCreateChapter={createChapter}
+      onCreateScene={createScene}
+      onReorderScenes={handleReorderScenes}
+      showTemplateCta={
+        (appSettings?.onboardingStartMode === 'start-fresh' || appSettings?.onboardingStartMode === 'blank') &&
+        !(gettingStartedProgress?.completedItems.includes('write-scene'))
+      }
+      onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+      onPromoteSceneNote={handlePromoteSceneNote}
+      onCycleSceneStatus={handleManuscriptCycleStatus}
+      onRenameChapter={handleContextRenameChapter}
+      onRenameScene={handleContextRenameScene}
+      onDeleteChapter={deleteChapter}
+      onDeleteScene={deleteScene}
+      onRenamePart={(partId) => { void handleRenamePart(partId); }}
+      onCreateChapterInPart={createChapterInPart}
+      sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
+      onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
+      sceneNoteSummaries={sceneNotesBySceneId}
+    />
+  );
+
+  // ─── 0.5.9 widget frame (beta flag); every value below is unused when the flag is off ───
+  const frameState = widgetFrame.state;
+  const frameHosts = widgetFrame.hosts;
+  frameSizesRef.current = {
+    navRailCollapsed,
+    leftWidth: clampedLeftWidth,
+    leftEdgeCollapsed: leftSidebarEdgeCollapsed,
+    grsExpanded: grsExpanded === true,
+    grsWidth,
+  };
+  /** Flag on: portal into the fixed center host. Flag off: the node renders in place, as before. */
+  const frameCenter = (node: ReactNode) => (widgetFrameOn ? createPortal(node, frameHosts.hostFor(CENTER_PANEL_ID)) : node);
+  const frameRight = (node: ReactNode) => (widgetFrameOn ? createPortal(node, frameHosts.hostFor('rightSidebar'), 'rightSidebar') : node);
+  const frameLeftSidebars = () => instancesOf(frameState, 'leftSidebar').map((inst) => createPortal(
+    <div
+      className={`shell-left${leftSidebarEdgeCollapsed ? ' shell-left--edge' : ''}`}
+      style={leftSidebarEdgeCollapsed ? { ['--shell-left-peek-width' as string]: `${clampedLeftWidth}px` } : undefined}
+    >
+      <div className="shell-left__peek">
+        <BorderOverlay settings={appSettings?.liquidNeonV2} slot={1} delay={0} />
+        {renderLeftRail()}
+      </div>
+    </div>,
+    frameHosts.hostFor(inst.id),
+    inst.id,
+  ));
+  const frameToggleLock = () => widgetFrame.dispatch({ type: frameState.locked ? 'unlock' : 'lock' });
+  const frameNavOrientation = (edge: DockEdge) => (edge === 'top' || edge === 'bottom' ? 'horizontal' : 'vertical');
+  const framePortals = widgetFrameOn ? (
+    <>
+      <FrameSync
+        adapter={widgetFrame.adapter}
+        state={frameState}
+        visible={{
+          navRail: showTitleBar,
+          leftSidebar: showLeftSidebar && tabShell.activeTab === 'story' && activeDockedTabId === null && view === 'editor',
+          rightSidebar: grsVisible !== undefined,
+        }}
+        sizeKeys={{
+          navRail: navRailCollapsed ? 'slim' : 'wide',
+          leftSidebar: leftSidebarEdgeCollapsed ? 'edge' : 'open',
+          rightSidebar: grsExpanded ? 'open' : 'strip',
+        }}
+        sizeFor={frameSizeFor}
+      />
+      {showTitleBar && instancesOf(frameState, 'navRail').map((inst) => createPortal(
+        renderNavRail({
+          orientation: frameNavOrientation(inst.edge),
+          layoutLock: inst.copy === 0 ? { locked: frameState.locked, onToggle: frameToggleLock } : undefined,
+          navLabel: inst.copy === 0 ? undefined : `Main navigation (copy ${inst.copy})`,
+          popoverToward: inst.edge === 'right' ? 'left' : undefined,
+        }),
+        frameHosts.hostFor(inst.id),
+        inst.id,
+      ))}
+      {!frameState.locked && frameState.instances.map((inst) => createPortal(
+        <WidgetMenuButton
+          widgetId={inst.id}
+          title={widgetTitle(inst)}
+          edge={inst.edge}
+          duplicable={widgetDef(inst.kind).duplicable}
+          isCopy={inst.copy > 0}
+          onAction={(action) => {
+            if (action.type === 'move') widgetFrame.dispatch({ type: 'move', id: inst.id, edge: action.edge });
+            else if (action.type === 'duplicate') widgetFrame.dispatch({ type: 'duplicate', id: inst.id });
+            else if (action.type === 'close') widgetFrame.dispatch({ type: 'close', id: inst.id });
+            else widgetFrame.dispatch({ type: 'lock' });
+          }}
+        />,
+        frameHosts.headerHostFor(inst.id),
+        `menu-${inst.id}`,
+      ))}
+    </>
+  ) : null;
 
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
@@ -6670,34 +6885,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         />
       )}
       <div className="desktop-shell__body">
-        {showTitleBar && (
-          <AppNavRail
-            activeSection={activeNavModule}
-            onSectionChange={handleNavModuleChange}
-            onOpenSettings={() => setSettingsOpen(true)}
-            settingsActive={settingsOpen}
-            navItems={navItems}
-            collapsed={navRailCollapsed}
-            onToggleCollapsed={() => persistNavRailCollapsed(!navRailCollapsed)}
-            showLabels={navRailConfig?.showLabels ?? true}
-            showIcons={navRailConfig?.showIcons ?? true}
-            neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
-            stories={navRailStories}
-            onStorySelect={handleRailStorySelect}
-            onNewStory={() => { void createStory(); }}
-            editableItems={railEditItems}
-            onEditableItemsChange={persistNavRailConfigItems}
-            vaults={navRailVaults}
-            onVaultSelect={handleVaultTileSelect}
-            onNewVault={() => { void createMythosVault(); }}
-            onVaultRename={(id) => { void handleVaultRename(id); }}
-            onVaultIconPickImage={handleVaultIconPickImage}
-            onVaultIconSet={handleVaultIconSet}
-            onVaultReveal={handleVaultReveal}
-            onVaultOpenSettings={handleVaultOpenSettings}
+        {widgetFrameOn && (
+          <div
+            ref={widgetFrame.containerRef}
+            className="mythos-widget-frame"
+            data-testid="widget-frame"
+            data-locked={widgetFrame.state.locked ? 'true' : 'false'}
           />
         )}
-        <div className="desktop-shell__main-col">
+        {showTitleBar && !widgetFrameOn && renderNavRail()}
+        {widgetFrameOn && framePortals}
+        {frameCenter(<div className="desktop-shell__main-col">
         {/* A2 — Story document tabs move into writing chrome (.shell-center-column).
             Scene Crafter board strips (SKY-11069) and any static pseudo-tabs stay
             under the title bar. Notes strip stays in NotesTabPanel (SKY-10929). */}
@@ -6990,7 +7188,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
       <div className="shell-panels__row">
       {/* Left rail */}
-      {showLeftSidebar && (
+      {showLeftSidebar && !widgetFrameOn && (
         <div
           className={`shell-left${leftSidebarEdgeCollapsed ? ' shell-left--edge' : ''}`}
           style={{
@@ -7001,40 +7199,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <div className="shell-left__peek">
           {/* Beta 3 M3: slot-A breathing border (prototype brL, delay 0) */}
           <BorderOverlay settings={appSettings?.liquidNeonV2} slot={1} delay={0} />
-          <LeftRail
-            stories={stories}
-            selectedStory={selectedStory}
-            selectedScene={selectedScene}
-            selectedSceneId={selectedScene?.id ?? null}
-            onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
-            onSelectStory={handleSelectStoryFromNavigator}
-            onCreateStory={createStory}
-            onCreateChapter={createChapter}
-            onCreateScene={createScene}
-            onReorderScenes={handleReorderScenes}
-            showTemplateCta={
-              (appSettings?.onboardingStartMode === 'start-fresh' || appSettings?.onboardingStartMode === 'blank') &&
-              !(gettingStartedProgress?.completedItems.includes('write-scene'))
-            }
-            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
-            onPromoteSceneNote={handlePromoteSceneNote}
-            onCycleSceneStatus={handleManuscriptCycleStatus}
-            onRenameChapter={handleContextRenameChapter}
-            onRenameScene={handleContextRenameScene}
-            onDeleteChapter={deleteChapter}
-            onDeleteScene={deleteScene}
-            onRenamePart={(partId) => { void handleRenamePart(partId); }}
-            onCreateChapterInPart={createChapterInPart}
-            sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
-            onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
-            sceneNoteSummaries={sceneNotesBySceneId}
-          />
+          {renderLeftRail()}
           </div>
         </div>
       )}
 
+      {/* 0.5.9 widget frame: the Story navigator renders in each leftSidebar widget host instead. */}
+      {showLeftSidebar && widgetFrameOn && frameLeftSidebars()}
+
       {/* Left resize handle */}
-      {showLeftSidebar && !leftSidebarEdgeCollapsed && (
+      {showLeftSidebar && !widgetFrameOn && !leftSidebarEdgeCollapsed && (
         <div
           role="separator"
           aria-label="Resize left panel"
@@ -7717,9 +7891,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
            Forced into its collapsed-edge state (not unmounted) while NotesTabPanel's own embedded
            Brainstorm sidebar is expanded, so the two right-hand panels never both show full-width at
            once — avoids the double-sidebar duplication that a naive always-visible mount would cause. */}
-      {grsVisible !== undefined && <GlobalRightSidebar
-        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar) && !(tabShell.activeTab === 'notes' && !notesBrainstormCollapsed)}
+      {grsVisible !== undefined && frameRight(<GlobalRightSidebar
+        visible={grsExpanded}
         width={grsWidth}
+        framed={widgetFrameOn}
         onVisibilityChange={handleGrsVisibilityChange}
         onWidthChange={handleGrsWidthChange}
         neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={3} delay={1.6} />}
@@ -7806,7 +7981,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             />
           }
         />
-      </GlobalRightSidebar>}
+      </GlobalRightSidebar>)}
 
       {continuityPeekOverlayOpen && (
         <div
@@ -7921,9 +8096,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {accountModalOpen && (
         <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
       )}
-        </div>{/* end desktop-shell__main-col */}
+        </div>)}{/* end desktop-shell__main-col */}
         {/* GH #643 split panes v1: right-hand workspace pane */}
-        {workspaceSplitKind && (
+        {workspaceSplitKind && frameCenter(
           <WorkspaceSplitPane kind={workspaceSplitKind} onClose={closeSplitPane}>
             {workspaceSplitKind === 'kanban' ? (
               selectedStory ? (
@@ -7964,7 +8139,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         )}
         {/* Beta 4 M4 (§4): DOWN (lower 45%) / RIGHT (right 44%) split drop
             zones — mounted only while a workspace tab drag is in flight. */}
-        {tabDragPayload && (
+        {tabDragPayload && frameCenter(
           <WorkspaceSplitDropZones
             dragLabel={tabDragPayload.title}
             onDropZone={handleSplitZoneDrop}
