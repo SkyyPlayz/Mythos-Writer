@@ -12,8 +12,9 @@
 //
 // Book profiles live in a second fence, `<!-- mythos:book-profiles … -->`,
 // after the spine. Unknown YAML keys round-trip through `extraFrontmatter`.
-// A fence that fails the cap or the profile schema is kept verbatim
-// (`profilesFenceRaw`) so a later save cannot drop it.
+// A rewrite refuses a malformed book, or an unrecognized or duplicate
+// profiles fence, and leaves the file untouched. `profilesFenceRaw` is only
+// for a caller that already chose to echo a payload.
 //
 // Pure Node.
 
@@ -123,6 +124,84 @@ function extraFrontmatterFrom(frontmatter: Record<string, unknown>): Record<stri
     count += 1;
   }
   return count > 0 ? extra : undefined;
+}
+
+export type BookFileRewriteEvent =
+  | 'book-file-malformed'
+  | 'book-file-profiles-fence'
+  | 'book-file-profiles-duplicate';
+
+export class BookFileRewriteRefusedError extends Error {
+  readonly event: BookFileRewriteEvent;
+  constructor(event: BookFileRewriteEvent) {
+    super(event);
+    this.name = 'BookFileRewriteRefusedError';
+    this.event = event;
+  }
+}
+
+export function isBookFileRewriteRefused(err: unknown): err is BookFileRewriteRefusedError {
+  return err instanceof BookFileRewriteRefusedError;
+}
+
+interface FenceHit {
+  payload: string;
+  closed: boolean;
+}
+
+function collectFences(body: string, open: string): FenceHit[] {
+  const hits: FenceHit[] = [];
+  let from = 0;
+  while (from < body.length) {
+    const start = body.indexOf(open, from);
+    if (start === -1) break;
+    const after = start + open.length;
+    const end = body.indexOf(FENCE_CLOSE, after);
+    if (end === -1) {
+      hits.push({ payload: body.slice(after).trim(), closed: false });
+      break;
+    }
+    hits.push({ payload: body.slice(after, end).trim(), closed: true });
+    from = end + FENCE_CLOSE.length;
+  }
+  return hits;
+}
+
+function spinePayloadRewritable(payload: string): boolean {
+  try {
+    return Array.isArray(JSON.parse(payload));
+  } catch {
+    return false;
+  }
+}
+
+function profilesPayloadRewritable(payload: string): boolean {
+  if (Buffer.byteLength(payload, 'utf8') > MAX_BOOK_PROFILES_FENCE_BYTES) return false;
+  try {
+    return validateBookProfiles(JSON.parse(payload)).ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Refuse a rewrite that would drop or replace bytes we cannot carry.
+ * A missing file is not passed here — only a verified ENOENT may create.
+ */
+export function assertBookFileRewritable(raw: string): void {
+  const { prose } = parseFrontmatter(raw);
+  const spines = collectFences(prose, SPINE_FENCE_OPEN);
+  if (spines.length > 1 || spines.some((hit) => !hit.closed || !spinePayloadRewritable(hit.payload))) {
+    throw new BookFileRewriteRefusedError('book-file-malformed');
+  }
+  const profiles = collectFences(prose, PROFILES_FENCE_OPEN);
+  if (profiles.length > 1) throw new BookFileRewriteRefusedError('book-file-profiles-duplicate');
+  if (profiles.length === 1) {
+    const hit = profiles[0];
+    if (!hit.closed || !profilesPayloadRewritable(hit.payload)) {
+      throw new BookFileRewriteRefusedError('book-file-profiles-fence');
+    }
+  }
 }
 
 function profilesFromFence(prose: string): { profiles?: BookProfile[]; profilesFenceRaw?: string } {

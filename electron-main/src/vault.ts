@@ -269,14 +269,44 @@ export function _setBookFileCasBeforeCompareForTests(hook: (() => void) | null):
   bookFileCasBeforeCompareForTests = hook ?? undefined;
 }
 
+/** Read failed for a reason other than a verified missing leaf. Message is the event code only. */
+export class BookFileIoError extends Error {
+  readonly event = 'book-file-io' as const;
+  readonly code: string;
+  constructor(code: string) {
+    super('book-file-io');
+    this.name = 'BookFileIoError';
+    this.code = code;
+  }
+}
+
+export function isBookFileIoError(err: unknown): err is BookFileIoError {
+  return err instanceof BookFileIoError;
+}
+
+function bookFileIoError(err: unknown): BookFileIoError {
+  const code = (err as NodeJS.ErrnoException).code;
+  return new BookFileIoError(typeof code === 'string' && code ? code : 'EIO');
+}
+
+/**
+ * `null` only when lstat says the leaf is absent (ENOENT). A read error after
+ * the leaf exists, including a later ENOENT, does not become a create.
+ * The returned error never carries the vault path.
+ */
 function readVaultTextOrNull(vaultRoot: string, filePath: string): string | null {
   const abs = safeVaultJoin(vaultRoot, filePath, { writeMode: true });
   try {
-    return fs.readFileSync(abs, 'utf-8');
+    fs.lstatSync(abs);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return null;
-    throw err;
+    throw bookFileIoError(err);
+  }
+  try {
+    return fs.readFileSync(abs, 'utf-8');
+  } catch (err) {
+    throw bookFileIoError(err);
   }
 }
 

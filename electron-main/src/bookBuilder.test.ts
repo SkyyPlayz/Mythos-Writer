@@ -24,6 +24,7 @@ import {
   _setBookFileCasBeforeCompareForTests,
   writeBookFileCas,
   BookFileCasExhaustedError,
+  BookFileIoError,
 } from './vault.js';
 
 const CREATED = '2026-01-01T00:00:00.000Z';
@@ -282,18 +283,67 @@ describe('writeBookFileCas', () => {
   it('is synchronous: not a thenable, and it reads with readFileSync only', () => {
     const { root } = vault();
     expect(writeBookFileCas.constructor.name).toBe('Function');
+    const lstatSpy = vi.spyOn(fs, 'lstatSync');
     const readSpy = vi.spyOn(fs, 'readFileSync');
     const promiseRead = vi.spyOn(fs.promises, 'readFile');
     const promiseWrite = vi.spyOn(fs.promises, 'writeFile');
     const ret = writeBookFileCas(root, 'book.md', () => bookMarkdown('Sync'));
+    writeBookFileCas(root, 'book.md', (prev) => prev ?? bookMarkdown('Sync'));
     expect(ret).toBeUndefined();
     expect((ret as { then?: unknown } | undefined)?.then).toBeUndefined();
+    expect(lstatSpy).toHaveBeenCalled();
     expect(readSpy).toHaveBeenCalled();
     expect(promiseRead).not.toHaveBeenCalled();
     expect(promiseWrite).not.toHaveBeenCalled();
+    lstatSpy.mockRestore();
     readSpy.mockRestore();
     promiseRead.mockRestore();
     promiseWrite.mockRestore();
+  });
+
+  it('does not create a book when a present file then fails to read with ENOENT', () => {
+    const { root, abs } = vault();
+    fs.writeFileSync(abs, 'KEEP');
+    const orig = fs.readFileSync;
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation(((p: fs.PathOrFileDescriptor, ...args: unknown[]) => {
+      if (p === abs) {
+        const err = new Error('ENOENT') as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return orig.call(fs, p, ...(args as [BufferEncoding?]));
+    }) as typeof fs.readFileSync);
+    let caught: unknown;
+    try {
+      expect(() => {
+        try {
+          writeBookFileCas(root, 'book.md', () => 'NEW');
+        } catch (err) {
+          caught = err;
+          throw err;
+        }
+      }).toThrow(BookFileIoError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((caught as BookFileIoError).code).toBe('ENOENT');
+    expect((caught as Error).message).toBe('book-file-io');
+    expect((caught as Error).message).not.toContain(abs);
+    expect(orig.call(fs, abs, 'utf8')).toBe('KEEP');
+  });
+
+  it('refuses a parent directory symlink that escapes the vault', () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'book-cas-parent-'));
+    dirs.push(parent);
+    const outside = path.join(parent, 'outside');
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'book.md'), 'secret');
+    const root = path.join(parent, 'vault');
+    fs.mkdirSync(root);
+    fs.symlinkSync(outside, path.join(root, 'Story'));
+    expect(() => writeBookFileCas(root, 'Story/book.md', () => 'pwned')).toThrow(/symlink|Path traversal denied/);
+    expect(fs.readFileSync(path.join(outside, 'book.md'), 'utf8')).toBe('secret');
+    expect(fs.readdirSync(outside)).toEqual(['book.md']);
   });
 
   it('refuses a symlink book.md and leaves the link target unchanged', () => {

@@ -33,6 +33,8 @@ import {
 import { ensureActiveStoryVaultPath } from './storyVaultRegistry.js';
 import {
   BOOK_FILENAME,
+  assertBookFileRewritable,
+  isBookFileRewriteRefused,
   parseBookFile,
   serializeBookFile,
   type BookFile,
@@ -54,6 +56,7 @@ import {
 import {
   BOOK_FILE_CAS_EXHAUSTED_EVENT,
   isBookFileCasExhausted,
+  isBookFileIoError,
   vaultRelPath,
   writeBookFileCas,
   writeManifest as writeManifestRaw,
@@ -876,11 +879,8 @@ function spineFromManifest(story: StoryEntry, folder: string, previous: BookFile
 function bookMarkdownForSync(story: StoryEntry, folder: string, prevRaw: string | null): string {
   let previous: BookFile | null = null;
   if (prevRaw !== null) {
-    try {
-      previous = parseBookFile(prevRaw, story.title);
-    } catch {
-      previous = null;
-    }
+    assertBookFileRewritable(prevRaw);
+    previous = parseBookFile(prevRaw, story.title);
   }
   const book: BookFile = {
     id: story.id,
@@ -908,8 +908,12 @@ function bookMarkdownForSync(story: StoryEntry, folder: string, prevRaw: string 
 /**
  * Decompose a manifest write into the canonical v2 files. Cheap by design:
  * mythos.json and each book.md are only rewritten when their serialized
- * content actually changed. Never throws — canonical sync must not break the
- * save path (the cache write already succeeded; the next sync self-heals).
+ * content actually changed.
+ *
+ * A book.md compare-and-swap give-up, a read error, or a rewrite refusal
+ * propagates to the caller. The story list is not updated in that case, so
+ * the edit does not look saved. Symlink refusals are still skipped. Other
+ * sync problems stay inside this function.
  */
 export function syncCanonicalFromManifest(
   mythosRoot: string,
@@ -937,9 +941,8 @@ export function syncCanonicalFromManifest(
 
       // book.md — only for stories whose folder exists on disk.
       // Compare-and-swap so a concurrent profile edit is not overwritten by a
-      // stale snapshot. Exhaustion skips this file (last good bytes stay) and
-      // the next sync tries again. The manifest cache write already finished
-      // before this function runs; this path does not fail that save.
+      // stale snapshot. Giving up, a read error, or a rewrite refusal throws
+      // before mythos.json is updated.
       const storyAbs = path.join(storyVaultRoot, folder);
       if (!fs.existsSync(storyAbs)) continue;
       const bookRel = vaultRelPath(storyVaultRoot, path.join(storyAbs, BOOK_FILENAME));
@@ -952,7 +955,10 @@ export function syncCanonicalFromManifest(
         }
         if (isBookFileCasExhausted(err)) {
           console.warn(JSON.stringify({ event: BOOK_FILE_CAS_EXHAUSTED_EVENT }));
-          continue;
+        } else if (isBookFileIoError(err)) {
+          console.warn(JSON.stringify({ event: err.event, code: err.code }));
+        } else if (isBookFileRewriteRefused(err)) {
+          console.warn(JSON.stringify({ event: err.event }));
         }
         throw err;
       }
@@ -963,8 +969,11 @@ export function syncCanonicalFromManifest(
     if (storiesChanged) {
       writeMythosFile(mythosRoot, { ...mythos, stories: nextRefs });
     }
-  } catch {
-    /* canonical sync is best-effort per contract above */
+  } catch (err) {
+    if (isBookFileCasExhausted(err) || isBookFileIoError(err) || isBookFileRewriteRefused(err)) {
+      throw err;
+    }
+    /* unrelated canonical-sync problems stay off the save path */
   }
 }
 
