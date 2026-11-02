@@ -103,6 +103,7 @@ import {
   setReadingSentenceHighlight,
 } from './readerHighlight';
 import { showLnToast } from '../theme/lnToast';
+import { usePrismBook } from '../prism/usePrism';
 import type { TtsEngineSettings, TtsVoicePrefs } from '../hooks/useTtsPlayer';
 import type { Story } from '../types';
 import './ManuscriptView.css';
@@ -709,6 +710,12 @@ export default function ManuscriptView({
     create: createStoryComment,
     resolve: resolveStoryComment,
   } = useStoryComments(story);
+
+  // Prism (#1764): bind the book to its prism.json here (and claim it as the
+  // selected book), so the scene editor's marks follow saved settings even
+  // while the sidebar Analytics zone is closed or the scene lacks a storyId.
+  usePrismBook(story);
+
   /** Pending selection anchor (prototype cSel) — non-null shows the bar. */
   const [selAnchor, setSelAnchor] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState('');
