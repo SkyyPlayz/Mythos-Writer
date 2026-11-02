@@ -1,8 +1,8 @@
 // Kokoro-82M offline neural TTS engine (SKY-11243 / SKY-11230 Part 2).
 //
 // Runs the Kokoro-82M model fully offline, in-process, via onnxruntime-web's
-// WASM backend + the pure-JS `phonemizer` grapheme-to-phoneme package. This is
-// the merge-safe "Option B" path chosen in SKY-11277: unlike kokoro-js /
+// WASM backend + English grapheme-to-phoneme from `phonemize/en-g2p` (MIT).
+// This is the merge-safe "Option B" path chosen in SKY-11277: unlike kokoro-js /
 // @huggingface/transformers, it drags in NO `sharp` (unfixable high-sev CVEs),
 // NO native `onnxruntime-node`, and spawns NO child process — so the MYT-788
 // spawn-trust gate (voiceGate.ts) is irrelevant here.
@@ -10,9 +10,9 @@
 // Weights: onnx-community/Kokoro-82M-v1.0-ONNX — Apache-2.0 (see
 // electron-main/resources/kokoro/LICENSE). Bundled in the installer.
 //
-// The text-normalization, phonemization and tokenization below are ported from
-// kokoro-js (Apache-2.0, © 2024 Hugging Face) so this path produces byte-for-
-// byte the same phoneme token stream the upstream library feeds the model.
+// Text normalization below is ported from kokoro-js (Apache-2.0, © 2024
+// Hugging Face). Phonemes come from `phonemize/en-g2p`, mapped onto the Kokoro
+// tokenizer vocab (see electron-main/src/g2p/phonemizeEn.ts).
 //
 // Output is 16-bit signed little-endian mono PCM at KOKORO_SAMPLE_RATE, matching
 // the Piper `--output-raw` contract the renderer already decodes (useTtsPlayer).
@@ -21,7 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import * as ort from 'onnxruntime-web';
-import { phonemize } from 'phonemizer';
+import { phonemizeEnglish } from './g2p/phonemizeEn.js';
 
 /** Kokoro always renders 24 kHz audio. */
 export const KOKORO_SAMPLE_RATE = 24000;
@@ -183,31 +183,17 @@ function segmentByPunctuation(text: string): { match: boolean; text: string }[] 
 }
 
 /**
- * Phonemize `text` to the eSpeak-style IPA string Kokoro's tokenizer expects.
- * Ported from kokoro-js `phonemize()` (Apache-2.0): normalize → keep punctuation
- * verbatim, phonemize prose via the `phonemizer` package → IPA fixups.
+ * Phonemize `text` to the phoneme string Kokoro's tokenizer expects.
+ * Normalize, keep punctuation verbatim, phonemize prose with English-only
+ * `phonemize/en-g2p` (mapped onto the model vocab in phonemizeEn.ts).
  */
 export async function phonemizeText(text: string, lang: 'a' | 'b' = 'a'): Promise<string> {
   const normalized = normalizeText(text);
   const segments = segmentByPunctuation(normalized);
-  const langCode = lang === 'a' ? 'en-us' : 'en';
   const parts = await Promise.all(
-    segments.map(async ({ match, text: seg }) =>
-      match ? seg : (await phonemize(seg, langCode)).join(' '),
-    ),
+    segments.map(({ match, text: seg }) => (match ? seg : phonemizeEnglish(seg, lang))),
   );
-  let out = parts
-    .join('')
-    .replace(/kəkˈoːɹoʊ/g, 'kˈoʊkəɹoʊ')
-    .replace(/kəkˈɔːɹəʊ/g, 'kˈəʊkəɹəʊ')
-    .replace(/ʲ/g, 'j')
-    .replace(/r/g, 'ɹ')
-    .replace(/x/g, 'k')
-    .replace(/ɬ/g, 'l')
-    .replace(/(?<=[a-zɹː])(?=hˈʌndɹɪd)/g, ' ')
-    .replace(/ z(?=[;:,.!?¡¿—…"«»“” ]|$)/g, 'z');
-  if (lang === 'a') out = out.replace(/(?<=nˈaɪn)ti(?!ː)/g, 'di');
-  return out.trim();
+  return parts.join('').trim();
 }
 
 // ─── Tokenization ─────────────────────────────────────────────────────────────
