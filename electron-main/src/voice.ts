@@ -23,6 +23,13 @@ import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voice
 import { getVoiceProvider, validateBaseUrl, isAiMasterOn, AI_DISABLED_MESSAGE } from './provider.js';
 import type { ProviderConfig } from './provider.js';
 import {
+  assertOpenRouterModelAllowed,
+  isOpenRouterEndpoint,
+  openRouterProviderBlock,
+  withOpenRouterGuards,
+  type OpenRouterProviderBlock,
+} from '@mythos-writer/shared/openRouterPolicy';
+import {
   isKokoroVoice,
   kokoroVoiceKey,
   synthesizeKokoro,
@@ -581,6 +588,66 @@ async function transcribeLocal(
   }
 }
 
+const CLOUD_TRANSCRIBE_MODEL = 'whisper-1';
+const CLOUD_SPEECH_MODEL = 'tts-1';
+
+export interface CloudSpeechRequestBody {
+  model: string;
+  input: string;
+  voice: string;
+  provider?: OpenRouterProviderBlock;
+}
+
+/** JSON body for cloud TTS. OpenRouter hosts get the Google-provider block. */
+export function buildCloudSpeechRequestBody(
+  endpoint: string,
+  text: string,
+  voiceId: string | undefined,
+  model: string = CLOUD_SPEECH_MODEL,
+): CloudSpeechRequestBody {
+  return withOpenRouterGuards(endpoint, {
+    model,
+    input: text,
+    voice: voiceId ?? 'alloy',
+  });
+}
+
+/**
+ * Multipart body for cloud STT. When the endpoint is OpenRouter, the body
+ * carries the same provider block as chat requests and refuses a google/* model.
+ */
+export function buildCloudTranscriptionBody(
+  endpoint: string,
+  boundary: string,
+  audio: Buffer,
+  mimeType: string,
+  filename: string,
+  language?: string,
+  model: string = CLOUD_TRANSCRIBE_MODEL,
+) {
+  assertOpenRouterModelAllowed(endpoint, model);
+  if (/[\r\n]/.test(model)) {
+    throw new Error('Cloud transcription model id contains a line break.');
+  }
+  const providerField = isOpenRouterEndpoint(endpoint)
+    ? `--${boundary}\r\nContent-Disposition: form-data; name="provider"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(openRouterProviderBlock())}\r\n`
+    : '';
+  return Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType || 'audio/webm'}\r\n\r\n`,
+      'utf-8',
+    ),
+    audio,
+    Buffer.from(
+      `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${model}\r\n` +
+      (language ? `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n` : '') +
+      providerField +
+      `--${boundary}--\r\n`,
+      'utf-8',
+    ),
+  ]);
+}
+
 async function transcribeCloud(
   endpoint: string,
   apiKey: string,
@@ -595,19 +662,7 @@ async function transcribeCloud(
 
   // `language` is already normalized/validated by transcribeAudio
   // (normalizeLanguage) so it is safe to embed in the multipart body.
-  const body = Buffer.concat([
-    Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType || 'audio/webm'}\r\n\r\n`,
-      'utf-8',
-    ),
-    audio,
-    Buffer.from(
-      `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n` +
-      (language ? `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n` : '') +
-      `--${boundary}--\r\n`,
-      'utf-8',
-    ),
-  ]);
+  const body = buildCloudTranscriptionBody(endpoint, boundary, audio, mimeType, filename, language);
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -824,7 +879,7 @@ async function speakWithCloud(
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model: 'tts-1', input: text, voice: voiceId ?? 'alloy' }),
+    body: JSON.stringify(buildCloudSpeechRequestBody(endpoint, text, voiceId)),
     signal,
   });
 

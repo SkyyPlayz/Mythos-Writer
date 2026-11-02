@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { writeFileAtomic } from '../vault.js';
+import { writeVaultFileAtomic } from '../vault.js';
 
 export const VAULT_REGISTRY_VERSION = 1 as const;
 
@@ -83,8 +83,9 @@ export function writeVaultRegistry<E extends VaultEntry>(
   config: VaultRegistryConfig,
   registry: VaultRegistry<E>,
 ): void {
-  writeFileAtomic(
-    vaultRegistryPath(mythosRoot, config),
+  writeVaultFileAtomic(
+    mythosRoot,
+    config.registryFilename,
     JSON.stringify(registry, null, 2) + '\n',
   );
 }

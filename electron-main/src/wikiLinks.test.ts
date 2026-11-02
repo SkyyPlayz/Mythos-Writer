@@ -338,9 +338,8 @@ describe('acceptWikiLink', () => {
     ).toThrow('Position mismatch');
   });
 
-  it('inserts [[entityName]] at the correct position and writes the file', () => {
+  it('accepts without writing the scene file', () => {
     mockedGet.mockReturnValue(makeSugRow({ position: 6, anchor_text: 'Elara' }));
-    // prose: 'Once, Elara arrived.' → position 6 = 'E' of 'Elara'
     mockedReadScene.mockReturnValue({
       id: 'sc1',
       title: 'Scene 1',
@@ -349,14 +348,11 @@ describe('acceptWikiLink', () => {
 
     acceptWikiLink('sug-1', VAULT, () => SCENE_PATH);
 
-    expect(mockedWriteScene).toHaveBeenCalledOnce();
-    const written = mockedWriteScene.mock.calls[0][2] as { prose: string };
-    expect(written.prose).toBe('Once, [[Elara]] arrived.');
+    expect(mockedWriteScene).not.toHaveBeenCalled();
     expect(mockedUpdateStatus).toHaveBeenCalledWith('sug-1', 'accepted', null);
   });
 
-  it('handles case-insensitive anchor matching', () => {
-    // anchor stored as lowercase, text has uppercase
+  it('handles case-insensitive anchor matching without writing', () => {
     mockedGet.mockReturnValue(makeSugRow({ position: 6, anchor_text: 'elara' }));
     mockedReadScene.mockReturnValue({
       id: 'sc1',
@@ -366,8 +362,8 @@ describe('acceptWikiLink', () => {
 
     acceptWikiLink('sug-1', VAULT, () => SCENE_PATH);
 
-    const written = mockedWriteScene.mock.calls[0][2] as { prose: string };
-    expect(written.prose).toBe('Once, [[Elara]] arrived.');
+    expect(mockedWriteScene).not.toHaveBeenCalled();
+    expect(mockedUpdateStatus).toHaveBeenCalledWith('sug-1', 'accepted', null);
   });
 });
 

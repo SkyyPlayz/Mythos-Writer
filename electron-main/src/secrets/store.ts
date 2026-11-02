@@ -10,8 +10,9 @@
 // tested without booting an Electron app. The wiring in `index.ts` injects
 // the real safeStorage at runtime; tests inject a stub.
 
-import fs from 'fs';
+import path from 'path';
 import { writeJsonAtomicSecure } from './atomicWrite.js';
+import { readUserDataFile } from './userDataRead.js';
 
 // Known secret identifiers. Adding a new key here makes the store aware of it
 // for `listKnownIds()` and the migration walker — values for unknown IDs are
@@ -193,10 +194,11 @@ export class SecretsStore {
   private readFromDisk(): Map<string, string> {
     const out = new Map<string, string>();
     this.decryptFailedIds.clear();
-    if (!fs.existsSync(this.filePath)) return out;
+    const disk = readUserDataFile(this.filePath, path.dirname(this.filePath));
+    if (disk.status !== 'ok') return out;
     let parsed: SecretsFile;
     try {
-      parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf-8')) as SecretsFile;
+      parsed = JSON.parse(disk.data.toString('utf-8')) as SecretsFile;
     } catch {
       // Corrupt file: treat as empty rather than crash the app. The user can
       // re-enter keys; a corrupt secrets file should not deny them launch.

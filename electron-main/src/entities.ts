@@ -14,6 +14,7 @@ import {
 } from './vault.js';
 import type { EntityEntry, EntityRelation, EntityRelationship, EntityRelationshipRow, Manifest } from './ipc.js';
 import { getReciprocal, parseRelationsBlock, serializeRelations, stripRelationsBlock } from './entityRelations.js';
+import * as aiGuard from './vault/aiWriteGuard.js';
 
 // ─── Path helpers ───
 
@@ -218,7 +219,8 @@ export function updateEntity(
     relations?: EntityRelation[];
     prose?: string;
     properties?: Record<string, unknown>;
-  }
+  },
+  writeAbs?: string,
 ): EntityEntry {
   const entry = manifest.entities.find((e) => e.id === id);
   if (!entry) throw new Error(`Entity not found: ${id}`);
@@ -259,7 +261,8 @@ export function updateEntity(
 
   const prose = changes.prose !== undefined ? changes.prose : existingProse;
   const content = serializeEntityFrontmatter(updatedFm, prose);
-  writeVaultFileAtomic(vaultRoot, entry.path, content);
+  if (writeAbs) aiGuard.writeAiCanonical(writeAbs, content);
+  else writeVaultFileAtomic(vaultRoot, entry.path, content);
 
   const updated = fmToEntry(updatedFm, entry.path);
 
@@ -283,6 +286,7 @@ export function applyTypedRelation(
   vaultRoot: string,
   manifest: Manifest,
   payload: { relationType: string; sourceEntityId: string; targetEntityId: string },
+  writeAbs?: { source?: string; target?: string },
 ): { sourceWritten: boolean; targetWritten: boolean } {
   const { relationType, sourceEntityId, targetEntityId } = payload;
 
@@ -300,7 +304,7 @@ export function applyTypedRelation(
   if (!sourceAlreadyHas) {
     updateEntity(vaultRoot, manifest, sourceEntityId, {
       relations: [...sourceExisting, { type: relationType, target: targetEntityId }],
-    });
+    }, writeAbs?.source);
     sourceWritten = true;
   }
 
@@ -316,7 +320,7 @@ export function applyTypedRelation(
   if (!targetAlreadyHas) {
     updateEntity(vaultRoot, manifest, targetEntityId, {
       relations: [...targetExisting, { type: reciprocal, target: sourceEntityId }],
-    });
+    }, writeAbs?.target);
     targetWritten = true;
   }
 

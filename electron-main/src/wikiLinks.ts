@@ -5,7 +5,7 @@
 
 import crypto from 'crypto';
 import type { EntityEntry } from './ipc.js';
-import { readSceneFile, writeSceneFileAtomic } from './vault.js';
+import { readSceneFile } from './vault.js';
 import {
   upsertWikiLinkSuggestion,
   getWikiLinkSuggestion,
@@ -267,9 +267,10 @@ export function acceptWikiLink(
   const sceneData = readSceneFile(vaultRoot, scenePath);
   const prose = sceneData.prose ?? '';
 
-  const { position, anchor_text: anchorText, proposed_link: proposedLink } = sug;
+  const { position, anchor_text: anchorText } = sug;
 
-  // Validate position before writing: confirm anchor text still matches.
+  // Validate position before accepting: confirm anchor text still matches.
+  // Accept is status-only — AI text is not written into the scene.
   const actualSlice = prose.slice(position, position + anchorText.length);
   if (actualSlice.toLowerCase() !== anchorText.toLowerCase()) {
     throw new Error(
@@ -278,10 +279,6 @@ export function acceptWikiLink(
     );
   }
 
-  const newProse =
-    prose.slice(0, position) + proposedLink + prose.slice(position + anchorText.length);
-
-  writeSceneFileAtomic(vaultRoot, scenePath, { ...sceneData, prose: newProse });
   updateWikiLinkSuggestionStatus(suggestionId, 'accepted', null);
 }
 

@@ -815,12 +815,13 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     await expect(m23Page.locator('[data-testid="tl-today-btn"]')).toBeVisible();
   });
 
-  test('TC-TL-M23-01b: Structure and Progress are the only mode tabs', async () => {
+  test('TC-TL-M23-01b: Structure, Progress and Plotlines are the only mode tabs', async () => {
     const modeBar = m23ProductPage.getByRole('group', { name: 'Timeline view mode' });
     await expect(modeBar).toBeVisible({ timeout: 6_000 });
     await expect(modeBar.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
     await expect(modeBar.getByRole('button', { name: 'Progress', exact: true })).toBeVisible();
-    for (const label of ['Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
+    await expect(modeBar.getByRole('button', { name: 'Plotlines', exact: true })).toBeVisible();
+    for (const label of ['Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
       await expect(modeBar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
     }
     await expect(m23ProductPage.locator('[data-testid="tl-view-filter"]')).toBeVisible();

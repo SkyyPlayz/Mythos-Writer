@@ -23,7 +23,8 @@ import fs from 'fs';
 import path from 'path';
 import type { ArcEntry, Manifest } from '../ipc.js';
 import type { ManifestTimelineEntry, StoryTimeOfDay } from '../vault/manifest/types.js';
-import { readManifest, writeFileAtomic } from '../vault.js';
+import { readManifest, writeVaultFileAtomic } from '../vault.js';
+import { copyNoFollowAtomic } from '../vault/noFollowWrite.js';
 import { mythosRootForStoryVault, resolveManifestPath } from '../mythosFormat/mythosJson.js';
 import { readTimelinesFile } from '../mythosFormat/timelinesFile.js';
 import { encodeWhen } from './codec.js';
@@ -113,7 +114,7 @@ export function readTimelinesStore(
       validateTimelinesStore(parsed);
       return parsed;
     } catch (err) {
-      return recoverFromBackup(storePath, err as Error, options);
+      return recoverFromBackup(vaultRoot, err as Error, options);
     }
   }
 
@@ -153,12 +154,12 @@ export function writeTimelinesStore(vaultRoot: string, store: TimelinesStore): v
     try {
       const previous = fs.readFileSync(storePath, 'utf-8');
       JSON.parse(previous);
-      writeFileAtomic(`${storePath}${TIMELINES_BACKUP_SUFFIX}`, previous);
+      writeVaultFileAtomic(vaultRoot, `${TIMELINES_FILENAME}${TIMELINES_BACKUP_SUFFIX}`, previous);
     } catch {
       // Previous file unparseable — keep the existing (older but valid) backup.
     }
   }
-  writeFileAtomic(storePath, JSON.stringify(store, null, 2));
+  writeVaultFileAtomic(vaultRoot, TIMELINES_FILENAME, JSON.stringify(store, null, 2));
 }
 
 /**
@@ -429,8 +430,9 @@ function writeMigrationSnapshot(vaultRoot: string, legacy: LegacyTimelineData, n
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
   const timestamp = now.replace(/[:.]/g, '-');
   const backupPath = path.join(backupDir, `timelines-migration-source-${timestamp}.json`);
-  writeFileAtomic(
-    backupPath,
+  writeVaultFileAtomic(
+    vaultRoot,
+    path.relative(vaultRoot, backupPath).split(path.sep).join('/'),
     JSON.stringify(
       {
         migratedAt: now,
@@ -447,10 +449,11 @@ function writeMigrationSnapshot(vaultRoot: string, legacy: LegacyTimelineData, n
 // ─── Corrupt-file recovery ────────────────────────────────────────────────────
 
 function recoverFromBackup(
-  storePath: string,
+  vaultRoot: string,
   error: Error,
   options?: ReadTimelinesStoreOptions,
 ): TimelinesStore {
+  const storePath = path.join(vaultRoot, TIMELINES_FILENAME);
   const backupPath = `${storePath}${TIMELINES_BACKUP_SUFFIX}`;
   let backupStore: TimelinesStore | null = null;
   let backupRaw: string | null = null;
@@ -470,9 +473,10 @@ function recoverFromBackup(
   // Preserve the corrupt bytes for forensics, then restore the backup into
   // place so subsequent reads are clean. No user data is ever discarded.
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const corruptPath = `${storePath}.corrupt-${timestamp}`;
-  fs.copyFileSync(storePath, corruptPath);
-  writeFileAtomic(storePath, backupRaw);
+  const corruptRel = `${TIMELINES_FILENAME}.corrupt-${timestamp}`;
+  const corruptPath = path.join(vaultRoot, corruptRel);
+  copyNoFollowAtomic(storePath, corruptPath, { durable: false, rel: corruptRel, mkdir: false });
+  writeVaultFileAtomic(vaultRoot, TIMELINES_FILENAME, backupRaw);
 
   console.error(
     `[timelines] ${storePath} was unreadable (${error.message}); ` +

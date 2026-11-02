@@ -18,8 +18,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { autoUpdater } from 'electron-updater';
-// Anthropic SDK used directly for extraction side-calls (non-streaming). All streaming calls use streamFromProvider.
-import Anthropic from '@anthropic-ai/sdk';
 import {
   setupIpcMain,
   IPC_CHANNELS,
@@ -277,6 +275,7 @@ import {
 } from './sceneCrafterSuggestions.js';
 import { generateSceneCrafterSuggestions } from './archiveSceneCrafterGenerator.js';
 import { wrapIpcHandler, sanitizeIpcError, SafeIpcError } from './ipcErrors.js';
+import { exportFailureText, isNoFollowExportFailure, mapVaultWriteError } from './vault/writeErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
 import { isUnderRoot } from './pathSecurity.js';
@@ -395,7 +394,8 @@ import {
   readVaultFile,
   readVaultFileWithRetry,
   writeVaultFileAtomic,
-  writeFileAtomic,
+  writeExportFileAtomic,
+  commitEpubTargetExport,
   listVaultFiles,
   deleteVaultFile,
   moveVaultFile,
@@ -452,6 +452,7 @@ import {
   itemRenameNotify as notesBoardItemRenameNotify,
   itemDeleteStub as notesBoardItemDeleteStub,
   flushPendingNotesBoardWrites,
+  setBoardWriteRefusalHandler,
   // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5).
   createBoardItem as notesBoardCreateItem,
   boardItemRenameTarget as notesBoardRenameTarget,
@@ -759,7 +760,8 @@ import {
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
 import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
-import { streamFromProvider, validateBaseUrl, listModels, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, verifyOpenRouterKey, setAiMasterGate, type ProviderConfig } from './provider.js';
+import { probeConnection, resolveGlobalStoredApiKey, resolveStoredApiKey } from './connectionProbe.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -818,11 +820,11 @@ import {
   parseFacts,
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
-  runExtractionSideCall,
-  buildExtractionSystemPrompt,
 } from './brainstormAgent.js';
+import { extractProposalsByScript } from './brainstormExtractScript.js';
 import {
   collectNotesVaultNoteNames,
+  collectNotesVaultNoteNamesAsync,
   findExplicitMentions,
   renderRelationshipsBlock,
   sanitizeWikilinks,
@@ -836,6 +838,7 @@ import {
 import { assertBrainstormPayloadValid } from './brainstormIpcSecurity.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
+import { installNotesTagIndexFanout } from './notesTagRefresh.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
 import { getGraphNodes, getGraphEdges, handleNoteFileChanged, invalidateNoteGraphIndex } from './vaultGraph.js';
 import { renameNoteWithCascade, undoLastRenameCascade } from './renameCascade.js';
@@ -859,7 +862,16 @@ import {
   checkLockfile,
   appendSyncEvent,
 } from './vaultSessionLock.js';
-import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+import {
+  applyVaultWriteLocked,
+  rollbackVaultWriteLocked,
+  performAutoMark,
+  SuggestionRefusedError,
+  writeGuardedContinuityNote,
+  writeGuardedArchiveEntity,
+  commitSuggestionWrite,
+} from './suggestionApply.js';
+import { aiWriteLockKey, withAiFileLock } from './vault/aiWriteGuard.js';
 import { AI_TEXT_APPLY_ENABLED } from '@mythos-writer/shared/aiSuggestOnly';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import {
@@ -1775,7 +1787,7 @@ function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveRespo
  * the Notes tab reflects a canvas create or rename IMMEDIATELY.
  *
  * The notes watcher cannot be relied on for this. A canvas create writes
- * through writeFileAtomic + markSelfWrite, and startNotesVaultWatcher drops
+ * through writeVaultFileAtomic + markSelfWrite, and startNotesVaultWatcher drops
  * self-written `add` events outright — so a note created on the board would
  * never reach the tree at all. A rename does emit (via `unlink`), but only
  * after chokidar's 300 ms awaitWriteFinish window, and on Windows only after
@@ -1789,6 +1801,20 @@ function notifyNotesVaultMutatedByApp(relPath: string): void {
     mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
   }
 }
+
+// Tag rewrites do not mark self-writes, and they also notify here so search,
+// entity refresh, and note metadata do not wait on the watcher.
+installNotesTagIndexFanout((notesRoot, rel) => {
+  try {
+    handleNoteFileChanged(notesRoot, path.join(notesRoot, rel));
+  } catch {
+    /* the rewrite already landed */
+  }
+  notifyNotesVaultMutatedByApp(rel);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:file-changed', { path: rel });
+  }
+});
 
 function scheduleReindex(changedRelPath?: string) {
   if (changedRelPath === undefined) {
@@ -2122,6 +2148,27 @@ function toGuidedMoveError(err: unknown): unknown {
   return err;
 }
 
+function writeDialogExport(filePath: string, data: Buffer | string): void {
+  try {
+    writeExportFileAtomic(filePath, data);
+  } catch (err) {
+    if (isNoFollowExportFailure(err)) throw new SafeIpcError(exportFailureText(filePath));
+    throw err;
+  }
+}
+
+function writeVaultForIpc(root: string, rel: string, content: string): import('./ipc.js').VaultWriteResponse {
+  try {
+    safeVaultIpcJoin(root, rel, true);
+    const written = writeVaultFileAtomic(root, rel, content);
+    return { path: written.path, bytes: written.bytes };
+  } catch (err) {
+    const mapped = mapVaultWriteError(err, rel);
+    if (mapped) return { path: rel, bytes: 0, error: mapped.error, code: mapped.code };
+    throw err;
+  }
+}
+
 // ─── IPC Handlers ───
 export const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
@@ -2134,8 +2181,7 @@ export const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureVaultDir();
-    safeVaultIpcJoin(getVaultRoot(), payload.path, true);
-    return writeVaultFileAtomic(getVaultRoot(), payload.path, payload.content);
+    return writeVaultForIpc(getVaultRoot(), payload.path, payload.content);
   },
   [IPC_CHANNELS.VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureVaultDir();
@@ -2312,17 +2358,18 @@ export const handlers: IpcHandlers = {
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
-        const auditId = crypto.randomUUID();
-        const { finalStatus, snapshotPath } = applyVaultWrite(payload.suggestion, getVaultRoot(), now);
-        updateSuggestionStatus(payload.suggestion.id, finalStatus, now, 'auto-apply');
-        insertAuditLog({
-          id: auditId,
-          suggestion_id: payload.suggestion.id,
-          action: finalStatus === 'applied' ? 'apply' : 'accept',
-          snapshot_path: snapshotPath,
-          actor: 'auto_applied',
-          created_at: now,
-        });
+        if (performAutoMark(payload.suggestion).markAccepted) {
+          const auditId = crypto.randomUUID();
+          updateSuggestionStatus(payload.suggestion.id, 'accepted', now, 'auto-apply');
+          insertAuditLog({
+            id: auditId,
+            suggestion_id: payload.suggestion.id,
+            action: 'accept',
+            snapshot_path: null,
+            actor: 'auto_applied',
+            created_at: now,
+          });
+        }
       } else if (result.budgetExceeded) {
         updateSuggestionBudgetExceeded(payload.suggestion.id, true);
       }
@@ -2330,24 +2377,15 @@ export const handlers: IpcHandlers = {
 
     return { id: payload.suggestion.id };
   },
-  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: (payload: SuggestionsAcceptPayload) => {
+  [IPC_CHANNELS.SUGGESTIONS_ACCEPT]: async (payload: SuggestionsAcceptPayload) => {
     ensureVaultDir();
     const now = new Date().toISOString();
     const auditId = crypto.randomUUID();
     const suggestion = getSuggestion(payload.id);
     if (!suggestion) throw new Error(`Suggestion not found: ${payload.id}`);
 
-    const { finalStatus, snapshotPath } = applyVaultWrite(suggestion, getVaultRoot(), now);
-    updateSuggestionStatus(payload.id, finalStatus, now);
-    insertAuditLog({
-      id: auditId,
-      suggestion_id: payload.id,
-      action: finalStatus === 'applied' ? 'apply' : 'accept',
-      snapshot_path: snapshotPath,
-      actor: payload.actor ?? 'user',
-      created_at: now,
-    });
-    return { id: payload.id, status: finalStatus, auditId };
+    const result = await applyVaultWriteLocked(suggestion, getVaultRoot(), now);
+    return commitSuggestionWrite(payload.id, result, now, payload.actor ?? 'user', auditId);
   },
   [IPC_CHANNELS.SUGGESTIONS_APPLY]: (payload: SuggestionsApplyPayload) => {
     ensureVaultDir();
@@ -2382,7 +2420,7 @@ export const handlers: IpcHandlers = {
     });
     return { id: payload.id, auditId };
   },
-  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: (payload: SuggestionsRollbackPayload) => {
+  [IPC_CHANNELS.SUGGESTIONS_ROLLBACK]: async (payload: SuggestionsRollbackPayload) => {
     ensureVaultDir();
     const now = new Date().toISOString();
     const auditId = crypto.randomUUID();
@@ -2393,7 +2431,7 @@ export const handlers: IpcHandlers = {
     }
 
     const applyEntry = listAuditLog(payload.id).find((e) => e.action === 'apply');
-    const restoredPath = rollbackVaultWrite(
+    const restoredPath = await rollbackVaultWriteLocked(
       payload.id,
       getVaultRoot(),
       applyEntry?.snapshot_path ?? null,
@@ -2438,16 +2476,26 @@ export const handlers: IpcHandlers = {
     });
     return { id: payload.id, status: 'ignored' as const };
   },
-  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: (payload: SuggestionsBatchActionPayload) => {
+  [IPC_CHANNELS.SUGGESTIONS_BATCH_ACTION]: async (payload: SuggestionsBatchActionPayload) => {
     ensureVaultDir();
-    const ids = payload.ids.slice(0, 200);
     const actor = payload.actor ?? 'user';
+    const rows = payload.ids.slice(0, 200).map((id) => ({ id, suggestion: getSuggestion(id) }));
+    if (payload.action === 'accept') {
+      rows.sort((a, b) => {
+        const pathA = a.suggestion?.target_path ?? '';
+        const pathB = b.suggestion?.target_path ?? '';
+        if (pathA < pathB) return -1;
+        if (pathA > pathB) return 1;
+        if (a.id < b.id) return -1;
+        if (a.id > b.id) return 1;
+        return 0;
+      });
+    }
     const succeeded: string[] = [];
     const failed: Array<{ id: string; reason: string }> = [];
 
-    for (const id of ids) {
+    for (const { id, suggestion } of rows) {
       try {
-        const suggestion = getSuggestion(id);
         if (!suggestion) {
           failed.push({ id, reason: 'not found' });
           continue;
@@ -2456,16 +2504,8 @@ export const handlers: IpcHandlers = {
         const auditId = crypto.randomUUID();
 
         if (payload.action === 'accept') {
-          const { finalStatus, snapshotPath } = applyVaultWrite(suggestion, getVaultRoot(), now);
-          updateSuggestionStatus(id, finalStatus, now);
-          insertAuditLog({
-            id: auditId,
-            suggestion_id: id,
-            action: finalStatus === 'applied' ? 'apply' : 'accept',
-            snapshot_path: snapshotPath,
-            actor,
-            created_at: now,
-          });
+          const result = await applyVaultWriteLocked(suggestion, getVaultRoot(), now);
+          commitSuggestionWrite(id, result, now, actor, auditId);
         } else if (payload.action === 'reject') {
           updateSuggestionStatus(id, 'rejected');
           insertAuditLog({
@@ -2489,7 +2529,10 @@ export const handlers: IpcHandlers = {
         }
         succeeded.push(id);
       } catch (err) {
-        failed.push({ id, reason: (err as Error).message ?? 'unknown error' });
+        const reason = err instanceof SuggestionRefusedError
+          ? err.reason
+          : ((err as Error).message ?? 'unknown error');
+        failed.push({ id, reason });
       }
     }
 
@@ -2954,6 +2997,7 @@ export const handlers: IpcHandlers = {
       targetRoot: report.targetRoot,
       counts: report.counts,
       verified: report.verified,
+      ...(report.skippedSymlinks ? { skippedSymlinks: report.skippedSymlinks } : {}),
     };
   },
   [IPC_CHANNELS.MYTHOS_MIGRATION_CONFIRM]: async (): Promise<import('./ipc.js').MythosMigrationConfirmResponse> => {
@@ -4547,45 +4591,22 @@ export const handlers: IpcHandlers = {
   [IPC_CHANNELS.GOALS_SET_GOAL]: (payload: GoalsSetGoalPayload) => { setDailyGoal(payload.dailyGoal); return { ok: true as const }; },
   [IPC_CHANNELS.GOALS_RESET_STREAK]: () => { const today = new Date().toISOString().slice(0, 10); resetStreak(today); return { ok: true as const }; },
 
-  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: async (payload: SettingsTestConnectionPayload) => {
-    // SSRF guard: validate before any network call (SKY-739).
-    if (payload.provider.baseUrl) {
-      const urlError = validateBaseUrl(payload.provider.baseUrl);
-      if (urlError) return { ok: false, latencyMs: 0, error: 'Invalid provider URL.' };
-    }
-    const t0 = Date.now();
-    try {
-      const ac = new AbortController();
-      // Liveness probe: opt out of the reasoning-token reserve (SKY-11276) so a
-      // local reasoning model gets a 1-token budget and returns immediately,
-      // instead of a multi-thousand-token thinking session for a quick ping.
-      for await (const _ of streamFromProvider(
-        { kind: payload.provider.kind, apiKey: payload.provider.apiKey, baseUrl: payload.provider.baseUrl, model: payload.provider.model },
-        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal, reserveThinkingTokens: false },
-      )) {
-        ac.abort();
-        break;
-      }
-      return { ok: true, latencyMs: Date.now() - t0 };
-    } catch (e: unknown) {
-      if (e instanceof Error && e.name === 'AbortError') {
-        return { ok: true, latencyMs: Date.now() - t0 };
-      }
-      // A budget-exhausted error means the server was reachable and a model
-      // responded — it just ran out of the 1-token probe budget while thinking.
-      // That is a *successful* connection for the purposes of the test (SKY-11276).
-      if (e instanceof TokenBudgetExhaustedError) {
-        return { ok: true, latencyMs: Date.now() - t0 };
-      }
-      const category = categorizeStreamError(e);
-      return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category, e) };
-    }
-  },
+  // PLAN-AI-MODES M-1: a no-AI key/reachability probe (one GET, OpenRouter at
+  // its key endpoint). A masked or empty key resolves to the key global chat
+  // would send: the global provider's, same kind + host, with the legacy/env
+  // fallback for anthropic only when no provider block is saved.
+  [IPC_CHANNELS.SETTINGS_TEST_CONNECTION]: (payload: SettingsTestConnectionPayload) =>
+    probeConnection(payload.provider, {
+      listModels,
+      verifyOpenRouterKey,
+      storedKey: (kind, baseUrl) => resolveGlobalStoredApiKey(loadAppSettings(), kind, baseUrl),
+    }),
 
-  // SKY-1501: list models from provider endpoint; uses stored API key to avoid masked-key leakage
+  // SKY-1501: list models from provider endpoint; the renderer never sends a key
+  // (masked-key leakage), and the stored key is sent only to the same kind and
+  // host it was saved for. No match lists keyless (OpenRouter's catalog is public).
   [IPC_CHANNELS.PROVIDER_LIST_MODELS]: async (payload: ProviderListModelsPayload) => {
-    const stored = loadAppSettings();
-    const apiKey = stored.provider?.apiKey ?? stored.apiKey;
+    const apiKey = resolveStoredApiKey(loadAppSettings(), payload.kind, payload.baseUrl);
     return listModels({ kind: payload.kind, apiKey, baseUrl: payload.baseUrl });
   },
 
@@ -5245,7 +5266,7 @@ export const handlers: IpcHandlers = {
   },
 
   // ─── Archive confirmation dialog (MYT-376) ───
-  [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => {
+  [IPC_CHANNELS.ARCHIVE_CONFIRM]: async (payload: ArchiveConfirmPayload) => {
     // AI-SUGGEST-ONLY: refuse before any vault open, row write, or status flip.
     // A replay of a missing id must resolve suggest_only, not throw.
     if (payload.action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
@@ -5268,11 +5289,13 @@ export const handlers: IpcHandlers = {
     if (!suggestion) {
       const continuityRow = getContinuityIssue(payload.suggestionId);
       if (continuityRow) {
-        const outcome = resolveContinuityItemById(
+        const outcome = await resolveContinuityItemById(
           payload.suggestionId,
           confirmActionToResolution(payload.action),
         );
-        return { ok: outcome.ok, auditId };
+        return outcome.reason
+          ? { ok: outcome.ok, auditId, reason: outcome.reason }
+          : { ok: outcome.ok, auditId };
       }
       throw new Error(`Suggestion not found: ${payload.suggestionId}`);
     }
@@ -5303,14 +5326,19 @@ export const handlers: IpcHandlers = {
     if (payload.action === 'match_archive') {
       // Update vault entity property to match manuscript value.
       if (entityId && propKey && scenePhrase) {
+        let manifest: ReturnType<typeof readManifest>;
         try {
-          const manifest = readManifest(getManifestPath());
-          const entity = manifest.entities.find((e) => e.id === entityId);
-          if (entity) {
-            const updatedProperties = { ...(entity.properties ?? {}), [propKey]: scenePhrase };
-            updateEntity(getVaultRoot(), manifest, entityId, { properties: updatedProperties });
-          }
-        } catch { /* non-fatal — still record the audit */ }
+          manifest = readManifest(getManifestPath());
+        } catch {
+          return { ok: false, reason: 'no_manifest' as const };
+        }
+        const entity = manifest.entities.find((e) => e.id === entityId);
+        if (entity?.path) {
+          const guarded = await withAiFileLock(aiWriteLockKey(getVaultRoot(), entity.path), () =>
+            writeGuardedArchiveEntity(getVaultRoot(), manifest, entityId, { [propKey]: scenePhrase }),
+          );
+          if (!guarded.ok) return { ok: false, reason: guarded.reason };
+        }
       }
       updateSuggestionStatus(payload.suggestionId, 'applied', now);
       insertAuditLog({
@@ -5459,12 +5487,10 @@ export const handlers: IpcHandlers = {
     const story = manifest.stories.find((s) => s.id === payload.storyId);
     if (!story) throw new Error(`Story not found: ${payload.storyId}`);
 
-    let filePath: string;
+    let dialogPath: string | null = null;
     if (payload.targetPath) {
-      // MYT-675: the headless targetPath escape hatch must stay inside the vault.
-      // resolveEpubExportPath rejects absolute paths, "../" traversal, symlink
-      // escapes, and non-.epub targets before any bytes are written.
-      filePath = resolveEpubExportPath(getVaultRoot(), payload.targetPath);
+      // Shape check only (non-empty, .epub). Containment is the vault writer.
+      resolveEpubExportPath(getVaultRoot(), payload.targetPath);
     } else {
       const result = await dialog.showSaveDialog({
         title: 'Export EPUB',
@@ -5472,7 +5498,7 @@ export const handlers: IpcHandlers = {
         filters: [{ name: 'EPUB', extensions: ['epub'] }],
       });
       if (result.canceled || !result.filePath) return { path: null, cancelled: true };
-      filePath = result.filePath;
+      dialogPath = result.filePath;
     }
 
     // Build chapter/scene structure, reading prose from vault
@@ -5507,9 +5533,20 @@ export const handlers: IpcHandlers = {
         } catch { /* missing scene — skip */ }
       }
     }
-    writeFileAtomic(filePath, buffer);
-    lastExportPath = filePath;
-    return { path: filePath, cancelled: false, bytes: buffer.length, missingSceneIds: [...missingEpub] };
+    if (payload.targetPath) {
+      try {
+        const written = commitEpubTargetExport(getVaultRoot(), payload.targetPath, buffer);
+        lastExportPath = written.absPath;
+        return { path: written.absPath, cancelled: false, bytes: buffer.length, missingSceneIds: [...missingEpub] };
+      } catch (err) {
+        const mapped = mapVaultWriteError(err, payload.targetPath);
+        if (mapped) throw new SafeIpcError(mapped.error);
+        throw err;
+      }
+    }
+    writeDialogExport(dialogPath as string, buffer);
+    lastExportPath = dialogPath as string;
+    return { path: dialogPath, cancelled: false, bytes: buffer.length, missingSceneIds: [...missingEpub] };
   },
 
   // ─── DOCX export (MYT-252, extended SKY-153; options Beta 4 M14) ───
@@ -5539,7 +5576,7 @@ export const handlers: IpcHandlers = {
         if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionDocx, 'Pre-export snapshot');
       }
     }
-    writeFileAtomic(result.filePath, buffer);
+    writeDialogExport(result.filePath, buffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: buffer.length, missingSceneIds: docxMissing };
   },
@@ -5572,7 +5609,7 @@ export const handlers: IpcHandlers = {
         if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionPdf, 'Pre-export snapshot');
       }
     }
-    writeFileAtomic(result.filePath, buffer);
+    writeDialogExport(result.filePath, buffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: buffer.length, missingSceneIds: pdfMissing };
   },
@@ -5597,7 +5634,7 @@ export const handlers: IpcHandlers = {
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
     const mdBuffer = Buffer.from(content, 'utf-8');
-    writeFileAtomic(result.filePath, mdBuffer);
+    writeDialogExport(result.filePath, mdBuffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: mdBuffer.length, missingSceneIds: mdMissing };
   },
@@ -5613,7 +5650,7 @@ export const handlers: IpcHandlers = {
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
     const txtBuffer = Buffer.from(content, 'utf-8');
-    writeFileAtomic(result.filePath, txtBuffer);
+    writeDialogExport(result.filePath, txtBuffer);
     lastExportPath = result.filePath;
     return { path: result.filePath, cancelled: false, bytes: txtBuffer.length, missingSceneIds: txtMissing };
   },
@@ -6802,9 +6839,7 @@ export const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureNotesVaultDir();
-    const root = getNotesVaultRoot();
-    safeVaultIpcJoin(root, payload.path, true);
-    return writeVaultFileAtomic(root, payload.path, payload.content);
+    return writeVaultForIpc(getNotesVaultRoot(), payload.path, payload.content);
   },
   // SKY-11360: brainstorm/idea board is agent state → Agent Vault, never the
   // Notes Vault. The main process owns the fixed relpath; the renderer only
@@ -9524,46 +9559,26 @@ function registerBrainstormExtractionHandlers(): void {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
         assertBrainstormPayloadValid(payload);
 
-        // M11a: master off beats the per-agent enable — this direct Anthropic
-        // side-call is the one AI egress that bypasses provider.ts's gate.
+        // M11a: master off beats the per-agent enable. The extract script
+        // (PLAN-AI-MODES M-1) makes no model or network call; these gates stay
+        // until M1 sets per-mode visibility.
         if (!isAiMasterEnabled()) return { proposals: [] };
         const agentSettings = loadAppSettings().agents.brainstorm;
         if (!agentSettings.enabled) return { proposals: [] };
 
-        const apiKey = (() => {
-          const settings = loadAppSettings();
-          return settings.apiKey || process.env.ANTHROPIC_API_KEY || '';
-        })();
-        if (!apiKey) return { proposals: [] };
-
+        // The vault's own note names join the renderer's list, so a name filed
+        // in an earlier turn is not proposed again on every later mention.
         const existingEntityNames = new Set<string>(payload.existingEntityNames ?? []);
-        const turnId = payload.turnId;
-
-        const callLlm = async (userPrompt: string): Promise<string> => {
-          const client = new Anthropic({ apiKey });
-          const model = agentSettings.model || 'claude-haiku-4-5-20251001';
-          const response = await client.messages.create({
-            model,
-            // 1024 gives entity-dense turns room for the whole JSON array —
-            // parseExtractionResponse is all-or-nothing, so a truncated array
-            // loses every proposal, not just the tail.
-            max_tokens: 1024,
-            // Structured-output side-call: keep thinking off so the budget
-            // stays available for the JSON array itself.
-            ...anthropicThinkingParam(model, undefined),
-            system: buildExtractionSystemPrompt([...existingEntityNames]),
-            messages: [{ role: 'user', content: userPrompt }],
-          });
-          const block = response.content[0];
-          return block?.type === 'text' ? block.text : '';
-        };
-
-        const proposals = await runExtractionSideCall(
+        try {
+          for (const name of (await collectNotesVaultNoteNamesAsync(getNotesVaultRoot())).values()) {
+            existingEntityNames.add(name);
+          }
+        } catch { /* vault unreadable — fall back to the renderer's names; proposals still run */ }
+        const proposals = extractProposalsByScript(
           payload.turnText,
           existingEntityNames,
           sessionRejectionLog,
-          turnId,
-          { callLlm },
+          payload.turnId,
         );
 
         const now = new Date().toISOString();
@@ -11556,11 +11571,11 @@ function startArchiveContScheduler(): void {
  * archive:cont-item-resolved so every surface drops the flag live.
  * Throws when the item does not exist.
  */
-export function resolveContinuityItemById(
+export async function resolveContinuityItemById(
   itemId: string,
   action: import('./ipc.js').ResolutionAction,
   note?: string,
-): import('./ipc.js').ArchiveResolveContinuityResponse {
+): Promise<import('./ipc.js').ArchiveResolveContinuityResponse> {
   // AI-SUGGEST-ONLY: refuse before lookup so a replay cannot throw or flip status.
   if (action === 'suggest_story_change' && !AI_TEXT_APPLY_ENABLED) {
     return { ok: false, reason: 'suggest_only' };
@@ -11582,6 +11597,8 @@ export function resolveContinuityItemById(
     if (row.scope === 'story_internal') {
       return { ok: false, reason: 'note_not_found' };
     }
+    ensureVaultDir();
+    try { ensureNotesVaultDir(); } catch { /* story root is still searched */ }
     // The flagged note lives in the Notes Vault (Continuity Peek entities) or
     // the Story Vault (manifest entity notes, where scans index from) — try
     // both roots, patching wherever the note actually is.
@@ -11598,7 +11615,18 @@ export function resolveContinuityItemById(
     if (root === null) return { ok: false, reason: 'note_not_found' };
     const patched = applyExcerptPatch(content, row.vault_excerpt, row.proposed_match_archive);
     if (patched === null) return { ok: false, reason: 'excerpt_not_found' };
-    writeVaultFileAtomic(root, row.vault_note_path, patched);
+    const notesRoot = getNotesVaultRoot();
+    const storyRoot = getVaultRoot();
+    const guarded = await withAiFileLock(aiWriteLockKey(root, row.vault_note_path), () =>
+      writeGuardedContinuityNote({
+        storyRoot,
+        notesRoot,
+        foundRoot: root as string,
+        relPath: row.vault_note_path,
+        nextContent: patched,
+      }),
+    );
+    if (!guarded.ok) return { ok: false, reason: guarded.reason };
     changedFrom = row.vault_excerpt;
     changedTo = row.proposed_match_archive;
   } else if (action === 'suggest_story_change') {
@@ -11850,6 +11878,12 @@ app.whenReady().then(async () => {
   // harness or plugin registering a handler first) is logged loudly and boot
   // proceeds to create the window instead of dying as an unhandled rejection
   // before any UI exists.
+  setBoardWriteRefusalHandler((refusal) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return false;
+    win.webContents.send(IPC_CHANNELS.NOTES_BOARD_WRITE_REFUSED, refusal);
+    return true;
+  });
   try {
     setupIpcMain(handlers);
   } catch (e) {

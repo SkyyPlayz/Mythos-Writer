@@ -11,7 +11,7 @@
 // once a real Part exists (the case that was never reachable before this
 // fix, per the issue's regression-guard requirement).
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
 const STORY_ID = 'story-1';
@@ -118,6 +118,25 @@ function makeMockApi(manifest: unknown, overrides: Record<string, unknown> = {})
   };
 }
 
+/**
+ * Scene-note preload (DesktopShell effect on selectedStory) awaits notesGet
+ * per scene, then setSceneNotesBySceneId. This mock has no notesGet, so each
+ * await is one microtask and the setState follows. findBy/waitFor turn the
+ * act environment off and restore it when the query settles; on a busy runner
+ * that setState lands in the gap and setupTests fails the file. React's
+ * component stack for the warning always cites DesktopShell.tsx:639 (a
+ * comment), which is not the write. Enter act synchronously after the
+ * story-updating event so the continuation runs while the act queue is set.
+ */
+async function flushPendingShellWrites(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 /** SKY-130 boot restore lands at scene-zoom, where ManuscriptView renders
  *  the sceneEditorSlot (BlockEditor) instead of its own block list — step
  *  out to book zoom to reach the h2/h3/note-slot rendering path. */
@@ -125,6 +144,7 @@ async function openBookZoom(): Promise<void> {
   await screen.findByRole('navigation', { name: 'Main navigation' });
   const bookZoomBtn = await screen.findByTestId('msv-zoom-book', {}, { timeout: 5000 });
   fireEvent.click(bookZoomBtn);
+  await flushPendingShellWrites();
 }
 
 async function submitPrompt(text: string): Promise<void> {
@@ -132,6 +152,7 @@ async function submitPrompt(text: string): Promise<void> {
   const input = dialog.querySelector('.prompt-modal-input') as HTMLInputElement;
   fireEvent.change(input, { target: { value: text } });
   fireEvent.keyDown(input, { key: 'Enter' });
+  await flushPendingShellWrites();
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 }
 
@@ -164,6 +185,7 @@ describe('DesktopShell Part/note authoring (SKY-10923)', () => {
     // The original chapter is still visible — the new chapter didn't
     // replace/orphan it.
     expect(screen.getByTestId(`msv-h2-${CHAPTER_ID}`)).toBeInTheDocument();
+    await flushPendingShellWrites();
   });
 
   it('chapter note: affordance click -> type -> commit renders the epigraph', async () => {
@@ -173,10 +195,12 @@ describe('DesktopShell Part/note authoring (SKY-10923)', () => {
     await openBookZoom();
     const affordance = await screen.findByTestId(`msv-note-affordance-chapter-${CHAPTER_ID}`, {}, { timeout: 5000 });
     fireEvent.click(affordance);
+    await flushPendingShellWrites();
 
     const field = await screen.findByTestId(`msv-note-edit-note-chapter-${CHAPTER_ID}`);
     field.textContent = 'A storm was coming.';
     fireEvent.blur(field);
+    await flushPendingShellWrites();
 
     const epigraph = await screen.findByTestId(`msv-note-chapter-${CHAPTER_ID}`);
     expect(epigraph).toHaveTextContent('A storm was coming.');
@@ -188,6 +212,8 @@ describe('DesktopShell Part/note authoring (SKY-10923)', () => {
     const reopened = await screen.findByTestId(`msv-note-edit-note-chapter-${CHAPTER_ID}`);
     reopened.textContent = '';
     fireEvent.blur(reopened);
+    await flushPendingShellWrites();
     expect(await screen.findByTestId(`msv-note-affordance-chapter-${CHAPTER_ID}`)).toBeInTheDocument();
+    await flushPendingShellWrites();
   });
 });

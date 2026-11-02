@@ -1,7 +1,7 @@
 // Persistent entity-index cache (SKY-10731 / M12.2) — real filesystem and
 // real DB in temp directories, no mocks (unlike entityIndex.test.ts, which
 // mocks fs to test the pure builder).
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -31,6 +31,41 @@ describe('loadEntityIndex (persistent cache)', () => {
     closeDb();
     fs.rmSync(vaultRoot, { recursive: true, force: true });
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'skips a note swapped for a symlink after the directory listing (skipped on win32: POSIX open does not follow a file link)',
+    () => {
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-entity-out-'));
+      const outside = path.join(outsideDir, 'secret.md');
+      fs.writeFileSync(outside, '---\naliases: [Leaked]\ntype: Character\n---\nSECRET');
+      const realRead = fs.readFileSync.bind(fs);
+      const realOpen = fs.openSync.bind(fs);
+      let swapped = false;
+      const swap = () => {
+        if (swapped) return;
+        swapped = true;
+        fs.rmSync(lyraPath);
+        fs.symlinkSync(outside, lyraPath);
+      };
+      vi.spyOn(fs, 'readFileSync').mockImplementation((...args: Parameters<typeof fs.readFileSync>) => {
+        if (String(args[0]) === lyraPath) swap();
+        return realRead(...args);
+      });
+      vi.spyOn(fs, 'openSync').mockImplementation((...args: Parameters<typeof fs.openSync>) => {
+        if (String(args[0]) === lyraPath) swap();
+        return realOpen(...args);
+      });
+      try {
+        const entries = buildEntityIndex(vaultRoot);
+        expect(entries.find((entry) => entry.name === 'Lyra')).toBeUndefined();
+        expect(realRead(outside, 'utf8')).toContain('SECRET');
+        console.log('entity symlink skipped');
+      } finally {
+        vi.restoreAllMocks();
+        fs.rmSync(outsideDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('matches a fresh full rebuild and populates the cache with needs_rescan set', () => {
     const loaded = loadEntityIndex(vaultRoot);

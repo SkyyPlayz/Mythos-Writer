@@ -320,6 +320,37 @@ describe('voice:transcribe handler', () => {
     expect(result.text).toBe('hello world');
     expect(result.confidence).toBeCloseTo(0.95, 1);
     expect(fetchSpy).toHaveBeenCalledWith('http://stt.local/v1/audio/transcriptions', expect.objectContaining({ method: 'POST' }));
+    const raw = Buffer.from((fetchSpy.mock.calls[0][1] as RequestInit).body as Buffer).toString('utf8');
+    expect(raw).not.toContain('google-vertex');
+    fetchSpy.mockRestore();
+  });
+
+  it('puts the OpenRouter provider block on cloud STT multipart bodies', async () => {
+    setAiMasterGate(() => true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'hello world' }),
+    } as Response);
+
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, {
+        enabled: true,
+        provider: 'cloud',
+        cloudEndpoint: 'https://OpenRouter.AI/api/v1/audio/transcriptions',
+        cloudApiKey: 'test-key',
+      }),
+    );
+    await invokeHandle('voice:transcribe', { audio: Buffer.from('audio-data'), mimeType: 'audio/wav' });
+
+    const raw = Buffer.from((fetchSpy.mock.calls[0][1] as RequestInit).body as Buffer).toString('utf8');
+    const providerJson = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+    expect(JSON.parse(providerJson)).toEqual({
+      ignore: ['google-vertex', 'google-ai-studio'],
+      zdr: true,
+      data_collection: 'deny',
+    });
+    expect(raw.toLowerCase()).not.toContain('google/gemini');
     fetchSpy.mockRestore();
   });
 
@@ -831,6 +862,40 @@ describe('voice:speak handler', () => {
     expect(callBody.input).toBe('Test synthesis');
     expect(callBody.voice).toBe('nova');
     expect(callBody.model).toBe('tts-1');
+    expect(callBody.provider).toBeUndefined();
+    fetchSpy.mockRestore();
+  });
+
+  it('attaches the OpenRouter provider block on cloud TTS to openrouter.ai', async () => {
+    setAiMasterGate(() => true);
+    const mockReader = {
+      read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => mockReader },
+    } as unknown as Response);
+
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, undefined, {
+        enabled: true,
+        provider: 'cloud',
+        cloudEndpoint: 'https://openrouter.ai/api/v1/audio/speech',
+        cloudApiKey: 'test-key',
+      }),
+    );
+    await invokeHandle('voice:speak', { text: 'Hello there' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const callBody = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(callBody.provider).toEqual({
+      ignore: ['google-vertex', 'google-ai-studio'],
+      zdr: true,
+      data_collection: 'deny',
+    });
+    expect(callBody.model).toBe('tts-1');
+    expect(String(callBody.model).toLowerCase().startsWith('google/')).toBe(false);
     fetchSpy.mockRestore();
   });
 

@@ -118,6 +118,22 @@ describe('migrateSecretsFromSettingsFile', () => {
     expect(result.migrated).toBe(false);
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'does not migrate settings through a symlink to a file outside userData (skipped on win32: POSIX open does not follow a file link)',
+    () => {
+      const { dir, settingsPath, store } = mkStore();
+      const outside = path.join(path.dirname(dir), 'settings-outside.json');
+      fs.writeFileSync(outside, JSON.stringify(baseSettings({ apiKey: FAKE_ANTHROPIC })), 'utf-8');
+      fs.symlinkSync(outside, settingsPath);
+      const result = migrateSecretsFromSettingsFile(settingsPath, store);
+      expect(result.migrated).toBe(false);
+      expect(store.listIds()).toEqual([]);
+      expect(fs.readFileSync(outside, 'utf-8')).toContain(FAKE_ANTHROPIC);
+      fs.rmSync(outside, { force: true });
+      console.log('settings symlink migration refused');
+    },
+  );
+
   // Regression: SKY-740 — archive key was never stripped before; ensure migration moves it.
   it('migrates a plaintext archive agent provider.apiKey out of app-settings.json (SKY-740)', () => {
     const { settingsPath, store } = mkStore();

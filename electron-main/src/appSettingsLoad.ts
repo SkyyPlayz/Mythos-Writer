@@ -8,7 +8,9 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 import type { AppSettings } from './ipc.js';
+import { readUserDataFile } from './secrets/userDataRead.js';
 import { providerConfigForAgent, type ProviderConfig } from './provider.js';
 import { writeFileAtomicSecure, writeJsonAtomicSecure } from './secrets/atomicWrite.js';
 import {
@@ -33,12 +35,16 @@ import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSetting
  */
 export function markOnboardingCompleteJsonOnly(settingsPath: string): void {
   let parsed: Record<string, unknown> = {};
-  if (fs.existsSync(settingsPath)) {
+  const onboardingRead = readUserDataFile(settingsPath, path.dirname(settingsPath));
+  if (onboardingRead.status === 'ok') {
     try {
-      parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+      parsed = JSON.parse(onboardingRead.data.toString('utf-8')) as Record<string, unknown>;
     } catch {
       parsed = {};
     }
+  } else if (onboardingRead.status === 'denied') {
+    // Unreadable (symlink outside userData, loop, dangling). Do not follow it.
+    parsed = {};
   }
   if (parsed.onboardingComplete === true) return;
   parsed.onboardingComplete = true;
@@ -52,8 +58,9 @@ export function markOnboardingCompleteJsonOnly(settingsPath: string): void {
 function withOnDiskKeyFields(outgoing: AppSettings, settingsPath: string): AppSettings {
   let disk: AppSettings | null = null;
   try {
-    if (fs.existsSync(settingsPath)) {
-      disk = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+    const diskRead = readUserDataFile(settingsPath, path.dirname(settingsPath));
+    if (diskRead.status === 'ok') {
+      disk = JSON.parse(diskRead.data.toString('utf-8')) as AppSettings;
     }
   } catch {
     disk = null;
@@ -78,14 +85,10 @@ type SecretsSnapshot =
  * is `unknown` so rollback never unlinks or overwrites secrets.json.
  */
 function snapshotSecretsBytes(store: SecretsStore): SecretsSnapshot {
-  try {
-    if (!fs.existsSync(store.path)) return { kind: 'absent' };
-    return { kind: 'bytes', data: fs.readFileSync(store.path) };
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code === 'ENOENT') return { kind: 'absent' };
-    return { kind: 'unknown' };
-  }
+  const snap = readUserDataFile(store.path, path.dirname(store.path));
+  if (snap.status === 'absent') return { kind: 'absent' };
+  if (snap.status === 'denied') return { kind: 'unknown' };
+  return { kind: 'bytes', data: snap.data };
 }
 
 /**
@@ -362,10 +365,11 @@ export function loadAppSettingsFrom(
 ): AppSettings {
   void persistMigration;
   let base: AppSettings;
-  if (fs.existsSync(settingsPath)) {
+  const settingsRead = readUserDataFile(settingsPath, path.dirname(settingsPath));
+  if (settingsRead.status === 'ok') {
     settingsLoadUsedParseFallback = false;
     try {
-      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
+      const raw = JSON.parse(settingsRead.data.toString('utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
       type AgentsRaw = Partial<AppSettings['agents']>;
       const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
       // One-shot migration: legacy key liquidGlass → liquidNeon (MYT-814)
@@ -482,7 +486,7 @@ export function loadAppSettingsFrom(
       base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
   } else {
-    settingsLoadUsedParseFallback = false;
+    settingsLoadUsedParseFallback = settingsRead.status === 'denied';
     base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
   // MYT-777: overlay decrypted credentials from the SecretsStore so the rest

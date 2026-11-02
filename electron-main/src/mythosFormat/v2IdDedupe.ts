@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { Manifest, StoryEntry, ChapterEntry, SceneEntry } from '../ipc.js';
-import { writeFileAtomic, markSelfWrite } from '../vault.js';
+import { vaultRelPath, writeVaultFileAtomic } from '../vault.js';
+import { isSymlinkWriteRefusal, symlinkSkipLine } from '../vault/writeErrors.js';
 import { stringifySpineJson } from './bookFile.js';
 import { resolveManifestPath } from './mythosJson.js';
 import { isSceneFileName } from './sceneFiles.js';
@@ -383,17 +384,22 @@ export function rederiveFallbackChapterId(
   return `${newStoryId}-${chapterId.slice(prefix.length)}`;
 }
 
-export function writeReIdFile(absPath: string, next: string): boolean {
+export function writeReIdFile(
+  vaultRoot: string,
+  absPath: string,
+  next: string,
+  skipped?: string[],
+): boolean {
+  const rel = vaultRelPath(vaultRoot, absPath);
   try {
-    writeFileAtomic(absPath, next);
-    try {
-      markSelfWrite(absPath);
-    } catch {
-      /* self-write mark best-effort — accept one follow-up reindex */
-    }
+    writeVaultFileAtomic(vaultRoot, rel, next);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    if (isSymlinkWriteRefusal(err)) {
+      skipped?.push(symlinkSkipLine(rel));
+      return false;
+    }
+    throw err;
   }
 }
 
