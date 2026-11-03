@@ -18,6 +18,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type {
+  BookSyncEvent,
+  BookSyncWarning,
   Manifest,
   StoryEntry,
   ChapterEntry,
@@ -33,6 +35,8 @@ import {
 import { ensureActiveStoryVaultPath } from './storyVaultRegistry.js';
 import {
   BOOK_FILENAME,
+  assertBookFileRewritable,
+  isBookFileRewriteRefused,
   parseBookFile,
   serializeBookFile,
   type BookFile,
@@ -51,7 +55,15 @@ import {
   statusToDraftState,
   storyFolderName,
 } from './sceneFiles.js';
-import { vaultRelPath, writeManifest as writeManifestRaw, writeVaultFileAtomic, writeVaultOrSkip } from '../vault.js';
+import {
+  BOOK_FILE_CAS_EXHAUSTED_EVENT,
+  isBookFileCasExhausted,
+  isBookFileIoError,
+  vaultRelPath,
+  writeBookFileCas,
+  writeManifest as writeManifestRaw,
+  writeVaultOrSkip,
+} from '../vault.js';
 import { VaultWriteRefusedError } from '../vault/noFollowWrite.js';
 import { isSymlinkWriteRefusal, symlinkSkipLine } from '../vault/writeErrors.js';
 import {
@@ -860,19 +872,102 @@ function spineFromManifest(story: StoryEntry, folder: string, previous: BookFile
 }
 
 /**
+ * Next book.md body for one story. Carries profiles and unknown frontmatter
+ * from the previous file. Returns the previous bytes when the only difference
+ * would be `updatedAt`, so a quiet save does not rewrite the file.
+ * `prevRaw === null` creates a book from the manifest alone — no profiles,
+ * no invented isbn/author/publisher.
+ */
+function bookMarkdownForSync(story: StoryEntry, folder: string, prevRaw: string | null): string {
+  let previous: BookFile | null = null;
+  if (prevRaw !== null) {
+    assertBookFileRewritable(prevRaw);
+    previous = parseBookFile(prevRaw, story.title);
+  }
+  const book: BookFile = {
+    id: story.id,
+    title: story.title,
+    ...(story.synopsis ? { synopsis: story.synopsis } : {}),
+    createdAt: previous?.createdAt ?? story.createdAt,
+    updatedAt: story.updatedAt,
+    spine: spineFromManifest(story, folder, previous),
+    ...(previous?.profiles?.length ? { profiles: previous.profiles } : {}),
+    ...(previous?.profilesFenceRaw !== undefined
+      ? { profilesFenceRaw: previous.profilesFenceRaw }
+      : {}),
+    ...(previous?.extraFrontmatter && Object.keys(previous.extraFrontmatter).length > 0
+      ? { extraFrontmatter: previous.extraFrontmatter }
+      : {}),
+  };
+  const next = serializeBookFile(book);
+  if (prevRaw !== null && previous) {
+    const prevStable = serializeBookFile({ ...previous, updatedAt: book.updatedAt });
+    if (prevStable === next) return prevRaw;
+  }
+  return next;
+}
+
+/** One pending book.md edit per story. A later give-up replaces the earlier one. */
+export interface PendingBookEdit {
+  storyId: string;
+  title: string;
+  updatedAt: string;
+}
+
+const pendingBookEdits = new Map<string, PendingBookEdit>();
+
+export function pendingBookEditFor(storyId: string): PendingBookEdit | undefined {
+  return pendingBookEdits.get(storyId);
+}
+
+export function pendingBookEditCount(): number {
+  return pendingBookEdits.size;
+}
+
+export function _clearPendingBookEditsForTests(): void {
+  pendingBookEdits.clear();
+}
+
+/** Story ids that contain a path separator are not sent to the renderer. */
+function rendererStoryId(storyId: string): string {
+  const clean = storyId.replace(/[\\/]/g, '').slice(0, 80);
+  return clean || 'story';
+}
+
+function rememberPendingEdit(story: StoryEntry): void {
+  pendingBookEdits.set(story.id, {
+    storyId: rendererStoryId(story.id),
+    title: story.title,
+    updatedAt: story.updatedAt,
+  });
+}
+
+function recordBookSkip(warnings: BookSyncWarning[], event: BookSyncEvent, storyId: string): void {
+  const warning: BookSyncWarning = { event, storyId: rendererStoryId(storyId) };
+  warnings.push(warning);
+  console.warn(JSON.stringify(warning));
+}
+
+/**
  * Decompose a manifest write into the canonical v2 files. Cheap by design:
  * mythos.json and each book.md are only rewritten when their serialized
- * content actually changed. Never throws — canonical sync must not break the
- * save path (the cache write already succeeded; the next sync self-heals).
+ * content actually changed.
+ *
+ * Never throws. A compare-and-swap give-up, a read error, or a rewrite
+ * refusal skips that story's book.md. The skip does not fall through to
+ * another write. Warnings are `{ event, storyId }` only. A give-up stores
+ * one pending edit per story, replaced by the latest title. mythos.json is
+ * still written. Symlink refusals stay on the skipped list and do not write.
  */
 export function syncCanonicalFromManifest(
   mythosRoot: string,
   manifest: Manifest,
   skipped?: string[],
-): void {
+): BookSyncWarning[] {
+  const warnings: BookSyncWarning[] = [];
   try {
     const mythos = tryReadMythosFile(mythosRoot);
-    if (!mythos) return;
+    if (!mythos) return warnings;
     const storyVaultRoot = ensureActiveStoryVaultPath(mythosRoot);
     const prevRefs = new Map(mythos.stories.map((s) => [s.id, s]));
     const nextRefs: MythosStoryRef[] = [];
@@ -889,52 +984,74 @@ export function syncCanonicalFromManifest(
         updatedAt: story.updatedAt,
       });
 
-      // book.md — only for stories whose folder exists on disk.
       const storyAbs = path.join(storyVaultRoot, folder);
       if (!fs.existsSync(storyAbs)) continue;
-      const bookPath = path.join(storyAbs, BOOK_FILENAME);
-      let previous: BookFile | null = null;
-      let previousRaw: string | null = null;
+      const bookRel = vaultRelPath(storyVaultRoot, path.join(storyAbs, BOOK_FILENAME));
       try {
-        previousRaw = fs.readFileSync(bookPath, 'utf-8');
-        previous = parseBookFile(previousRaw, story.title);
-      } catch {
-        previous = null;
-      }
-      const book: BookFile = {
-        id: story.id,
-        title: story.title,
-        ...(story.synopsis ? { synopsis: story.synopsis } : {}),
-        createdAt: previous?.createdAt ?? story.createdAt,
-        updatedAt: story.updatedAt,
-        spine: spineFromManifest(story, folder, previous),
-      };
-      // Skip the write when nothing but updatedAt would change.
-      const next = serializeBookFile(book);
-      if (previousRaw !== null && previous) {
-        const prevStable = serializeBookFile({ ...previous, updatedAt: book.updatedAt });
-        if (prevStable === next) continue;
-      }
-      const bookRel = vaultRelPath(storyVaultRoot, bookPath);
-      try {
-        writeVaultFileAtomic(storyVaultRoot, bookRel, next);
+        writeBookFileCas(storyVaultRoot, bookRel, (prevRaw) => bookMarkdownForSync(story, folder, prevRaw));
+        pendingBookEdits.delete(story.id);
       } catch (err) {
         if (isSymlinkWriteRefusal(err)) {
           skipped?.push(symlinkSkipLine(bookRel));
           continue;
         }
-        throw err;
+        if (isBookFileCasExhausted(err)) {
+          rememberPendingEdit(story);
+          recordBookSkip(warnings, BOOK_FILE_CAS_EXHAUSTED_EVENT, story.id);
+          continue;
+        }
+        if (isBookFileIoError(err)) {
+          rememberPendingEdit(story);
+          recordBookSkip(warnings, 'book-file-io', story.id);
+          continue;
+        }
+        if (isBookFileRewriteRefused(err)) {
+          // The file itself is why the write stopped. The next save hits the
+          // same refusal, so this is not a pending edit to retry.
+          const event: BookSyncEvent = err.event === 'book-file-malformed'
+            ? 'book-file-malformed'
+            : err.event === 'book-file-profiles-duplicate'
+              ? 'book-file-profiles-duplicate'
+              : 'book-file-profiles-fence';
+          recordBookSkip(warnings, event, story.id);
+          continue;
+        }
+        rememberPendingEdit(story);
+        recordBookSkip(warnings, 'book-file-sync-skipped', story.id);
+        continue;
       }
     }
 
     const storiesChanged =
       JSON.stringify(mythos.stories) !== JSON.stringify(nextRefs);
     if (storiesChanged) {
-      writeMythosFile(mythosRoot, { ...mythos, stories: nextRefs });
+      try {
+        writeMythosFile(mythosRoot, { ...mythos, stories: nextRefs });
+      } catch {
+        const warning: BookSyncWarning = { event: 'mythos-file-write-failed' };
+        warnings.push(warning);
+        console.warn(JSON.stringify(warning));
+      }
     }
   } catch {
-    /* canonical sync is best-effort per contract above */
+    /* canonical sync never throws; a story that failed is already skipped */
   }
+  return warnings;
+}
+
+/**
+ * The save sequence every manifest write uses: cache first, then canonical
+ * book sync. The returned warnings are the user-facing notices for stories
+ * whose book.md was left unchanged. This never throws for those cases.
+ */
+export function saveManifestCanonical(
+  manifestPath: string,
+  manifest: Manifest,
+  mythosRoot: string,
+): { bytes: number; warnings: BookSyncWarning[] } {
+  const bytes = writeManifestRaw(manifestPath, manifest);
+  const warnings = syncCanonicalFromManifest(mythosRoot, manifest);
+  return { bytes, warnings };
 }
 
 // ─── Creation-path helpers (chapter:create / scene:create version gate) ─────

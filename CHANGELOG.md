@@ -12,12 +12,16 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
 
 ### Added
+- **Book profiles stay in the book file.** A book's print profiles are saved inside the book file and kept the next time the story is saved. The panel for editing them comes later. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
 
 ### Removed
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
 ### Fixed
+- **A title that mentions a book marker does not block the next save.** The book file stays writable, and opening a story list that cannot be read says so instead of saying a save failed. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
+- **A story-list save that cannot be written says so.** The previous story list stays in place, and the notice does not include the file path. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
+- **A story save tells you when the book file was left unchanged.** If the book file is busy, unreadable, or not one this version can safely rewrite, that story's file stays as it is, the rest of the save continues, and the notice says the next save will try again. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - Confirming a Brainstorm note proposal no longer follows a symbolic link at the destination, so a shortcut in the Notes Vault cannot make the write land outside the vault or overwrite another file. ([#1795](https://github.com/SkyyPlayz/Mythos-Writer/pull/1795))
 - Adding several chapters in a row no longer drops a later chapter in ahead of the one you just created. ([#1791](https://github.com/SkyyPlayz/Mythos-Writer/pull/1791))
 - **Read-aloud no longer ships GPL-licensed phonemizer code.** Kokoro grapheme-to-phoneme is English-only `phonemize` (MIT); the GPL `phonemizer` package is gone from the dependency tree and from packaged builds. ([#1729](https://github.com/SkyyPlayz/Mythos-Writer/pull/1729))
