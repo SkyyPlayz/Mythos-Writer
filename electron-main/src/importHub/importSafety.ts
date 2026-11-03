@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { STORY_IMPORT_MAX_BYTES } from '../storyImport.js';
+import { directoryContentStamp } from './importDetect.js';
 
 /**
  * Extensions Mythos never parses: programs, installers, scripts, shortcuts,
@@ -471,13 +472,16 @@ export function assessImportPath(inputPath: unknown, opts: AssessImportPathOptio
   }
 
   if (st.isDirectory()) {
+    // The folder's own size and mtime stay put when a file inside is edited.
+    // Stamp the files so commit can see that change.
+    const stamp = directoryContentStamp(realPath);
     return {
       ok: true,
       realPath,
       name,
       isDirectory: true,
-      size: st.size,
-      mtimeMs: st.mtimeMs,
+      size: stamp.size,
+      mtimeMs: stamp.mtimeMs,
       head: Buffer.alloc(0),
       ext,
     };

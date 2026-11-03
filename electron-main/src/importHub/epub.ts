@@ -119,12 +119,12 @@ function attr(tag: string, name: string): string | undefined {
   return m ? decodeEntities(m[1] ?? m[2] ?? '') : undefined;
 }
 
-/** Normalize once, at parse time: trim, cut at the first `;`, lowercase. */
+/** Normalize once, at parse time: trim, cut at the first `;`, trim that token, lowercase. */
 function spineMediaType(raw: string | undefined): string {
   const trimmed = (raw ?? '').trim();
   const cutAt = trimmed.indexOf(';');
   const base = cutAt === -1 ? trimmed : trimmed.slice(0, cutAt);
-  return base.toLowerCase();
+  return base.trim().toLowerCase();
 }
 
 /** OPF-relative href → zip entry path (resolves `../`, decodes %XX, drops #fragments). */

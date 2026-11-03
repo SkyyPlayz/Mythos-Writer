@@ -10,6 +10,7 @@
 //
 // Pure Node — no Electron.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ImportSourceKind } from './types.js';
@@ -59,6 +60,61 @@ function isScrivxName(name: string): boolean {
   return extOf(name) === 'scrivx';
 }
 
+/**
+ * Fingerprint of the files inside a folder. Editing a file changes this even
+ * when the folder's own size and mtime do not. Links are not followed, and
+ * the walk stops at the same entry cap as detection.
+ */
+export function directoryContentStamp(root: string): { size: number; mtimeMs: number } {
+  const hash = crypto.createHash('sha256');
+  let seen = 0;
+  let truncated = false;
+  let level: string[] = [root];
+  for (let depth = 0; depth <= MARKDOWN_FOLDER_MAX_DEPTH && level.length > 0; depth++) {
+    const next: string[] = [];
+    for (const dir of level) {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      for (const entry of entries) {
+        if (++seen > FOLDER_SCAN_MAX_ENTRIES) { truncated = true; break; }
+        if (entry.isSymbolicLink()) continue;
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!entry.name.startsWith('.') && !SKIPPED_DIRS.has(entry.name) && depth < MARKDOWN_FOLDER_MAX_DEPTH) {
+            next.push(abs);
+          }
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        let st: fs.Stats;
+        try {
+          st = fs.lstatSync(abs);
+        } catch {
+          continue;
+        }
+        if (!st.isFile()) continue;
+        hash.update(path.relative(root, abs).split(path.sep).join('/'));
+        hash.update('\0');
+        hash.update(String(st.size));
+        hash.update('\0');
+        hash.update(String(st.mtimeMs));
+        hash.update('\0');
+      }
+      if (truncated) break;
+    }
+    if (truncated) break;
+    level = next;
+  }
+  hash.update(truncated ? '1' : '0');
+  const digest = hash.digest();
+  return { size: digest.readUInt32BE(0), mtimeMs: digest.readUInt32BE(4) };
+}
+
 function detectDirectory(assessed: AssessedImportPath): ImportDetection {
   if (/\.scriv$/i.test(assessed.name)) return { ok: true, kind: 'scrivener' };
   let top: fs.Dirent[];
@@ -87,7 +143,9 @@ function detectDirectory(assessed: AssessedImportPath): ImportDetection {
         // Stop the whole scan, not just this directory: every sibling still
         // queued would cost another readdirSync on the main process.
         if (++seen > FOLDER_SCAN_MAX_ENTRIES) return { ok: false, error: FOLDER_TOO_BIG_ERROR };
-        // Dirent.isDirectory() is false for symlinks, so links are never followed.
+        // A Windows junction is often both a directory and a link. Skip every
+        // reparse point before isDirectory(), or the scan walks outside the folder.
+        if (entry.isSymbolicLink()) continue;
         if (entry.isFile() && FOLDER_NOTE_EXTENSIONS.has(extOf(entry.name))) {
           return { ok: true, kind: 'markdown-folder' };
         }

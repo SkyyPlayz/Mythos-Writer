@@ -175,6 +175,37 @@ describe('detectImportSource — folders', () => {
     expect(detectImportSource(assessed(path.join(tmp, 'Skip')))).toEqual({ ok: true, kind: 'markdown-folder' });
   });
 
+  it('does not follow a directory junction into files outside the folder', () => {
+    const root = path.join(tmp, 'Root');
+    const outside = path.join(tmp, 'Outside');
+    fs.mkdirSync(root);
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'note.md'), '# Outside');
+    const linkAbs = path.join(root, 'Link');
+    const real = fs.readdirSync.bind(fs);
+    const spy = vi.spyOn(fs, 'readdirSync').mockImplementation(((p: fs.PathLike, opts?: { withFileTypes?: boolean }) => {
+      if (String(p) === root) {
+        return [{
+          name: 'Link',
+          isFile: () => false,
+          isDirectory: () => true,
+          isSymbolicLink: () => true,
+          isBlockDevice: () => false,
+          isCharacterDevice: () => false,
+          isFIFO: () => false,
+          isSocket: () => false,
+        }] as fs.Dirent[];
+      }
+      if (String(p) === linkAbs) return real(outside, opts as never);
+      return real(p, opts as never);
+    }) as typeof fs.readdirSync);
+    try {
+      expect(detectImportSource(assessed(root)).ok).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('accepts a folder of plain .txt chapters', () => {
     write('Chapters/01.txt', 'One');
     expect(detectImportSource(assessed(path.join(tmp, 'Chapters')))).toEqual({ ok: true, kind: 'markdown-folder' });

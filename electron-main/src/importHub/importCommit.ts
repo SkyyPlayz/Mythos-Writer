@@ -310,7 +310,7 @@ function normalizeChapters(chapters: ImportChapter[]): { chapters: NormalizedCha
   return { chapters: out, titlesCut };
 }
 
-function uniqueV2Folder(storyVaultRoot: string, manifest: Manifest, title: string): string {
+function uniqueV2Folder(storyVaultRoot: string, manifest: Manifest, title: string): { folder: string; title: string } {
   const taken = new Set<string>();
   for (const s of manifest.stories ?? []) {
     const first = (s.path ?? '').split(/[\\/]/).filter(Boolean)[0];
@@ -322,7 +322,8 @@ function uniqueV2Folder(storyVaultRoot: string, manifest: Manifest, title: strin
   while (taken.has(candidate.toLowerCase()) || fs.existsSync(path.join(storyVaultRoot, candidate))) {
     candidate = `${base} (${n++})`;
   }
-  return candidate;
+  const suffix = candidate.startsWith(base) ? candidate.slice(base.length) : '';
+  return { folder: candidate, title: suffix ? `${title}${suffix}` : title };
 }
 
 function writeV2Story(
@@ -332,8 +333,10 @@ function writeV2Story(
   chapters: NormalizedChapter[],
   nowIso: string,
 ): { entry: StoryEntry; written: WrittenStory } {
-  const folder = uniqueV2Folder(storyVaultRoot, manifest, title);
-  const written: WrittenStory = { title, chapterCount: 0, sceneCount: 0, createdRel: folder };
+  const named = uniqueV2Folder(storyVaultRoot, manifest, title);
+  const folder = named.folder;
+  const displayTitle = named.title;
+  const written: WrittenStory = { title: displayTitle, chapterCount: 0, sceneCount: 0, createdRel: folder };
   const storyId = crypto.randomUUID();
   const partDir = partDirName(1);
   const spine: BookSpineChapter[] = [];
@@ -392,7 +395,7 @@ function writeV2Story(
     // book.md last: until it exists the folder is never adopted as a story.
     const book: BookFile = {
       id: storyId,
-      title,
+      title: displayTitle,
       createdAt: nowIso,
       updatedAt: nowIso,
       spine: [{ dir: partDir, chapters: spine }],
@@ -403,7 +406,7 @@ function writeV2Story(
     throw err;
   }
   return {
-    entry: { id: storyId, title, path: folder, chapters: chapterEntries, createdAt: nowIso, updatedAt: nowIso },
+    entry: { id: storyId, title: displayTitle, path: folder, chapters: chapterEntries, createdAt: nowIso, updatedAt: nowIso },
     written,
   };
 }
@@ -698,8 +701,19 @@ export async function commitImportPlan(
     }
   }
 
-  if (noteRels.length > 0) deps.notifyNotesWritten(noteRels);
-  if (story) deps.notifyStoriesChanged();
+  // The book and notes are already on disk. A failed window notify must not
+  // turn that into a failed commit: the renderer would keep the old list and
+  // its next save could wipe the import.
+  try {
+    if (noteRels.length > 0) deps.notifyNotesWritten(noteRels);
+  } catch {
+    warnings.push('Mythos saved the import, but couldn\'t refresh open notes.');
+  }
+  try {
+    if (story) deps.notifyStoriesChanged();
+  } catch {
+    warnings.push('Mythos saved the import, but couldn\'t refresh the story list.');
+  }
 
   return {
     ok: true,

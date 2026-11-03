@@ -204,6 +204,26 @@ describe('commitImportPlan — v2 vault', () => {
     expect(book.spine[0].chapters.map((c) => c.title)).toEqual(['Chapter One: Ash', 'Chapter Two', 'Chapter Three']);
   });
 
+  it('names the second copy "(2)" in the manifest and in book.md', async () => {
+    const v = makeV2Vault();
+    const deps = v2Deps(v);
+    expect((await commitImportPlan(storyPlan(), deps)).ok).toBe(true);
+    expect((await commitImportPlan(storyPlan(), deps)).ok).toBe(true);
+    const second = storyByPath(readManifest(v.cachePath), 'The Gate (2)')[0];
+    expect(second.title).toBe('The Gate (2)');
+    const book = parseBookFile(fs.readFileSync(path.join(v.storyRoot, 'The Gate (2)', 'book.md'), 'utf-8'));
+    expect(book.title).toBe('The Gate (2)');
+  });
+
+  it('still reports success when the story-list refresh throws after the book is on disk', async () => {
+    const v = makeV2Vault();
+    const deps = v2Deps(v);
+    deps.notifyStoriesChanged = vi.fn(() => { throw new Error('window gone'); });
+    const result = await commitImportPlan(storyPlan(), deps);
+    expect(result.ok).toBe(true);
+    expect(storyByPath(readManifest(v.cachePath), 'The Gate')).toHaveLength(1);
+  });
+
   it('suffixes a second import of the same title with " (2)" and keeps both', async () => {
     const v = makeV2Vault();
     const deps = v2Deps(v);

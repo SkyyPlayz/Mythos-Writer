@@ -18,7 +18,7 @@ import type {
   ImportSourceKind,
 } from './types.js';
 import { assessImportPath, SUPPORTED_IMPORT_EXTENSIONS, type AssessedImportPath } from './importSafety.js';
-import { detectImportSource } from './importDetect.js';
+import { detectImportSource, directoryContentStamp } from './importDetect.js';
 import {
   claimImportSession,
   createImportSession,
@@ -71,9 +71,18 @@ export function fanOutImportedNotes(
     } catch {
       /* the note already landed — the index catches up on the next scan */
     }
-    hooks.noteWritten(rel);
+    try {
+      hooks.noteWritten(rel);
+    } catch {
+      /* the note is on disk; one failed window send must not drop the rest */
+    }
   }
-  if (topology) hooks.topologyChanged();
+  if (!topology) return;
+  try {
+    hooks.topologyChanged();
+  } catch {
+    /* the notes are on disk; the graph catches up when it is reopened */
+  }
 }
 
 export const IMPORT_NO_VAULT_REASON =
@@ -177,7 +186,8 @@ export async function commitImportToken(
   let sourceUnchanged = false;
   try {
     const st = fs.statSync(claim.source.realPath);
-    sourceUnchanged = st.size === claim.source.size && st.mtimeMs === claim.source.mtimeMs;
+    const now = st.isDirectory() ? directoryContentStamp(claim.source.realPath) : { size: st.size, mtimeMs: st.mtimeMs };
+    sourceUnchanged = now.size === claim.source.size && now.mtimeMs === claim.source.mtimeMs;
   } catch {
     sourceUnchanged = false;
   }

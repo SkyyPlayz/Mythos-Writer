@@ -193,6 +193,19 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(JSON.stringify(story)).not.toMatch(/NCX Xhtml Chapter|SVG Xhtml Chapter/);
   });
 
+  it('a space before a media-type parameter is still a chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'c1',
+        href: 'ch1.xhtml',
+        mediaType: 'application/xhtml+xml ; charset=utf-8',
+        body: '<h1>Spaced Type Chapter</h1><p>Still read.</p>',
+      },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Spaced Type Chapter']);
+  });
+
   it('a charset parameter on application/xhtml+xml is still a chapter', async () => {
     const buf = await makeEpub([
       {

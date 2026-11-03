@@ -255,6 +255,24 @@ describe('import:commit', () => {
     expect(readManifest(manifestPath).stories).toHaveLength(1);
   });
 
+  it('refuses a folder import when a file inside changed and the folder itself did not', async () => {
+    const { deps, manifestPath } = harness();
+    registerImportHubIpc(deps);
+    const dir = path.join(tmp, 'Chapters');
+    fs.mkdirSync(dir);
+    const chapter = path.join(dir, 'one.md');
+    fs.writeFileSync(chapter, '# One\n\nOnce upon a time.');
+    const token = await previewToken(deps, dir);
+    const folderTime = fs.statSync(dir).mtimeMs;
+    fs.writeFileSync(chapter, '# One\n\nThe chapter was edited after the preview.');
+    const future = new Date(Date.now() + 60_000);
+    fs.utimesSync(chapter, future, future);
+    expect(fs.statSync(dir).mtimeMs).toBe(folderTime);
+    const r = await handleMap.get(IPC_CHANNELS.IMPORT_COMMIT)!(topEvent(), { token });
+    expect(r).toEqual({ ok: false, error: IMPORT_SOURCE_CHANGED_ERROR });
+    expect(readManifest(manifestPath).stories).toHaveLength(0);
+  });
+
   it('refuses when the source changed since the preview', async () => {
     const { deps, manifestPath } = harness();
     registerImportHubIpc(deps);
@@ -389,6 +407,21 @@ describe('fanOutImportedNotes', () => {
     const topologyChanged = vi.fn();
     fanOutImportedNotes(['a.md'], { noteChanged: () => false, noteWritten: () => {}, topologyChanged });
     expect(topologyChanged).not.toHaveBeenCalled();
+  });
+
+  it('a thrown note notification does not stop the other notes or the graph', () => {
+    const written: string[] = [];
+    const topologyChanged = vi.fn();
+    fanOutImportedNotes(['a.md', 'b.md'], {
+      noteChanged: () => true,
+      noteWritten: (rel) => {
+        written.push(rel);
+        if (rel === 'a.md') throw new Error('send failed');
+      },
+      topologyChanged,
+    });
+    expect(written).toEqual(['a.md', 'b.md']);
+    expect(topologyChanged).toHaveBeenCalledTimes(1);
   });
 
   it('a note that fails to index still gets its notification and does not stop the rest', () => {
