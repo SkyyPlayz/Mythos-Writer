@@ -17,7 +17,7 @@
   box-shadow: var(--elev-2, 0 12px 48px rgba(5, 8, 20, 0.55));
   opacity: 0.6;
 
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-body, #bfd6e8);
   user-select: none;
   pointer-events: none;
@@ -28,7 +28,7 @@
 
 .panel-drag-ghost-grip {
   color: var(--text-muted, #8a9bb0);
-  font-size: 14px;
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 
@@ -113,7 +113,7 @@
   min-height: 32px;
   flex-shrink: 0;
   color: var(--text-muted, #8a9bb0);
-  font-size: 14px;
+  font-size: var(--text-sm);
   cursor: grab;
   border-radius: 4px;
   opacity: 0;

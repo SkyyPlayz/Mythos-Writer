@@ -23,7 +23,7 @@
     "dist:mac": "npm run kokoro:fetch && electron-vite build && electron-builder --mac dmg zip --publish never",
     "dist:mac:release": "npm run kokoro:fetch && electron-vite build && electron-builder --mac dmg zip",
     "dist:linux": "npm run kokoro:fetch && electron-vite build && electron-builder --linux --publish never",
-    "build:electron": "electron-vite build",
+    "build:electron": "electron-vite build && node scripts/check-denied-deps.mjs --bundle out",
     "start": "electron .",
     "package": "npm run kokoro:fetch && electron-builder --win zip",
     "lint": "npm run lint -w frontend",
@@ -41,7 +41,7 @@
     "test:e2e:archive-quickadd": "playwright test e2e/timeline-archive-quickadd.spec.ts --reporter=list,html",
     "test:e2e:timeline-rebuild": "playwright test e2e/timeline-rebuild-sky10876.spec.ts --reporter=list,html",
     "test:e2e:timeline-wikilinks": "playwright test e2e/tests/sky-11615-timeline-wikilinks.spec.ts --reporter=list,html",
-    "test:e2e:paragraph-editing": "playwright test e2e/paragraph-editing.spec.ts --reporter=list,html",
+    "test:e2e:paragraph-editing": "playwright test e2e/paragraph-editing.spec.ts e2e/prism-prose-checks.spec.ts --reporter=list,html",
     "test:e2e:jobs-responsiveness": "playwright test e2e/tests/m12-scale-architecture-acceptance.spec.ts -g \"starting a large vault scan\" --reporter=list,html",
     "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts e2e/vault-symlink-write.spec.ts --reporter=list,html",
     "test:e2e:notes-drag": "playwright test e2e/notes-tree-drag-sky8891.spec.ts --reporter=list,html",
@@ -103,7 +103,7 @@
     "test:e2e:production-roles": "playwright test e2e/sky-11412-production-roles-e2e.spec.ts --reporter=list,html",
     "test:e2e:beta-report-reasoning-parser": "playwright test e2e/sky-11816-beta-report-reasoning-parser.spec.ts --reporter=list,html",
     "test:e2e:outline": "playwright test e2e/tests/outline-planning.spec.ts --reporter=list,html",
-    "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts --reporter=list,html",
+    "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts e2e/accent-breathe.spec.ts --reporter=list,html",
     "test:e2e:editor-format-bar": "playwright test e2e/editor-format-bar.spec.ts --reporter=list,html",
     "test:e2e:editor-page-chrome": "playwright test e2e/editor-page-chrome.spec.ts --reporter=list,html",
     "test:e2e:notes-parity": "playwright test e2e/notes-parity.spec.ts --reporter=list,html",
@@ -176,7 +176,7 @@
     "electron": "44.9.1",
     "electron-builder": "^26.18.0",
     "electron-updater": "^6.8.11",
-    "electron-vite": "^5.0.0",
+    "electron-vite": "^6.0.0",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "vite": "^6.4.2"
@@ -185,7 +185,7 @@
     "undici": "^7.30.1",
     "vite": "^6.4.2",
     "nanoid": "^3.3.18",
-    "@tiptap/core": "3.32.0",
-    "@tiptap/pm": "3.32.0"
+    "@tiptap/core": "3.32.1",
+    "@tiptap/pm": "3.32.1"
   }
 }

@@ -188,7 +188,7 @@ export default function VaultOverflowMenu({
         data-testid={`vault-overflow-btn-${testIdSuffix}`}
         onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
         style={{
-          background: 'none', border: 'none', color: '#8e9db8', fontSize: 16,
+          background: 'none', border: 'none', color: '#8e9db8', fontSize: 'var(--text-base)',
           cursor: 'pointer', padding: '2px 6px', borderRadius: 6, lineHeight: 1,
         }}
       >

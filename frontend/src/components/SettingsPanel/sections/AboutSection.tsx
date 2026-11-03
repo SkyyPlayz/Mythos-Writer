@@ -52,10 +52,10 @@ export default function AboutSection() {
               border: 'var(--bw,1px) solid rgba(255,255,255,.2)',
             }}
           />
-          <div style={{ fontFamily: "'Lora',Georgia,serif", fontSize: 19, fontWeight: 600, color: '#f0f3fc', marginTop: 12 }}>
+          <div style={{ fontFamily: "'Lora',Georgia,serif", fontSize: 'var(--text-xl)', fontWeight: 600, color: '#f0f3fc', marginTop: 12 }}>
             Mythos Writer
           </div>
-          <div style={{ fontSize: 11, color: '#8e9db8', marginTop: 3 }} data-testid="about-version">
+          <div style={{ fontSize: 'var(--text-xs)', color: '#8e9db8', marginTop: 3 }} data-testid="about-version">
             {appInfo ? `v${appInfo.appVersion} · Electron ${appInfo.electronVersion} · ${appInfo.platform}` : '…'} · Liquid Neon
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
@@ -85,7 +85,7 @@ export default function AboutSection() {
           <p className="settings-hint" style={{ marginTop: 14 }}>
             The update channel (stable / beta) lives under Appearance → Updates.
           </p>
-          <div style={{ fontSize: 10, color: '#7686a2', marginTop: 8 }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: '#7686a2', marginTop: 8 }}>
             Write the world before you write the book.
           </div>
         </div>

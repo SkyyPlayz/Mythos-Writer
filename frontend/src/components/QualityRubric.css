@@ -33,14 +33,14 @@
 
 .quality-rubric-title {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dim);
 }
 
 .quality-rubric-avg {
   margin: 2px 0 0;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--accent, #0ff);
 }
 
@@ -50,7 +50,7 @@
   border: 1px solid transparent;
   border-radius: 4px;
   color: var(--text-faint);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
@@ -75,7 +75,7 @@
 
 .quality-rubric-intro {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   line-height: 1.5;
 }
@@ -108,7 +108,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
   color: rgba(255 255 255 / 0.2);
   padding: 2px;
   line-height: 1;
@@ -128,7 +128,7 @@
 
 .rubric-criterion-anchor {
   margin: 0;
-  font-size: 0.73rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
   line-height: 1.4;
@@ -136,21 +136,21 @@
 
 .rubric-criterion-title {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dim);
 }
 
 .rubric-criterion-sub {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--accent, #0ff);
   font-style: italic;
 }
 
 .rubric-criterion-question {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   line-height: 1.4;
 }
@@ -164,7 +164,7 @@
 }
 
 .rubric-stars-list li {
-  font-size: 0.76rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   line-height: 1.4;
 }
