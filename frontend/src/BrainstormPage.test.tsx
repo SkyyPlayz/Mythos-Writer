@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
@@ -2805,6 +2806,107 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
 
     fireEvent.click(screen.getByTestId('bs-chat-board-toggle'));
     expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
+  });
+
+  // Board-toggle fix (owner Q2, 2026-11-02): a board turned on by something
+  // other than the switch must still be turnable off — back to chat-only.
+  describe('Board toggle can always turn the board off', () => {
+    const boardSwitch = () => screen.getByRole('switch', { name: 'Idea Board' });
+    const expectChatOnly = () => {
+      expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
+      expect(boardSwitch()).toHaveAttribute('aria-checked', 'false');
+    };
+
+    it('board opened via the Board page: switch reads ON, OFF returns to chat-only, ON again stacks it', async () => {
+      const user = userEvent.setup();
+      seedFacts(THREE_IDEAS);
+      render(<BrainstormPage onClose={() => {}} />);
+
+      await user.click(within(screen.getByTestId('bsc-mode-seg-inline')).getByTestId('bsc-mode-board'));
+      expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+      expect(boardSwitch()).toHaveAttribute('aria-checked', 'true');
+
+      await user.click(boardSwitch());
+      expectChatOnly();
+      expect(within(screen.getByTestId('bsc-mode-seg-inline')).getByTestId('bsc-mode-chat'))
+        .toHaveAttribute('aria-pressed', 'true');
+
+      await user.click(boardSwitch());
+      expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+      expect(screen.getByTestId('bs-board-resize')).toBeInTheDocument();
+      expect(boardSwitch()).toHaveAttribute('aria-checked', 'true');
+
+      // Stays off: a further OFF is not undone by anything else on the page.
+      await user.click(boardSwitch());
+      expectChatOnly();
+    });
+
+    it('board opened by placing an idea from the chat page: OFF returns to chat-only', async () => {
+      const user = userEvent.setup();
+      render(<BrainstormPage onClose={() => {}} />);
+
+      // Stacked board on, then `+` on a collection idea jumps to the Board page.
+      await user.click(boardSwitch());
+      await user.click(screen.getByTestId('bs-coll-toggle-trope'));
+      await user.click(screen.getByRole('button', { name: 'Add The Chosen One to the Idea Board' }));
+      expect(screen.getByTestId('bsc-mode-board')).toHaveAttribute('aria-pressed', 'true');
+      expect(boardSwitch()).toHaveAttribute('aria-checked', 'true');
+
+      await user.click(boardSwitch());
+      expectChatOnly();
+    });
+
+    it('≤999 header variant (⋯ menu): the item reflects ON and turns the board off', async () => {
+      const user = userEvent.setup();
+      seedFacts(THREE_IDEAS);
+      render(<BrainstormPage onClose={() => {}} />);
+      const openMenu = async () => {
+        await user.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+        return within(screen.getByTestId('brainstorm-header-overflow-standalone-menu'));
+      };
+
+      await user.click((await openMenu()).getByTestId('bsc-mode-board'));
+      const item = (await openMenu()).getByTestId('menu-item-board-toggle');
+      expect(item).toHaveAttribute('role', 'menuitemcheckbox');
+      expect(item).toHaveAttribute('aria-checked', 'true');
+
+      await user.click(item);
+      expectChatOnly();
+      expect((await openMenu()).getByTestId('menu-item-board-toggle')).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('is keyboard reachable: Space toggles it and the state is announced via aria-checked', async () => {
+      const user = userEvent.setup();
+      seedFacts(THREE_IDEAS);
+      render(<BrainstormPage onClose={() => {}} />);
+
+      await user.click(within(screen.getByTestId('bsc-mode-seg-inline')).getByTestId('bsc-mode-board'));
+      boardSwitch().focus();
+      expect(boardSwitch()).toHaveFocus();
+      await user.keyboard(' ');
+      expectChatOnly();
+      await user.keyboard('{Enter}');
+      expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+      expect(boardSwitch()).toHaveAttribute('aria-checked', 'true');
+    });
+
+    // Guard, not a red-before-green test: pins the new `aiEnabled` gate so the
+    // switch never appears on the AI-off Board-only page (nothing to return to).
+    it('AI off (guard): no switch and no ⋯ toggle on the Board-only page', () => {
+      setAiEnabled(false);
+      seedFacts(THREE_IDEAS);
+      try {
+        render(<BrainstormPage onClose={() => {}} />);
+        expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+        expect(screen.queryByTestId('bs-chat-board-toggle')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+        expect(within(screen.getByTestId('brainstorm-header-overflow-standalone-menu'))
+          .queryByTestId('menu-item-board-toggle')).not.toBeInTheDocument();
+      } finally {
+        __resetAiEnabledForTests();
+      }
+    });
   });
 
   it('persists dragged positions to the Agent-Vault board file (debounced save)', async () => {

@@ -35,6 +35,7 @@ import {
 } from '@playwright/test';
 import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
 import {
+  brainstormPanel,
   clickBrainstormMode,
   clickChatBoardToggle,
   expectBrainstormModeVisible,
@@ -745,6 +746,34 @@ test('TC-M20-03: chat-page Board toggle stacks the canvas under the chat', async
   // Toggle back off for any subsequent chat assertions (⋯ when ≤999).
   await clickChatBoardToggle(page);
   expect(await page.locator('[data-testid="bsc-board"]').count()).toBe(0);
+});
+
+// Board-toggle fix (owner Q2, 2026-11-02): a board that is ON because the page
+// is on the Board page (not via the switch) must still turn OFF — back to a
+// chat-only view — and back ON again. The switch's aria-checked is read from
+// the DOM so the check holds at ≤999 too, where the inline copy is hidden.
+test('TC-M20-03b: Board toggle turns a board opened from the Board page off and on', async () => {
+  const boardSwitch = brainstormPanel(page).locator('[data-testid="bs-chat-board-toggle"]');
+  const board = page.locator('[data-testid="bsc-board"]');
+
+  await clickBrainstormMode(page, 'board');
+  await expect(board).toBeVisible();
+  await expect(boardSwitch).toHaveAttribute('aria-checked', 'true');
+
+  await clickChatBoardToggle(page);
+  await expect(board).toHaveCount(0);
+  await expect(page.locator('.brainstorm-input')).toBeVisible();
+  await expect(boardSwitch).toHaveAttribute('aria-checked', 'false');
+
+  await clickChatBoardToggle(page);
+  await expect(board).toBeVisible();
+  await expect(page.locator('.brainstorm-input')).toBeVisible();
+  await expect(boardSwitch).toHaveAttribute('aria-checked', 'true');
+
+  // Leave it off (chat-only) for the tests that follow.
+  await clickChatBoardToggle(page);
+  await expect(board).toHaveCount(0);
+  await expect(boardSwitch).toHaveAttribute('aria-checked', 'false');
 });
 
 // ─── TC-M20-04: chat persists to the shared agent-session store (SKY-6663) ───
