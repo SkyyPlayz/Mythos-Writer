@@ -27,7 +27,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -36,7 +35,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -212,7 +212,7 @@ test.describe.serial('SKY-11169 — Story vault picker UI (fresh profile)', () =
   let page: Page;
 
   test.beforeAll(async () => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-svp-e2e-'));
+    tmpRoot = makeTestTmp('svp-e2e');
     userData = path.join(tmpRoot, 'user-data');
     bundle = path.join(tmpRoot, 'SVP Test Vault');
     seedV2Vault(bundle);
@@ -225,7 +225,7 @@ test.describe.serial('SKY-11169 — Story vault picker UI (fresh profile)', () =
 
   test.afterAll(async () => {
     await closeElectronApp(app);
-    removeTempDirs(tmpRoot);
+    if (tmpRoot) removeRecorded(tmpRoot);
   });
 
   test('TC-SVP-01: first open migrates the registry — picker shows "Story", story-vaults.json written', async () => {
@@ -386,4 +386,8 @@ test.describe.serial('SKY-11169 — Story vault picker UI (fresh profile)', () =
     await expect(menu.getByRole('menuitem', { name: '✓ Second World', exact: true })).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: 'Story', exact: true })).toBeVisible();
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

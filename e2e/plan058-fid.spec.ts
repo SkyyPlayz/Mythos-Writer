@@ -30,7 +30,6 @@
  * keep 12px of spare on that face.
  */
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -39,7 +38,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 import { createStoryFromNavAdd } from './helpers/newStoryModal';
 import { clickStoryNav } from './helpers/navGuard';
 
@@ -621,9 +621,9 @@ test.describe('PLAN-058 Fid-a', () => {
   let notesVaultDir = '';
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-ud-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-notes-'));
+    userData = makeTestTmp('plan058-fid-ud');
+    vaultDir = makeTestTmp('plan058-fid-vault');
+    notesVaultDir = makeTestTmp('plan058-fid-notes');
     seedUserData(userData, vaultDir, notesVaultDir);
 
     const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
@@ -647,7 +647,9 @@ test.describe('PLAN-058 Fid-a', () => {
 
   test.afterAll(async () => {
     await closeElectronApp(app);
-    removeTempDirs(userData, vaultDir, notesVaultDir);
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
+    if (notesVaultDir) removeRecorded(notesVaultDir);
   });
 
   test('FD-8 setup column zoom is .9 and header plus board picker stay at 100%', async () => {
@@ -2472,3 +2474,5 @@ test.describe('PLAN-058 Fid-a', () => {
   });
 
 });
+
+test.afterAll(() => { cleanupTestTmp(); });

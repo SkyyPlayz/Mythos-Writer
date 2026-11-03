@@ -17,7 +17,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -28,6 +27,7 @@ import {
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
 import { confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from '../helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
@@ -82,7 +82,7 @@ function stripTabs(page: Page) {
 
 test('SKY-11069: BOARDS gallery → board tabs → focus-existing → restart persistence → Ctrl+W', async () => {
   test.setTimeout(180_000);
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11069-'));
+  const tempRoot = makeTestTmp('sky11069');
   const userData = path.join(tempRoot, 'userData');
   const vaultDir = path.join(tempRoot, 'story-vault');
   const notesVaultDir = path.join(tempRoot, 'notes-vault');
@@ -175,7 +175,7 @@ test('SKY-11069: BOARDS gallery → board tabs → focus-existing → restart pe
     await expect(stripTabs(page)).toHaveCount(1);
   } finally {
     await app.close().catch(() => undefined);
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    removeRecorded(tempRoot);
   }
 });
 
@@ -184,7 +184,7 @@ test('SKY-11069: BOARDS gallery → board tabs → focus-existing → restart pe
 test('F1#2: New board with NO story selected opens tab aria-selected=true', async () => {
   test.setTimeout(120_000);
   test.skip(!fs.existsSync(MAIN_JS), 'needs npm run build:electron');
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-nb-'));
+  const tempRoot = makeTestTmp('f1-nb');
   const userData = path.join(tempRoot, 'userData');
   const vaultDir = path.join(tempRoot, 'story-vault');
   const notesVaultDir = path.join(tempRoot, 'notes-vault');
@@ -213,7 +213,7 @@ test('F1#2: New board with NO story selected opens tab aria-selected=true', asyn
 test('F1#1: Create Scene form → Structure + board persist on SAME userData relaunch', async () => {
   test.setTimeout(180_000);
   test.skip(!fs.existsSync(MAIN_JS), 'needs npm run build:electron');
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-cs-'));
+  const tempRoot = makeTestTmp('f1-cs');
   const userData = path.join(tempRoot, 'userData');
   const vaultDir = path.join(tempRoot, 'story-vault');
   const notesVaultDir = path.join(tempRoot, 'notes-vault');
@@ -263,3 +263,5 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
     await app2.close();
   }
 });
+
+test.afterAll(() => { cleanupTestTmp(); });

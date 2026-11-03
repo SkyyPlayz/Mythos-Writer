@@ -38,7 +38,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -53,6 +52,7 @@ import { noteTestId } from '../helpers/notesPanel';
 import { clickStoryNav } from '../helpers/navGuard';
 import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
 import { enableNoteViewModes } from '../helpers/noteViewPrefs';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from '../helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -224,9 +224,9 @@ let page: Page;
 let storySlug: string;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-story-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-notes-'));
+  userData = makeTestTmp('sc');
+  vaultDir = makeTestTmp('sc-story');
+  notesVaultDir = makeTestTmp('sc-notes');
 
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
@@ -253,9 +253,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── AC-SC-07: Obsidian round-trip ───────────────────────────────────────────
@@ -913,9 +911,9 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
   let localNotesVaultDir: string;
 
   test.beforeAll(async () => {
-    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-'));
-    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-story-'));
-    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-notes-'));
+    localUserData = makeTestTmp('sc-pov');
+    localVaultDir = makeTestTmp('sc-pov-story');
+    localNotesVaultDir = makeTestTmp('sc-pov-notes');
     seedUserData(localUserData, localVaultDir, localNotesVaultDir);
     localApp = await launchApp(localUserData);
     localPage = await firstWindow(localApp);
@@ -924,9 +922,9 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
 
   test.afterAll(async () => {
     await localApp?.close().catch(() => {});
-    fs.rmSync(localUserData, { recursive: true, force: true });
-    fs.rmSync(localVaultDir, { recursive: true, force: true });
-    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+    removeRecorded(localUserData);
+    removeRecorded(localVaultDir);
+    removeRecorded(localNotesVaultDir);
   });
 
   test('a #Character-tagged note created via the UI appears in the POV picker and fills the field', async () => {
@@ -1013,9 +1011,9 @@ test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profil
   let localNotesVaultDir: string;
 
   test.beforeAll(async () => {
-    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-'));
-    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-story-'));
-    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-notes-'));
+    localUserData = makeTestTmp('sc-refs');
+    localVaultDir = makeTestTmp('sc-refs-story');
+    localNotesVaultDir = makeTestTmp('sc-refs-notes');
     seedUserData(localUserData, localVaultDir, localNotesVaultDir);
     localApp = await launchApp(localUserData);
     localPage = await firstWindow(localApp);
@@ -1024,9 +1022,9 @@ test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profil
 
   test.afterAll(async () => {
     await localApp?.close().catch(() => {});
-    fs.rmSync(localUserData, { recursive: true, force: true });
-    fs.rmSync(localVaultDir, { recursive: true, force: true });
-    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+    removeRecorded(localUserData);
+    removeRecorded(localVaultDir);
+    removeRecorded(localNotesVaultDir);
   });
 
   test('a character note created via the UI appears in CHARACTERS; × removes it from this scene without deleting the note; + re-adds it', async () => {
@@ -1113,9 +1111,9 @@ test.describe('SKY-11213 — Create Scene from Setup (no AI draft)', () => {
   let localNotesVaultDir: string;
 
   test.beforeAll(async () => {
-    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11213-'));
-    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11213-story-'));
-    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11213-notes-'));
+    localUserData = makeTestTmp('sky11213');
+    localVaultDir = makeTestTmp('sky11213-story');
+    localNotesVaultDir = makeTestTmp('sky11213-notes');
 
     seedUserData(localUserData, localVaultDir, localNotesVaultDir);
     localApp = await launchApp(localUserData);
@@ -1129,9 +1127,9 @@ test.describe('SKY-11213 — Create Scene from Setup (no AI draft)', () => {
 
   test.afterAll(async () => {
     await localApp?.close().catch(() => {});
-    fs.rmSync(localUserData, { recursive: true, force: true });
-    fs.rmSync(localVaultDir, { recursive: true, force: true });
-    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+    removeRecorded(localUserData);
+    removeRecorded(localVaultDir);
+    removeRecorded(localNotesVaultDir);
   });
 
   test('AC-SC-18 (SKY-11213): "Create Scene" button creates a scene on disk without a draft', async () => {

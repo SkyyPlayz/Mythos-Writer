@@ -29,7 +29,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -38,6 +37,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -81,9 +81,9 @@ let page: Page;
 let userData: string;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-theme-io-user-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-theme-io-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-theme-io-notes-'));
+  userData = makeTestTmp('theme-io-user');
+  const vaultDir = makeTestTmp('theme-io-vault');
+  const notesVaultDir = makeTestTmp('theme-io-notes');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -91,7 +91,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 test('theme preset export → clipboard → import round-trips the selected preset', async () => {
@@ -130,7 +130,7 @@ test('theme preset export → clipboard → import round-trips the selected pres
   // process instead). Hook will-download directly via app.evaluate — this is
   // the standard Electron+Playwright pattern and keeps the capture entirely
   // in the test harness, not app code.
-  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-theme-io-download-'));
+  const downloadDir = makeTestTmp('theme-io-download');
   await app.evaluate(({ session }, dir) => {
     // No `require(...)` here: this callback runs in the Electron main process
     // via Playwright's serialization, which does not carry `require` into

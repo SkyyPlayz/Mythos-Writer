@@ -3,9 +3,9 @@
 //   - Right tabs: <partner> · Suggestions · Scenes · Notes & Analysis
 //   - Partner tab: card + hands (no AGENTS list); Getting Started card inside
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from '../helpers/testTmp';
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
 const STORY_ID = 'm6-e2e-story-0001';
@@ -91,7 +91,7 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m6-left-'));
+    tempRoot = makeTestTmp('m6-left');
     const userData = path.join(tempRoot, 'userData');
     seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'), { seedStory: true });
     app = await launchApp(userData);
@@ -103,7 +103,7 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => undefined);
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    if (tempRoot) removeRecorded(tempRoot);
   });
 
   test('renders exactly the three prototype zones', async () => {
@@ -155,7 +155,7 @@ test.describe('SKY-9022/M6 — right sidebar partner shell (Slice B)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m6-right-'));
+    tempRoot = makeTestTmp('m6-right');
     const userData = path.join(tempRoot, 'userData');
     seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'), { seedStory: true });
     app = await launchApp(userData);
@@ -165,7 +165,7 @@ test.describe('SKY-9022/M6 — right sidebar partner shell (Slice B)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => undefined);
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    if (tempRoot) removeRecorded(tempRoot);
   });
 
   test('tab strip is Mythos · Suggestions · Scenes · Notes & Analysis', async () => {
@@ -219,7 +219,7 @@ test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card',
   let page: Page;
 
   test.beforeAll(async () => {
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m6-fresh-'));
+    tempRoot = makeTestTmp('m6-fresh');
     const userData = path.join(tempRoot, 'userData');
     seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
     app = await launchApp(userData);
@@ -228,7 +228,7 @@ test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card',
 
   test.afterAll(async () => {
     await app.close().catch(() => undefined);
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    if (tempRoot) removeRecorded(tempRoot);
   });
 
   test('tab strip is visible immediately; Getting Started panel deleted (F3#10)', async () => {
@@ -250,7 +250,7 @@ test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)
   let page: Page;
 
   test.beforeAll(async () => {
-    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky10499-fresh-'));
+    tempRoot = makeTestTmp('sky10499-fresh');
     const userData = path.join(tempRoot, 'userData');
     seedUserData(
       userData,
@@ -264,7 +264,7 @@ test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)
 
   test.afterAll(async () => {
     await app.close().catch(() => undefined);
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    if (tempRoot) removeRecorded(tempRoot);
   });
 
   test('tab strip renders, partner tabs are clickable, Getting Started never occupies the panel as gs-aside', async () => {
@@ -288,4 +288,8 @@ test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)
     // F3#10: GettingStartedPanel deleted — never mount as gs-aside or gs-panel.
     await expect(partner.locator('[data-testid="gs-panel"]')).toHaveCount(0);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

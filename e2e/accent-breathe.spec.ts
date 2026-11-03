@@ -34,7 +34,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -44,6 +43,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { sampleFrameDeltas, summarizeFrames, type FrameStats } from './perf/ui-runtime/animationFps';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 /** Static classic slot-1 border at default intensity: hexA('#00f0ff', 1.1). */
@@ -156,9 +156,9 @@ let notesVaultDir: string;
 
 test.describe.serial('#1774 Accent breathe', () => {
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-user-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-notes-'));
+    userData = makeTestTmp('breathe-user');
+    vaultDir = makeTestTmp('breathe-vault');
+    notesVaultDir = makeTestTmp('breathe-notes');
     seedUserData(userData, vaultDir, notesVaultDir);
     app = await launchApp(userData);
     page = await firstWindow(app);
@@ -167,7 +167,7 @@ test.describe.serial('#1774 Accent breathe', () => {
   test.afterAll(async () => {
     await app?.close().catch(() => {});
     for (const dir of [userData, vaultDir, notesVaultDir]) {
-      if (dir) fs.rmSync(dir, { recursive: true, force: true });
+      if (dir) removeRecorded(dir);
     }
   });
 
@@ -239,7 +239,7 @@ test.describe.serial('#1774 Accent breathe', () => {
     const dialog = page.locator('[role="dialog"][aria-label="Settings"]');
     // Electron routes anchor-click blob downloads through session.will-download
     // (see theme-export-import.spec.ts for why this is hooked directly).
-    const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-breathe-download-'));
+    const downloadDir = makeTestTmp('breathe-download');
     await app.evaluate(({ session }, dir) => {
       session.defaultSession.once('will-download', (_event, item) => {
         item.setSavePath(`${dir}/${item.getFilename()}`);
@@ -251,7 +251,7 @@ test.describe.serial('#1774 Accent breathe', () => {
     const json = JSON.parse(fs.readFileSync(exportedPath, 'utf-8')) as Record<string, unknown>;
     expect(Object.keys(json).sort()).toEqual(['ambMode', 'frameAnim', 'setKey', 'slots', 'wp']);
     expect(json).not.toHaveProperty('accentBreathe');
-    fs.rmSync(downloadDir, { recursive: true, force: true });
+    removeRecorded(downloadDir);
   });
 
   test('ticks start no transitions and never cut or skip a user transition', async () => {
@@ -466,3 +466,5 @@ test.describe.serial('#1774 Accent breathe', () => {
     expect(perTickRecalcMs).toBeLessThanOrEqual(perChangeRecalcMs * PER_TICK_RECALC_RATIO_MAX);
   });
 });
+
+test.afterAll(() => { cleanupTestTmp(); });

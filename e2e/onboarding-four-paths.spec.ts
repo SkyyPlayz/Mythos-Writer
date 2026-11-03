@@ -13,7 +13,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -22,6 +21,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -66,7 +66,7 @@ async function createVaultViaWelcomePath(
 
 test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', () => {
   test('AC-OB-01′: WelcomeOverlay shows five path cards; Skip always visible (#33)', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-01-'));
+    const userData = makeTestTmp('4path-01');
     const app = await launchFreshApp(userData);
     try {
       const page = await firstWindow(app);
@@ -82,12 +82,12 @@ test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', (
       await expect(page.locator('[data-testid="onboarding-wizard"]')).toHaveCount(0);
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(userData, { recursive: true, force: true });
+      removeRecorded(userData);
     }
   });
 
   test('AC-OB-03′: template path creates Notes Vault skeleton via create vault modal', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-03-'));
+    const userData = makeTestTmp('4path-03');
     const app = await launchFreshApp(userData);
     try {
       const page = await firstWindow(app);
@@ -117,12 +117,12 @@ test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', (
       }, { timeout: 15_000 }).toBe('template');
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(userData, { recursive: true, force: true });
+      removeRecorded(userData);
     }
   });
 
   test('AC-OB-05′: blank path creates vault pair and lands on shell', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-05-'));
+    const userData = makeTestTmp('4path-05');
     const app = await launchFreshApp(userData);
     try {
       const page = await firstWindow(app);
@@ -148,12 +148,12 @@ test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', (
       expect(appSettings.onboardingStartMode).toBe('blank');
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(userData, { recursive: true, force: true });
+      removeRecorded(userData);
     }
   });
 
   test('AC-OB-14′: onboardingComplete:true skips WelcomeOverlay vault-require', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-14-'));
+    const userData = makeTestTmp('4path-14');
     fs.mkdirSync(userData, { recursive: true });
     const vaultDir = path.join(userData, 'vaults', 'Existing');
     fs.mkdirSync(path.join(vaultDir, 'Story Vault'), { recursive: true });
@@ -185,7 +185,7 @@ test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', (
       await expect(page.locator('[data-testid="welcome-overlay"][data-require-vault="true"]')).toHaveCount(0);
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(userData, { recursive: true, force: true });
+      removeRecorded(userData);
     }
   });
 });
@@ -204,4 +204,8 @@ test.describe('Retired OnboardingWizard ACs (F3#9)', () => {
       test.skip(true, RETIRED);
     });
   }
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

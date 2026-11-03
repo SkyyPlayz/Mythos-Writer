@@ -30,7 +30,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -39,6 +38,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -170,8 +170,8 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ds-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ds-vault-'));
+    userData = makeTestTmp('ds');
+    vaultDir = makeTestTmp('ds-vault');
     seedVault(vaultDir);
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
@@ -190,8 +190,8 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   // ─── TC-DS-01 ─────────────────────────────────────────────────────────────
@@ -433,8 +433,8 @@ test.describe('Depth Slider — cross-chapter navigation (SKY-5156)', () => {
   const contextLabel = () => page.getByTestId('msv-crumbs');
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-xc-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-xc-vault-'));
+    userData = makeTestTmp('xc');
+    vaultDir = makeTestTmp('xc-vault');
     seedCrossChapterVault(vaultDir);
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
@@ -453,8 +453,8 @@ test.describe('Depth Slider — cross-chapter navigation (SKY-5156)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('TC-DS-XC-03: Prev disabled at the very first scene of the story', async () => {
@@ -573,8 +573,8 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
   }
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gh843-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gh843-vault-'));
+    userData = makeTestTmp('gh843');
+    vaultDir = makeTestTmp('gh843-vault');
     seedBookVault(vaultDir);
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
@@ -590,8 +590,8 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('GH843-01: editing a paragraph at Full Book depth writes the owning scene file', async () => {
@@ -623,4 +623,8 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
     // and moved the caret into it — the sheet now shows two rows.
     await expect(page.locator('[data-testid^="msv-para-"]')).toHaveCount(2);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

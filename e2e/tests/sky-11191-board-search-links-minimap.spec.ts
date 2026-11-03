@@ -29,7 +29,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -38,6 +37,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from '../helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const SIDECAR = '.mythos-board.json';
@@ -48,7 +48,7 @@ const SHOTS = path.resolve(__dirname, '../../docs/screenshots/sky11717');
 // ── Fixture ─────────────────────────────────────────────────────────────────
 
 function makeTemp(slug: string): { tempRoot: string; userData: string; notesDir: string } {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `mythos-sky11191-${slug}-`));
+  const tempRoot = makeTestTmp(`sky11191-${slug}`);
   const userData = path.join(tempRoot, 'userData');
   const storyDir = path.join(tempRoot, 'story-vault');
   const notesDir = path.join(tempRoot, 'notes-vault');
@@ -415,4 +415,8 @@ test('SKY-11191 AC3: overlay and minimap persist nothing — a relaunch reconstr
   } finally {
     await second.close();
   }
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

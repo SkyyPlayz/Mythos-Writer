@@ -15,7 +15,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -25,6 +24,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { toggleStoryEditorSplit } from '../helpers/storyEditorSplit';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from '../helpers/testTmp';
 
 // SKY-8211: [data-testid=scene-editor-empty][data-variant] now only renders
 // inside SplitEditorPane (frontend/src/SplitEditorPane.tsx) — the default
@@ -194,9 +194,9 @@ test.describe('AC-ES-01 select-scene empty state', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-es01-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-es01-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-es01-notes-'));
+    userData = makeTestTmp('es01');
+    vaultDir = makeTestTmp('es01-vault');
+    notesVaultDir = makeTestTmp('es01-notes');
     seedBaseSettings(userData, vaultDir, notesVaultDir);
     seedVaultWithScene(vaultDir);
     app = await launchApp(userData);
@@ -209,9 +209,9 @@ test.describe('AC-ES-01 select-scene empty state', () => {
 
   test.afterAll(async () => {
     await app?.close();
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   test('AC-ES-01a shows empty state when story has scenes but none is selected', async () => {
@@ -241,9 +241,9 @@ test.describe('AC-ES-02 no-scenes-yet empty state', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-es02-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-es02-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-es02-notes-'));
+    userData = makeTestTmp('es02');
+    vaultDir = makeTestTmp('es02-vault');
+    notesVaultDir = makeTestTmp('es02-notes');
     seedBaseSettings(userData, vaultDir, notesVaultDir);
     seedVaultWithNoScenes(vaultDir);
     app = await launchApp(userData);
@@ -255,9 +255,9 @@ test.describe('AC-ES-02 no-scenes-yet empty state', () => {
 
   test.afterAll(async () => {
     await app?.close();
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   test('AC-ES-02a shows empty state when story exists but has no scenes', async () => {
@@ -290,3 +290,7 @@ test.describe('AC-ES-02 no-scenes-yet empty state', () => {
 // frame once BlockEditor fires onEditorReady on fast machines; no stable selector
 // window exists in the headless runner. Unit tests assert role=status, aria-live,
 // spinner presence, and "Loading your scene…" copy.
+
+test.afterAll(() => {
+  cleanupTestTmp();
+});
