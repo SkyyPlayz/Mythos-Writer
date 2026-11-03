@@ -2811,7 +2811,7 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
   // Board-toggle fix (owner Q2, 2026-11-02): a board turned on by something
   // other than the switch must still be turnable off — back to chat-only.
   describe('Board toggle can always turn the board off', () => {
-    const boardSwitch = () => screen.getByRole('switch', { name: 'Show Idea Board under chat' });
+    const boardSwitch = () => screen.getByRole('switch', { name: 'Idea Board' });
     const expectChatOnly = () => {
       expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
       expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
@@ -2857,7 +2857,7 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
       expectChatOnly();
     });
 
-    it('compact ≤999 header variant: the ⋯ item reflects ON and turns the board off', async () => {
+    it('≤999 header variant (⋯ menu): the item reflects ON and turns the board off', async () => {
       const user = userEvent.setup();
       seedFacts(THREE_IDEAS);
       render(<BrainstormPage onClose={() => {}} />);
@@ -2891,13 +2891,18 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
       expect(boardSwitch()).toHaveAttribute('aria-checked', 'true');
     });
 
-    it('AI off: no switch (Board-only page, nothing to return to)', () => {
+    // Guard, not a red-before-green test: pins the new `aiEnabled` gate so the
+    // switch never appears on the AI-off Board-only page (nothing to return to).
+    it('AI off (guard): no switch and no ⋯ toggle on the Board-only page', () => {
       setAiEnabled(false);
       seedFacts(THREE_IDEAS);
       try {
         render(<BrainstormPage onClose={() => {}} />);
         expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
         expect(screen.queryByTestId('bs-chat-board-toggle')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+        expect(within(screen.getByTestId('brainstorm-header-overflow-standalone-menu'))
+          .queryByTestId('menu-item-board-toggle')).not.toBeInTheDocument();
       } finally {
         __resetAiEnabledForTests();
       }

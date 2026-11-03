@@ -2368,18 +2368,21 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             {/* M20: Board toggle — stacks the canvas under the chat with a
                 drag-bar height (prototype bsBoardToggle). Also shown on the
                 Board page (checked) so OFF returns to chat-only; hidden when
-                AI is off because there is no chat to return to (R11). */}
+                AI is off because there is no chat to return to (R11). On the
+                legacy Board page the visible label is dropped: the pressed
+                "Idea Board" segment beside it already says it, and the header
+                there also carries + Idea and search, so this keeps it narrow. */}
             {!compact && aiEnabled && (
               <div
                 className="bs-board-toggle-wrap bs-board-toggle-wrap--standalone-inline"
-                title="Show the Idea Board below the chat"
+                title={effectiveMode === 'board' ? 'Turn the Idea Board off and go back to the chat' : 'Show the Idea Board below the chat'}
               >
-                <span>Idea Board</span>
+                {(effectiveMode === 'chat' || unifiedBoard) && <span>Idea Board</span>}
                 <button
                   type="button"
                   role="switch"
                   aria-checked={boardShown}
-                  aria-label="Show Idea Board under chat"
+                  aria-label="Idea Board"
                   className={`bs-board-toggle${boardShown ? ' bs-board-toggle--on' : ''}`}
                   onClick={toggleBoard}
                   data-testid="bs-chat-board-toggle"
