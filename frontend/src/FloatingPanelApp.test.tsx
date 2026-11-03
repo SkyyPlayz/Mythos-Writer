@@ -196,6 +196,37 @@ describe('FloatingPanelApp — handleNavCreateScene write order (GH #731 / SKY-5
   });
 });
 
+describe('FloatingPanelApp — manifest read error keeps stories', () => {
+  it('keeps the existing stories when readManifest resolves an { error } envelope', async () => {
+    let onChanged: (() => void) | undefined;
+    let failRead = false;
+    const readManifest = vi.fn(() => Promise.resolve(
+      failRead ? { error: 'Manifest is in use.' } : structuredClone(baseManifest),
+    ));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = makeApi({
+      readManifest,
+      onNavigatorManifestChanged: (cb: () => void) => {
+        onChanged = cb;
+        return () => {};
+      },
+    });
+
+    render(<FloatingPanelApp panelId="stories" />);
+    expect(await screen.findByText('Test Story')).toBeInTheDocument();
+    expect(screen.queryByText('No stories yet.')).not.toBeInTheDocument();
+
+    failRead = true;
+    await act(async () => {
+      onChanged?.();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Test Story')).toBeInTheDocument();
+    expect(screen.queryByText('No stories yet.')).not.toBeInTheDocument();
+  });
+});
+
 describe('FloatingPanelApp — writeManifest strips scene prose for IPC (SKY-6196 / SKY-8153)', () => {
   it('blanks an existing scene\'s block content in the writeManifest payload when creating a new story', async () => {
     const manifestWithProse = {

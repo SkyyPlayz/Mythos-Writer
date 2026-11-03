@@ -104,7 +104,12 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
 
   // Refresh the manifest from disk into local state.
   const refreshStories = useCallback(() => {
-    (window.api.readManifest() as Promise<Manifest>).then((m) => {
+    // setupIpcMain resolves `{ error }` when the read throws. That object is
+    // not a manifest — reject so this catch keeps the stories already shown.
+    (window.api.readManifest() as Promise<Manifest | { error: string } | null>).then((m) => {
+      if (m && typeof m === 'object' && 'error' in m) {
+        throw new Error(m.error || 'Could not read the story list.');
+      }
       setStories(m?.stories ?? []);
     }).catch(() => {});
   }, []);
