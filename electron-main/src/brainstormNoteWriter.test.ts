@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   STORY_VAULT_GUARD_ERROR,
@@ -13,11 +12,20 @@ import {
 } from './brainstormNoteWriter.js';
 import { closeDb, getSuggestion, openDb, upsertSuggestion, type DbSuggestion } from './db.js';
 import type { NoteProposal } from './brainstormAgent.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const NOW = '2026-06-15T12:00:00.000Z';
 
 function makeTmp(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return makeTestTmp(prefix);
 }
 
 function makeProposal(overrides: Partial<NoteProposal> = {}): NoteProposal {
@@ -84,7 +92,7 @@ describe('resolveProposalDestination', () => {
   });
 
   it('auto-resolves a single universe folder when no universe is selected', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'Argent', 'Characters'), { recursive: true });
 
@@ -99,7 +107,7 @@ describe('resolveProposalDestination', () => {
         destinationPath: 'Universes/Argent/Characters/Lyra Storm.md',
       });
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
@@ -132,7 +140,7 @@ describe('resolveProposalDestination', () => {
   });
 
   it('falls back to Inbox with suggested_destination when universe is ambiguous (AC-BST-11)', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'Argent'), { recursive: true });
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'Umber'), { recursive: true });
@@ -149,12 +157,12 @@ describe('resolveProposalDestination', () => {
         suggestedDestination: 'Universes/<active-universe>/Characters/Lyra Storm.md',
       });
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('Inbox fallback covers all four world kinds when universe is ambiguous (AC-BST-11)', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'A'), { recursive: true });
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'B'), { recursive: true });
@@ -172,12 +180,12 @@ describe('resolveProposalDestination', () => {
         expect(result.suggestedDestination).toBe(`Universes/<active-universe>/${dir}/X.md`);
       }
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('routes ambiguous scene cards to Inbox with suggested_destination when multiple stories exist', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Stories', 'Glass Library'), { recursive: true });
       fs.mkdirSync(path.join(notesRoot, 'Stories', 'Starfall'), { recursive: true });
@@ -194,12 +202,12 @@ describe('resolveProposalDestination', () => {
         suggestedDestination: 'Stories/<active-story>/Refuse the Mission.md',
       });
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('returns existing_note_match when a note with the same name already exists (AC-BST-06)', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'Argent', 'Characters'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, 'Universes', 'Argent', 'Characters', 'Lyra Storm.md'), '# Lyra Storm\n', 'utf-8');
@@ -216,12 +224,12 @@ describe('resolveProposalDestination', () => {
         existingPath: 'Universes/Argent/Characters/Lyra Storm.md',
       });
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('existing-note detection is case-insensitive (AC-BST-06)', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Characters'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, 'Characters', 'lyra storm.md'), '# lyra storm\n', 'utf-8');
@@ -238,12 +246,12 @@ describe('resolveProposalDestination', () => {
         existingPath: 'Characters/lyra storm.md',
       });
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('no existing-note match when vault is empty — proceeds to normal routing (AC-BST-06)', () => {
-    const notesRoot = makeTmp('mythos-notes-route-');
+    const notesRoot = makeTmp('notes-route');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'Argent', 'Characters'), { recursive: true });
 
@@ -259,18 +267,18 @@ describe('resolveProposalDestination', () => {
         destinationPath: 'Universes/Argent/Characters/New Character.md',
       });
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });
 
 describe('findNotesVaultNoteByName', () => {
   it('returns null when the vault is empty', () => {
-    const notesRoot = makeTmp('mythos-notes-find-');
+    const notesRoot = makeTmp('notes-find');
     try {
       expect(findNotesVaultNoteByName(notesRoot, 'Aria Voss')).toBeNull();
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
@@ -279,19 +287,19 @@ describe('findNotesVaultNoteByName', () => {
   });
 
   it('finds a note by exact name match', () => {
-    const notesRoot = makeTmp('mythos-notes-find-');
+    const notesRoot = makeTmp('notes-find');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Characters'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, 'Characters', 'Aria Voss.md'), '', 'utf-8');
 
       expect(findNotesVaultNoteByName(notesRoot, 'Aria Voss')).toBe('Characters/Aria Voss.md');
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('matches case-insensitively', () => {
-    const notesRoot = makeTmp('mythos-notes-find-');
+    const notesRoot = makeTmp('notes-find');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Chars'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, 'Chars', 'aria voss.md'), '', 'utf-8');
@@ -300,43 +308,43 @@ describe('findNotesVaultNoteByName', () => {
       expect(findNotesVaultNoteByName(notesRoot, 'aria voss')).toBe('Chars/aria voss.md');
       expect(findNotesVaultNoteByName(notesRoot, 'ARIA VOSS')).toBe('Chars/aria voss.md');
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('returns null for partial name matches', () => {
-    const notesRoot = makeTmp('mythos-notes-find-');
+    const notesRoot = makeTmp('notes-find');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Chars'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, 'Chars', 'Aria Voss the Elder.md'), '', 'utf-8');
 
       expect(findNotesVaultNoteByName(notesRoot, 'Aria Voss')).toBeNull();
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('skips hidden directories during the walk', () => {
-    const notesRoot = makeTmp('mythos-notes-find-');
+    const notesRoot = makeTmp('notes-find');
     try {
       fs.mkdirSync(path.join(notesRoot, '.brainstorm-staging'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, '.brainstorm-staging', 'Aria Voss.md'), '', 'utf-8');
 
       expect(findNotesVaultNoteByName(notesRoot, 'Aria Voss')).toBeNull();
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('finds a note nested multiple levels deep', () => {
-    const notesRoot = makeTmp('mythos-notes-find-');
+    const notesRoot = makeTmp('notes-find');
     try {
       fs.mkdirSync(path.join(notesRoot, 'Universes', 'Argent', 'Characters'), { recursive: true });
       fs.writeFileSync(path.join(notesRoot, 'Universes', 'Argent', 'Characters', 'Lyra Storm.md'), '', 'utf-8');
 
       expect(findNotesVaultNoteByName(notesRoot, 'Lyra Storm')).toBe('Universes/Argent/Characters/Lyra Storm.md');
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });
@@ -371,8 +379,8 @@ describe('buildFrontmatter', () => {
 
 describe('writeNoteProposal', () => {
   it('writes frontmatter plus body to the resolved Notes Vault path', () => {
-    const notesRoot = makeTmp('mythos-notes-write-');
-    const storyRoot = makeTmp('mythos-story-write-');
+    const notesRoot = makeTmp('notes-write');
+    const storyRoot = makeTmp('story-write');
     try {
       const result = writeNoteProposal({
         proposal: makeProposal(),
@@ -389,16 +397,15 @@ describe('writeNoteProposal', () => {
       expect(written).toContain('A healer who refuses the throne.');
       expect(written).not.toContain('ignored_empty:');
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
-      fs.rmSync(storyRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('refuses a leaf symlink and does not write through it', () => {
     if (process.platform === 'win32') return;
-    const notesRoot = makeTmp('mythos-notes-leaf-');
-    const storyRoot = makeTmp('mythos-story-leaf-');
-    const outside = makeTmp('mythos-outside-leaf-');
+    const notesRoot = makeTmp('notes-leaf');
+    const storyRoot = makeTmp('story-leaf');
+    const outside = makeTmp('outside-leaf');
     try {
       const destDir = path.join(notesRoot, 'Universes', 'Argent', 'Characters');
       fs.mkdirSync(destDir, { recursive: true });
@@ -416,17 +423,15 @@ describe('writeNoteProposal', () => {
       ).toThrow(/symlink leaf not allowed on write/);
       expect(fs.readFileSync(outsideFile, 'utf-8')).toBe('orig');
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
-      fs.rmSync(storyRoot, { recursive: true, force: true });
-      fs.rmSync(outside, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('refuses a parent directory symlink that escapes the Notes Vault', () => {
     if (process.platform === 'win32') return;
-    const notesRoot = makeTmp('mythos-notes-parent-');
-    const storyRoot = makeTmp('mythos-story-parent-');
-    const outside = makeTmp('mythos-outside-parent-');
+    const notesRoot = makeTmp('notes-parent');
+    const storyRoot = makeTmp('story-parent');
+    const outside = makeTmp('outside-parent');
     try {
       const argentDir = path.join(notesRoot, 'Universes', 'Argent');
       fs.mkdirSync(argentDir, { recursive: true });
@@ -442,14 +447,12 @@ describe('writeNoteProposal', () => {
       ).toThrow(/symlink|Path traversal denied/);
       expect(fs.readdirSync(outside)).toEqual([]);
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
-      fs.rmSync(storyRoot, { recursive: true, force: true });
-      fs.rmSync(outside, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('throws STORY_VAULT_GUARD_ERROR and creates no file when destination escapes into Story Vault', () => {
-    const root = makeTmp('mythos-root-');
+    const root = makeTmp('root');
     const notesRoot = path.join(root, 'Notes Vault');
     const storyRoot = path.join(root, 'Story Vault');
     fs.mkdirSync(notesRoot, { recursive: true });
@@ -463,14 +466,14 @@ describe('writeNoteProposal', () => {
       })).toThrow(STORY_VAULT_GUARD_ERROR);
       expect(fs.existsSync(path.join(storyRoot, 'Manuscript', 'Lyra.md'))).toBe(false);
     } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });
 
 describe('dismissPendingBrainstormProposals', () => {
   it('rejects only pending brainstorm proposal rows', () => {
-    const vault = makeTmp('mythos-proposals-db-');
+    const vault = makeTmp('proposals-db');
     openDb(vault);
     try {
       const base: DbSuggestion = {
@@ -503,7 +506,7 @@ describe('dismissPendingBrainstormProposals', () => {
       expect(getSuggestion('non-proposal')?.status).toBe('proposed');
     } finally {
       closeDb();
-      fs.rmSync(vault, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });
@@ -576,8 +579,8 @@ describe('renderProposalMarkdown', () => {
 
 describe('writeNoteProposal Relationships integration (SKY-9203)', () => {
   it('links a pre-existing vault note the body mentions, and only that note', () => {
-    const notesRoot = makeTmp('mythos-notes-rel-');
-    const storyRoot = makeTmp('mythos-story-rel-');
+    const notesRoot = makeTmp('notes-rel');
+    const storyRoot = makeTmp('story-rel');
     try {
       const locDir = path.join(notesRoot, 'Universes', 'Argent', 'Locations');
       fs.mkdirSync(locDir, { recursive: true });
@@ -598,8 +601,7 @@ describe('writeNoteProposal Relationships integration (SKY-9203)', () => {
       expect(written).not.toContain('[[Ghost Keep]]');
       expect(written).toContain('fears the Ghost Keep.');
     } finally {
-      fs.rmSync(notesRoot, { recursive: true, force: true });
-      fs.rmSync(storyRoot, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });

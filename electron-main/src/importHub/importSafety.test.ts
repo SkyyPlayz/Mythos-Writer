@@ -2,7 +2,6 @@
 // container caps/macros, size cap, path shape, unknown-type fallback.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { Document, Packer, Paragraph } from 'docx';
@@ -14,15 +13,24 @@ import {
   SUPPORTED_IMPORT_EXTENSIONS,
   ZIP_MAX_ENTRIES,
 } from './importSafety.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmp: string;
 
 beforeEach(() => {
-  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'import-safety-')));
+  tmp = makeTestTmp('import-safety');
 });
 
 afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 function write(name: string, content: Buffer | string): string {

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
@@ -11,6 +10,15 @@ import { JobQueue, type SpawnedWorker, type SpawnWorker } from './jobs/jobQueue.
 import { getBackgroundJob, countScanCoverage } from './jobs/jobsDb.js';
 import { runSyntheticLoadJob } from './jobs/handlers/syntheticLoadJob.js';
 import type { JobEvent, WorkerInMessage, WorkerInput, WorkerOutMessage } from './jobs/types.js';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp, removeRecorded } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+  removeRecorded: (p: string) => void;
+};
 
 /**
  * SKY-10764 / SKY-10779 — independent acceptance-test verifier (QA, non-author)
@@ -66,14 +74,14 @@ const spawnScripted: SpawnWorker = (input) => {
 
 describe('M12.1 — background job/queue infrastructure (acceptance)', () => {
   beforeEach(() => {
-    scriptedTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobqueue-acceptance-'));
+    scriptedTmpDir = makeTestTmp('jobqueue-acceptance');
     spawned = [];
     openDb(scriptedTmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(scriptedTmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   describe('AC2 — a job killed mid-run resumes from its last checkpoint, not from scratch', () => {
@@ -370,7 +378,7 @@ describe.skip('AC1 — a queued job runs off the UI/renderer thread without bloc
   let blockedMaxGap = 0;
 
   beforeAll(() => {
-    compiledDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobworker-acceptance-build-'));
+    compiledDir = makeTestTmp('jobworker-acceptance-build');
     execFileSync(
       process.execPath,
       [
@@ -391,7 +399,7 @@ describe.skip('AC1 — a queued job runs off the UI/renderer thread without bloc
   }, 120_000);
 
   afterAll(() => {
-    fs.rmSync(compiledDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   const spawnRealWorker: SpawnWorker = (input: WorkerInput) =>
@@ -450,13 +458,13 @@ describe.skip('AC1 — a queued job runs off the UI/renderer thread without bloc
   }, 30_000);
 
   beforeEach(() => {
-    realTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobqueue-acceptance-real-'));
+    realTmpDir = makeTestTmp('jobqueue-acceptance-real');
     openDb(realTmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(realTmpDir, { recursive: true, force: true });
+    removeRecorded(realTmpDir);
   });
 
   it(

@@ -5,7 +5,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   loadBrainstormSettings,
@@ -19,9 +18,18 @@ import {
   moveVaultFile,
   readVaultFile,
 } from './vault.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 function makeTmp(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return makeTestTmp(prefix);
 }
 
 function joinPosix(...segs: string[]): string {
@@ -90,12 +98,11 @@ describe('Brainstorm routing — staging + resolve flow', () => {
   let notesRoot: string;
 
   beforeEach(() => {
-    userData = makeTmp('mythos-bsr-ud-');
-    notesRoot = makeTmp('mythos-bsr-notes-');
+    userData = makeTmp('bsr-ud');
+    notesRoot = makeTmp('bsr-notes');
   });
   afterEach(() => {
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(notesRoot, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('default mode writes the file straight to the seeded category folder', () => {

@@ -2,7 +2,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import {
@@ -58,6 +57,15 @@ import {
   listBetaReports,
   getBetaReport,
 } from './db.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
   return {
@@ -85,12 +93,12 @@ describe('DB lifecycle', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('creates state.db under <vault>/.mythos/', () => {
@@ -117,12 +125,12 @@ describe('migrations', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('sets user_version to latest on first open', () => {
@@ -167,13 +175,13 @@ describe('suggestions', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and lists a suggestion', () => {
@@ -224,13 +232,13 @@ describe('audit_log', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and lists an audit entry', () => {
@@ -269,13 +277,13 @@ describe('timeline_entries', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and lists a timeline entry', () => {
@@ -320,13 +328,13 @@ describe('generation_log', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts a success row and reads it back', () => {
@@ -501,13 +509,13 @@ describe('getSuggestion and budget helpers', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('getSuggestion returns null for unknown id', () => {
@@ -562,13 +570,13 @@ describe('provenance', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and retrieves a provenance entry by id', () => {
@@ -658,12 +666,12 @@ describe('world DB migration — entity tables', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-entity-'));
+    tmpDir = makeTestTmp('db-entity');
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('sets user_version to 27 on fresh vault', () => {
@@ -765,13 +773,13 @@ describe('entity_index CRUD', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-ei-'));
+    tmpDir = makeTestTmp('db-ei');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function makeEntity(overrides: Partial<Parameters<typeof upsertEntityIndex>[0]> = {}) {
@@ -834,7 +842,7 @@ describe('entity_relationships CRUD', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-er-'));
+    tmpDir = makeTestTmp('db-er');
     openDb(tmpDir);
     const now = new Date().toISOString();
     upsertEntityIndex({ id: 'e-a', type: 'character', name: 'Aria', aliases: null, tags: null, status: 'active', core_fields: null, custom_fields: null, notes_text: null, file_path: 'entities/characters/e-a.md', created_at: now, updated_at: now });
@@ -843,7 +851,7 @@ describe('entity_relationships CRUD', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and lists relationships', () => {
@@ -873,7 +881,7 @@ describe('scene_entity_links CRUD', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-sel-'));
+    tmpDir = makeTestTmp('db-sel');
     openDb(tmpDir);
     const now = new Date().toISOString();
     upsertEntityIndex({ id: 'ent-x', type: 'character', name: 'X', aliases: null, tags: null, status: 'active', core_fields: null, custom_fields: null, notes_text: null, file_path: 'entities/characters/ent-x.md', created_at: now, updated_at: now });
@@ -881,7 +889,7 @@ describe('scene_entity_links CRUD', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and lists scene links', () => {
@@ -911,13 +919,13 @@ describe('entity_fts', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-fts-'));
+    tmpDir = makeTestTmp('db-fts');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('upserts and searches entity FTS', () => {
@@ -940,13 +948,13 @@ describe('scene_snapshots / SKY-1611', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-drafts-'));
+    tmpDir = makeTestTmp('drafts');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('creates a snapshot and lists it (no content in list)', () => {
@@ -1033,13 +1041,13 @@ describe('continuity_issues table', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function makeIssue(overrides: Partial<Parameters<typeof insertContinuityIssue>[0]> = {}) {
@@ -1178,13 +1186,13 @@ describe('listContinuityIssuesByScene', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function makeIssue(overrides: Partial<Parameters<typeof insertContinuityIssue>[0]> = {}) {
@@ -1255,7 +1263,7 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
   const ISSUE_COUNT = 5000;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-perf-'));
+    tmpDir = makeTestTmp('db-perf');
     const db = openDb(tmpDir);
     db.exec('BEGIN');
     const stmt = db.prepare(
@@ -1280,7 +1288,7 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   // Shared CI runners see occasional scheduling/GC jitter that can push a single
@@ -1330,13 +1338,13 @@ describe('archive_audit_log table', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function makeAuditEntry(overrides: Partial<Parameters<typeof insertArchiveAuditLog>[0]> = {}) {
@@ -1386,12 +1394,12 @@ describe('pruneGenerationLog', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-prune-'));
+    tmpDir = makeTestTmp('db-prune');
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function makeGenRow(id: string, createdAt: string, agent = 'writing-assistant', tokens = 100) {
@@ -1465,12 +1473,12 @@ describe('pruneArchiveHistory', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-prune-arch-'));
+    tmpDir = makeTestTmp('db-prune-arch');
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function makeIssue(overrides: Partial<Parameters<typeof insertContinuityIssue>[0]> = {}) {
@@ -1610,13 +1618,13 @@ describe('beta_reports table', () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    tmpDir = makeTestTmp('db');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and fetches a report by id', () => {
@@ -1654,12 +1662,12 @@ describe('SKY-11084 migration self-heal — v31 DB missing v30 tables', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11084-'));
+    tmpDir = makeTestTmp('sky11084');
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('creates vault_index_cache and fact_decisions on a DB that jumped v29→v31', () => {

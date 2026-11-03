@@ -2,10 +2,9 @@
  * PLAN-058 Lane 2b — AGENT_VAULT_CHECK guard (red-on-revert).
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import type { AppSettings } from './ipc.js';
 import { SETTINGS_DEFAULTS, loadAppSettingsFrom } from './appSettingsLoad.js';
@@ -24,9 +23,22 @@ import { checkCallBudget } from './budget.js';
 import { DatabaseSync } from 'node:sqlite';
 import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 import { SecretsStore } from './secrets/index.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
+
+afterEach(() => {
+  cleanupTestTmp();
+});
 
 function mkSettingsStore() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-gate-settings-'));
+  const dir = makeTestTmp('vault-gate-settings');
   const settingsPath = path.join(dir, 'app-settings.json');
   const store = new SecretsStore({
     filePath: path.join(dir, 'secrets.json'),

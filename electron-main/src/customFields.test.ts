@@ -1,13 +1,21 @@
 // SKY-207: unit tests for custom field schema persistence
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { readFieldDefs, writeFieldDefs } from './customFields.js';
 import type { CustomFieldDef } from './ipc.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 function tmpVault(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cf-test-'));
+  return makeTestTmp('cf-test');
 }
 
 describe('customFields', () => {
@@ -15,6 +23,10 @@ describe('customFields', () => {
 
   beforeEach(() => {
     vaultRoot = tmpVault();
+  });
+
+  afterEach(() => {
+    cleanupTestTmp();
   });
 
   it('returns [] when fields.json is missing', () => {

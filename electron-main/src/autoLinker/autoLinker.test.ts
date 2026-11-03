@@ -1,7 +1,6 @@
 // Auto Note Linker unit tests (SKY-6225)
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { buildTrie, findMatches, type NoteEntry } from './trie.js';
 import { formatText } from './formatter.js';
@@ -12,6 +11,15 @@ import {
   DEFAULT_AUTO_LINKER_SETTINGS,
   type AutoLinkerSettings,
 } from './scanner.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 // ─── Trie tests ───
 
@@ -129,11 +137,11 @@ describe('formatText', () => {
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-linker-test-'));
+  tmpDir = makeTestTmp('auto-linker-test');
 });
 
 afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 function writeNote(name: string, content: string, dir?: string): string {

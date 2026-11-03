@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   openDb,
@@ -24,6 +23,15 @@ import {
   type DbContinuityIssue,
   type DbSuggestionSnapshot,
 } from './db.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 function makeSuggestion(overrides: Partial<DbSuggestion> = {}): DbSuggestion {
   return {
@@ -70,13 +78,13 @@ function makeContinuityIssue(overrides: Partial<DbContinuityIssue> = {}): DbCont
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ipc-sug-'));
+  tmpDir = makeTestTmp('ipc-sug');
   openDb(tmpDir);
 });
 
 afterEach(() => {
   closeDb();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // TC-DB-25-1: FTS search for a known rationale keyword returns the matching suggestion_id.

@@ -12,7 +12,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 
 vi.mock('electron', () => ({
@@ -23,6 +22,15 @@ vi.mock('@anthropic-ai/sdk', () => ({ default: vi.fn() }));
 
 import Anthropic from '@anthropic-ai/sdk';
 import { openDb, closeDb } from './db.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 // ─── Minimal AppSettings stubs ───────────────────────────────────────────────
 
@@ -87,13 +95,13 @@ describe('Brainstorm — disabled path', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-disabled-'));
+    tmpDir = makeTestTmp('disabled');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('throws a disabled error before calling Anthropic', async () => {
@@ -125,13 +133,13 @@ describe('Writing Assistant — disabled path', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-disabled-wa-'));
+    tmpDir = makeTestTmp('disabled-wa');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('throws a disabled error before calling Anthropic', async () => {

@@ -1,12 +1,20 @@
 // #1765 — RTF → blocks, and the standalone .rtf importer.
 
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { blocksToProse } from './blocks.js';
 import { ImportUserError, MAX_RTF_GROUP_DEPTH, parseRtf, rtfFileToPlan, rtfToBlocks } from './rtf.js';
 import { rtfToText } from '../storyImport.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const doc = (body: string, header = '\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\froman Times New Roman;}}') => `{\\rtf1${header}\n${body}}`;
 const prose = (rtf: string) => blocksToProse(rtfToBlocks(rtf));
@@ -150,8 +158,8 @@ describe('rtfToBlocks — destinations', () => {
 
 describe('rtfFileToPlan', () => {
   let tmp: string;
-  beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rtf-')); });
-  afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+  beforeEach(() => { tmp = makeTestTmp('rtf'); });
+  afterEach(() => { cleanupTestTmp(); });
 
   it('splits a manuscript on "Chapter One" lines, keeping formatting and scene breaks', async () => {
     const body = [

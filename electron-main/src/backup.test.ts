@@ -1,22 +1,25 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import JSZip from 'jszip';
 import { backupAppData, restoreAppData, redactAppSettings, safeRestoreJoin, BACKUP_SCHEMA_VERSION } from './backup.js';
+import { createRequire } from 'node:module';
 
-const tmpDirs: string[] = [];
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 function mkTmp(): string {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'mw-backup-test-'));
-  tmpDirs.push(d);
+  const d = makeTestTmp('backup-test');
   return d;
 }
 
 afterEach(() => {
-  for (const d of tmpDirs.splice(0)) {
-    try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* best-effort */ }
-  }
+  cleanupTestTmp();
 });
 
 describe('backupAppData', () => {

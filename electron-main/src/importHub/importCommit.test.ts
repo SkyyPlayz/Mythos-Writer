@@ -3,7 +3,6 @@
 // rescan) and a legacy manifest.json vault.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createMythosVault } from '../mythosFormat/createVault.js';
 import { mythosRootForStoryVault, readMythosFile, resolveManifestPath } from '../mythosFormat/mythosJson.js';
@@ -30,15 +29,24 @@ import {
   truncateUtf8,
   type ImportCommitDeps,
 } from './importCommit.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmp: string;
 
 beforeEach(() => {
-  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'import-commit-')));
+  tmp = makeTestTmp('import-commit');
 });
 
 afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 const NOW = new Date('2026-10-01T12:00:00.000Z');

@@ -2,13 +2,21 @@
 // temp dir per test: a .scrivx binder plus RTF / synopsis files.
 
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseScrivenerBinder, scrivenerToPlan, SCRIVENER_MAX_BINDER_ITEMS } from './scrivener.js';
 import { scrivToStoryMarkdown } from '../storyImport.js';
 import { ImportUserError } from './rtf.js';
 import type { ImportPlan } from './types.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 /**
  * Linear-time check that holds on a slow or busy CI runner: parsing 4× the
@@ -91,8 +99,8 @@ function writeProject(dir: string, name: string, nodes: Node[], docs: Record<str
 const shape = (plan: ImportPlan) => plan.story?.chapters.map((c) => [c.title, c.scenes.map((s) => s.title)]);
 
 let tmp: string;
-beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-scriv-')); });
-afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeTestTmp('scriv'); });
+afterEach(() => { cleanupTestTmp(); });
 
 const U = (n: number) => `0000000${n}-AAAA-BBBB-CCCC-DDDDDDDDDDDD`;
 
