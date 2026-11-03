@@ -110,7 +110,7 @@ describe('AddPanelMenu (user path)', () => {
     const pageSection = screen.getByRole('region', { name: 'On this page' });
     expect(within(globalSection).getByRole('button', { name: 'Findings' })).toBeEnabled();
     expect(within(pageSection).queryAllByRole('button')).toHaveLength(0);
-    expect(within(pageSection).getByText('This page’s panels are already open.')).toBeInTheDocument();
+    expect(within(pageSection).getByText("This page's panels are already open.")).toBeInTheDocument();
 
     const results = await axe(screen.getByTestId('grs-add-panel-popover'));
     expect(results.violations).toEqual([]);

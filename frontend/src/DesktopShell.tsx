@@ -6311,6 +6311,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const shellPageDefaults = shellPage ? pageChromeDefaults(shellPage) : null;
   const placedShellPanels: DesignPanelId[] = [
     ...defaultGlobalSidebars().right,
+    // Bridge: today's partner panel (AgentHubPanel) still hosts the Suggestions tab, so the
+    // catalog must not offer a second copy until the partner panel is split (later lane).
+    'suggestions',
     ...addedGlobalPanels,
     ...(shellPageDefaults?.left ? [shellPageDefaults.left] : []),
     ...(shellPageDefaults?.right ? [shellPageDefaults.right] : []),

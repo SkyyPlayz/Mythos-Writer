@@ -144,6 +144,8 @@ test.describe('widget shell ON — page panels open inside their page', () => {
     await expect(findings).toHaveAttribute('data-kind', 'full');
     await expect(page.getByTestId('grs-add-panel-item-navBeta')).toHaveCount(0);
     await expect(page.getByTestId('grs-add-panel-item-betaPanel')).toHaveCount(0);
+    // Bridge: the partner panel still hosts the Suggestions tab, so it is not offered twice.
+    await expect(page.getByTestId('grs-add-panel-item-suggestions')).toHaveCount(0);
     await expect(globalSection.locator('[data-scope^="page:"]')).toHaveCount(0);
     await expect(pageSection.locator('[data-scope="global"]')).toHaveCount(0);
 
@@ -175,12 +177,12 @@ test.describe('widget shell ON — page panels open inside their page', () => {
     const expand = editorInspector(page).getByRole('button', { name: 'Expand Editor inspector' });
     await expect(expand).toHaveAttribute('aria-expanded', 'false');
     await expect(expand).toBeFocused();
-    await expect(editorInspector(page).getByRole('tablist')).toBeHidden();
+    await expect(editorInspector(page).getByRole('tablist', { name: 'Editor inspector tabs' })).toBeHidden();
     expect(await editorRemounts()).toBe(0);
 
     await page.keyboard.press('Space');
     await expect(editorInspector(page).getByRole('button', { name: 'Collapse Editor inspector' })).toHaveAttribute('aria-expanded', 'true');
-    await expect(editorInspector(page).getByRole('tablist')).toBeVisible();
+    await expect(editorInspector(page).getByRole('tablist', { name: 'Editor inspector tabs' })).toBeVisible();
     expect(await editorRemounts()).toBe(0);
 
     // Docking the global sidebar away and back is a layout change too.
