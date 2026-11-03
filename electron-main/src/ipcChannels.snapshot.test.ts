@@ -1,7 +1,7 @@
 /**
  * S1a IPC channel snapshot. Records today's channel strings from
  * electron-main/src/ipc.ts (IPC_CHANNELS values), electron-main/src/preload.ts
- * (literal ipcRenderer / invokeEnvelope arguments), and ipcMain.handle / ipcMain.on
+ * (literal ipcRenderer / invokeEnvelope arguments), and ipcMain handler/listener
  * registrations under electron-main/src. Adding, removing, or renaming a channel
  * fails this file's equality check. A non-literal channel argument throws.
  * No channel is added here.
@@ -453,7 +453,7 @@ function readMainFiles(): MainSource[] {
 
 function collectIpcMainChannels(ipcMap: Map<string, string>, files: readonly MainSource[]): string[] {
   const channels: string[] = [];
-  const callRe = /ipcMain\.(?:handle|on)\(\s*/g;
+  const callRe = /ipcMain\.(?:handle|handleOnce|on|once|addListener|prependListener)\(\s*/g;
   for (const file of files) {
     for (const call of callArgs(file.src, callRe)) {
       channels.push(...resolveMainArg(file.src, call.arg, call.at, ipcMap, files));
@@ -532,6 +532,28 @@ describe('ipc channel snapshot', () => {
       wrap(widgetChannel);
     `;
     expect(() => collectPreloadChannels(variable)).toThrow(/non-literal channel argument/);
+  });
+
+  it('locks live once and synthetic handleOnce/listener channel drift', () => {
+    expect(readLiveSnapshot().ipcMainChannels).toContain('app:flushBeforeQuitDone');
+
+    const files: MainSource[] = [
+      {
+        rel: 'main.ts',
+        src: [
+          "ipcMain.once('main:once', onDone);",
+          "ipcMain.handleOnce('main:handle-once', onRequest);",
+          "ipcMain.addListener('main:add-listener', onEvent);",
+          "ipcMain.prependListener('main:prepend-listener', onEvent);",
+        ].join('\n'),
+      },
+    ];
+    expect(collectIpcMainChannels(new Map(), files)).toEqual([
+      'main:add-listener',
+      'main:handle-once',
+      'main:once',
+      'main:prepend-listener',
+    ]);
   });
 
   it('goes red when a channel is added', () => {

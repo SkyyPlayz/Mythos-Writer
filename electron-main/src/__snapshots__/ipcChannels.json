@@ -892,6 +892,7 @@
     "app:backupAppData",
     "app:checkForUpdate",
     "app:cleanUninstall",
+    "app:flushBeforeQuitDone",
     "app:installUpdate",
     "app:quit",
     "app:ready",
