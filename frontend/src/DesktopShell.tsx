@@ -1395,6 +1395,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         ? await window.api.readManifest()
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
       if (storyValid && !isLoadedManifest(rawManifest)) {
+        if (superseded()) return; // SKY-11379: stale failed read must not paint shell-error.
         setBookSave(failedManifestRead());
         setError(STORY_LIST_READ_FAILURE);
         return;
