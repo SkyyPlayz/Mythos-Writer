@@ -1,5 +1,5 @@
 // F6 — vault-wide story/chapter/scene ID dedupe (scan + boot check).
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,10 +22,27 @@ import {
   surgicalReplaceBookIds,
   rebuildCacheIfDuplicated as rebuildCacheIfDuplicatedCore,
 } from './v2IdDedupe.js';
-import { writeManifest } from '../vault.js';
-import { parseBookFile } from './bookFile.js';
+import {
+  writeManifest,
+  reindexVault,
+  _setBookFileCasBeforeCompareForTests,
+  _setBookFileCasBeforeWriteForTests,
+} from '../vault.js';
+import {
+  parseBookFile,
+  serializeBookFile,
+  stringifyFenceJson,
+  type BookFile,
+} from './bookFile.js';
+import { MAX_BOOK_PROFILES, type BookProfile } from '../bookBuilder.js';
 import { parseV2SceneFile, isSceneFileName } from './sceneFiles.js';
-import { syncCanonicalFromManifest } from './v2Manifest.js';
+import {
+  syncCanonicalFromManifest,
+  saveManifestCanonical,
+  pendingBookEditFor,
+  pendingBookEditCount,
+  _clearPendingBookEditsForTests,
+} from './v2Manifest.js';
 import { resolveNotesTierFromManifest } from '../notesTierContext.js';
 
 let tmp: string;
@@ -1090,5 +1107,540 @@ describe('F6 manifestHasDuplicateIds + rebuildCacheIfDuplicated', () => {
     // Disk write-back re-IDed the copy book.
     const copyBook = fs.readFileSync(path.join(result.storyVaultPath, copyFolder, 'book.md'), 'utf-8');
     expect(copyBook).not.toContain(`id: ${origEntry.id}`);
+  });
+});
+
+describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
+  const profile: BookProfile = {
+    id: 'p1',
+    name: 'Trade paperback',
+    presetId: 'kdp-paperback',
+    styleId: 'classic',
+    language: 'en-US',
+    matter: { titlePage: true },
+    author: 'A. Writer',
+  };
+
+  afterEach(() => {
+    _setBookFileCasBeforeCompareForTests(null);
+    _setBookFileCasBeforeWriteForTests(null);
+    _clearPendingBookEditsForTests();
+  });
+
+  function storyWithProfiles(name: string): {
+    mythosRoot: string;
+    storyVaultPath: string;
+    bookPath: string;
+  } {
+    const result = createMythosVault(tmp, { name, seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    const folder = 'Profiled';
+    const abs = path.join(result.storyVaultPath, folder);
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+    const book: BookFile = {
+      id: 'profiled-story',
+      title: 'Old Title',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      spine: [
+        {
+          dir: 'Part 1',
+          chapters: [{ dir: 'Chapter 01', id: 'ch-profiled', title: 'One' }],
+        },
+      ],
+      profiles: [profile],
+      extraFrontmatter: { series: 'Ash Cycle' },
+    };
+    fs.writeFileSync(path.join(abs, 'book.md'), serializeBookFile(book));
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+      '---\nid: sc-profiled\ntitle: S\nstatus: draft\n---\ntext\n',
+    );
+    writeMythosFile(result.mythosRoot, {
+      ...readMythosFile(result.mythosRoot),
+      stories: [
+        {
+          id: 'profiled-story',
+          title: 'Old Title',
+          folder,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    return {
+      mythosRoot: result.mythosRoot,
+      storyVaultPath: result.storyVaultPath,
+      bookPath: path.join(abs, 'book.md'),
+    };
+  }
+
+  it('carries profiles and unknown frontmatter when the title changes', () => {
+    const { mythosRoot, bookPath } = storyWithProfiles('Carry');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'New Title';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    expect(() => syncCanonicalFromManifest(mythosRoot, manifest)).not.toThrow();
+    const parsed = parseBookFile(fs.readFileSync(bookPath, 'utf8'));
+    expect(parsed.title).toBe('New Title');
+    expect(parsed.profiles).toEqual([profile]);
+    expect(parsed.extraFrontmatter).toEqual({ series: 'Ash Cycle' });
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  function saveThroughWriteManifest(
+    mythosRoot: string,
+    storyVaultPath: string,
+    manifest: ReturnType<typeof scanMythosStoryVault>,
+  ) {
+    return saveManifestCanonical(resolveManifestPath(storyVaultPath), manifest, mythosRoot);
+  }
+
+  function addSibling(mythosRoot: string, storyVaultPath: string): string {
+    const folder = 'Sibling';
+    const abs = path.join(storyVaultPath, folder);
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+    fs.writeFileSync(
+      path.join(abs, 'book.md'),
+      serializeBookFile({
+        id: 'sibling-story',
+        title: 'Sibling Old',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        spine: [{ dir: 'Part 1', chapters: [{ dir: 'Chapter 01', id: 'ch-sib', title: 'Sib' }] }],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+      '---\nid: sc-sib\ntitle: S\nstatus: draft\n---\ntext\n',
+    );
+    const mythos = readMythosFile(mythosRoot);
+    writeMythosFile(mythosRoot, {
+      ...mythos,
+      stories: [
+        ...mythos.stories,
+        {
+          id: 'sibling-story',
+          title: 'Sibling Old',
+          folder,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    return path.join(abs, 'book.md');
+  }
+
+  it('refuses an over-cap profiles fence and leaves the file untouched', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('OverCap');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    const many = Array.from({ length: MAX_BOOK_PROFILES + 1 }, (_, i) => ({
+      ...profile,
+      id: `p${i}`,
+      name: `Name ${i}`,
+    }));
+    const payload = stringifyFenceJson(many);
+    const current = parseBookFile(fs.readFileSync(bookPath, 'utf8'));
+    const blocked = serializeBookFile({ ...current, profiles: undefined, profilesFenceRaw: payload });
+    fs.writeFileSync(bookPath, blocked);
+    story.title = 'New Title';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([{ event: 'book-file-profiles-fence', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain(bookPath);
+    expect(saved.bytes).toBeGreaterThan(0);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  it('does not invent profiles when book.md is missing', () => {
+    const { mythosRoot, bookPath } = storyWithProfiles('Create');
+    fs.rmSync(bookPath);
+    const manifest = scanMythosStoryVault(mythosRoot);
+    syncCanonicalFromManifest(mythosRoot, manifest);
+    const text = fs.readFileSync(bookPath, 'utf8');
+    expect(text).not.toContain('mythos:book-profiles');
+    expect(text).not.toMatch(/^isbn:/m);
+    expect(text).not.toMatch(/^author:/m);
+    const parsed = parseBookFile(text);
+    expect(parsed.profiles).toBeUndefined();
+    expect(parsed.extraFrontmatter).toBeUndefined();
+    expect(parsed.id).toBe('profiled-story');
+  });
+
+  it('a compare-and-swap give-up keeps the edit pending and the next save writes it', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Exhaust');
+    const original = fs.readFileSync(bookPath, 'utf8');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'New Title';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    const chapter = story.chapters.find((c) => c.id === 'ch-profiled');
+    expect(chapter).toBeTruthy();
+    if (chapter) chapter.title = 'Renamed Chapter';
+
+    let races = 0;
+    _setBookFileCasBeforeCompareForTests(() => {
+      races += 1;
+      fs.writeFileSync(bookPath, `${original}\n<!-- racer ${races} -->\n`);
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let saved: { bytes: number; warnings: Array<{ event: string; storyId?: string }> } | undefined;
+    let warnPayloads: unknown[] = [];
+    try {
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+      warnPayloads = warn.mock.calls.map((call) => call[0]).filter((line) => {
+        return typeof line === 'string' && line.includes('book-file-cas-exhausted');
+      });
+    } finally {
+      warn.mockRestore();
+      _setBookFileCasBeforeCompareForTests(null);
+    }
+    expect(races).toBe(3);
+    expect(saved?.warnings).toEqual([{ event: 'book-file-cas-exhausted', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved?.warnings)).not.toContain(bookPath);
+    expect(warnPayloads).toEqual([JSON.stringify({ event: 'book-file-cas-exhausted', storyId: 'profiled-story' })]);
+    expect(JSON.stringify(warnPayloads[0])).not.toContain(bookPath);
+    expect(JSON.stringify(warnPayloads[0])).not.toContain('Trade paperback');
+    expect(Object.keys(saved?.warnings[0] ?? {})).toEqual(['event', 'storyId']);
+    expect(pendingBookEditCount()).toBe(1);
+    expect(pendingBookEditFor('profiled-story')).toEqual({
+      storyId: 'profiled-story',
+      title: 'New Title',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    });
+
+    story.title = 'Newer Title';
+    story.updatedAt = '2026-07-01T00:00:00.000Z';
+    let racesAgain = 0;
+    _setBookFileCasBeforeCompareForTests(() => {
+      racesAgain += 1;
+      fs.writeFileSync(bookPath, `${original}\n<!-- racer again ${racesAgain} -->\n`);
+    });
+    const second = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    _setBookFileCasBeforeCompareForTests(null);
+    expect(racesAgain).toBe(3);
+    expect(second.warnings).toEqual([{ event: 'book-file-cas-exhausted', storyId: 'profiled-story' }]);
+    expect(pendingBookEditCount()).toBe(1);
+    expect(pendingBookEditFor('profiled-story')?.title).toBe('Newer Title');
+    expect(Array.isArray(pendingBookEditFor('profiled-story'))).toBe(false);
+
+    const keptRaw = fs.readFileSync(bookPath, 'utf8');
+    expect(keptRaw).not.toContain('New Title');
+    expect(keptRaw).not.toContain('Newer Title');
+    expect(keptRaw).not.toContain('Renamed Chapter');
+    const kept = parseBookFile(keptRaw);
+    expect(kept.title).toBe('Old Title');
+    expect(kept.spine[0].chapters[0].title).toBe('One');
+    expect(kept.profiles).toEqual([profile]);
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('Newer Title');
+    expect(chapter?.title).toBe('Renamed Chapter');
+
+    const retried = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(retried.warnings).toEqual([]);
+    expect(pendingBookEditFor('profiled-story')).toBeUndefined();
+    expect(pendingBookEditCount()).toBe(0);
+    const healed = parseBookFile(fs.readFileSync(bookPath, 'utf8'));
+    expect(healed.title).toBe('Newer Title');
+    expect(healed.spine[0].chapters[0].title).toBe('Renamed Chapter');
+    expect(healed.title).not.toBe('New Title');
+    expect(healed.profiles).toEqual([profile]);
+    expect(healed.extraFrontmatter).toEqual({ series: 'Ash Cycle' });
+    expect(fs.readFileSync(bookPath, 'utf8')).not.toContain('racer');
+  });
+
+  it('through writeManifest, a write failure after compare warns, keeps one pending edit, and retries', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('WriteFail');
+    const before = fs.readFileSync(bookPath, 'utf8');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'After Compare';
+    story.updatedAt = '2026-08-01T00:00:00.000Z';
+    _setBookFileCasBeforeWriteForTests(() => {
+      const err = new Error(`${bookPath} ENOSPC Trade paperback`) as NodeJS.ErrnoException;
+      err.code = 'ENOSPC';
+      throw err;
+    });
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    _setBookFileCasBeforeWriteForTests(null);
+    expect(saved.warnings).toEqual([{ event: 'book-file-io', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain(bookPath);
+    expect(JSON.stringify(saved.warnings)).not.toContain('ENOSPC');
+    expect(JSON.stringify(saved.warnings)).not.toContain('Trade paperback');
+    expect(Object.keys(saved.warnings[0] ?? {})).toEqual(['event', 'storyId']);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(before);
+    expect(pendingBookEditCount()).toBe(1);
+    expect(pendingBookEditFor('profiled-story')?.title).toBe('After Compare');
+    const retried = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(retried.warnings).toEqual([]);
+    expect(pendingBookEditFor('profiled-story')).toBeUndefined();
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).title).toBe('After Compare');
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).profiles).toEqual([profile]);
+  });
+
+  it('through writeManifest, an EACCES skip warns with only the event code and story id', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Eacces');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const before = fs.readFileSync(bookPath, 'utf8');
+    const live = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(live).toBeTruthy();
+    if (!live) return;
+    live.title = 'New Title';
+    live.updatedAt = '2026-06-01T00:00:00.000Z';
+    const orig = fs.readFileSync;
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation(((p: fs.PathOrFileDescriptor, ...args: unknown[]) => {
+      if (p === bookPath) {
+        const err = new Error(`${bookPath} Trade paperback`) as NodeJS.ErrnoException;
+        err.code = 'EACCES';
+        throw err;
+      }
+      return orig.call(fs, p, ...(args as [BufferEncoding?]));
+    }) as typeof fs.readFileSync);
+    let saved: { bytes: number; warnings: Array<{ event: string; storyId?: string }> } | undefined;
+    try {
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(saved?.warnings).toEqual([{ event: 'book-file-io', storyId: 'profiled-story' }]);
+    const warningJson = JSON.stringify(saved?.warnings);
+    expect(warningJson).not.toContain(bookPath);
+    expect(warningJson).not.toContain('Trade paperback');
+    expect(warningJson).not.toContain('EACCES');
+    expect(Object.keys(saved?.warnings[0] ?? {})).toEqual(['event', 'storyId']);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(before);
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+    expect(live.title).toBe('New Title');
+  });
+
+  it('aborts on EISDIR and does not replace the path with an empty book', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Eisdir');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'New Title';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    fs.rmSync(bookPath);
+    fs.mkdirSync(bookPath);
+    fs.writeFileSync(path.join(bookPath, 'keep.txt'), 'keep');
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([{ event: 'book-file-io', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain(bookPath);
+    expect(fs.statSync(bookPath).isDirectory()).toBe(true);
+    expect(fs.readFileSync(path.join(bookPath, 'keep.txt'), 'utf8')).toBe('keep');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  it('aborts on malformed spine content and leaves the bytes untouched', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Malformed');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    const blocked = [
+      '---',
+      'id: profiled-story',
+      'title: Old Title',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# Old Title',
+      '',
+      '<!-- mythos:spine',
+      'not json',
+      '-->',
+      '',
+    ].join('\n');
+    fs.writeFileSync(bookPath, blocked);
+    const siblingBook = addSibling(mythosRoot, storyVaultPath);
+    const withSibling = scanMythosStoryVault(mythosRoot);
+    const bad = withSibling.stories.find((s) => s.id === 'profiled-story');
+    const sibling = withSibling.stories.find((s) => s.id === 'sibling-story');
+    expect(bad && sibling).toBeTruthy();
+    if (!bad || !sibling) return;
+    fs.writeFileSync(bookPath, blocked);
+    bad.title = 'New Title';
+    bad.updatedAt = '2026-06-01T00:00:00.000Z';
+    sibling.title = 'Sibling New';
+    sibling.updatedAt = '2026-06-01T00:00:00.000Z';
+    const writes: string[] = [];
+    const origWrite = fs.writeFileSync;
+    const origRename = fs.renameSync;
+    const writeSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(((
+      p: fs.PathOrFileDescriptor,
+      data: string | NodeJS.ArrayBufferView,
+      options?: fs.WriteFileOptions,
+    ) => {
+      writes.push(String(p));
+      return origWrite.call(fs, p, data, options);
+    }) as typeof fs.writeFileSync);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((from: fs.PathLike, to: fs.PathLike) => {
+      writes.push(String(to));
+      return origRename.call(fs, from, to);
+    }) as typeof fs.renameSync);
+    let saved: ReturnType<typeof saveThroughWriteManifest>;
+    try {
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, withSibling);
+    } finally {
+      writeSpy.mockRestore();
+      renameSpy.mockRestore();
+    }
+    expect(writes).not.toContain(bookPath);
+    expect(saved.warnings).toEqual([{ event: 'book-file-malformed', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain(bookPath);
+    expect(JSON.stringify(saved.warnings)).not.toContain('not json');
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
+    expect(parseBookFile(fs.readFileSync(siblingBook, 'utf8')).title).toBe('Sibling New');
+    const mythos = readMythosFile(mythosRoot);
+    expect(mythos.stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+    expect(mythos.stories.find((s) => s.id === 'sibling-story')?.title).toBe('Sibling New');
+    expect(pendingBookEditCount()).toBe(0);
+  });
+
+  it('a title or synopsis that names a fence does not lock the next save', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('FenceWords');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'Marked <!-- mythos:spine';
+    story.synopsis = 'Blurb <!-- mythos:book-profiles tail';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    const first = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(first.warnings).toEqual([]);
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).title).toBe('Marked <!-- mythos:spine');
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).profiles).toEqual([profile]);
+
+    story.title = 'After';
+    story.synopsis = '<!-- mythos:spine';
+    story.updatedAt = '2026-07-01T00:00:00.000Z';
+    const second = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(second.warnings).toEqual([]);
+    const parsed = parseBookFile(fs.readFileSync(bookPath, 'utf8'));
+    expect(parsed.title).toBe('After');
+    expect(parsed.synopsis).toBe('<!-- mythos:spine');
+    expect(parsed.profiles).toEqual([profile]);
+    expect(pendingBookEditCount()).toBe(0);
+    expect(fs.readFileSync(bookPath, 'utf8')).toContain('series: Ash Cycle');
+  });
+
+  it('aborts on an unrecognized profiles fence and leaves the bytes untouched', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Unrecognized');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    const current = fs.readFileSync(bookPath, 'utf8');
+    const blocked = current.replace(
+      /<!-- mythos:book-profiles\n[\s\S]*?\n-->/,
+      '<!-- mythos:book-profiles\nnot json\n-->',
+    );
+    expect(blocked).not.toBe(current);
+    fs.writeFileSync(bookPath, blocked);
+    story.title = 'New Title';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([{ event: 'book-file-profiles-fence', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain(bookPath);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  it('aborts on a duplicate profiles fence and leaves the bytes untouched', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Duplicate');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    const one = stringifyFenceJson([profile]);
+    const two = stringifyFenceJson([{ ...profile, id: 'p2', name: 'Second' }]);
+    const current = fs.readFileSync(bookPath, 'utf8');
+    const blocked = `${current}<!-- mythos:book-profiles\n${one}\n-->\n<!-- mythos:book-profiles\n${two}\n-->\n`;
+    fs.writeFileSync(bookPath, blocked);
+    story.title = 'New Title';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(saved.warnings).toEqual([{ event: 'book-file-profiles-duplicate', storyId: 'profiled-story' }]);
+    expect(JSON.stringify(saved.warnings)).not.toContain('Second');
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
+    expect(blocked).toContain('Second');
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
+  });
+
+  it('through writeManifest, a mythos.json write failure warns with the event code only and does not throw', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('MythosWrite');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'New Title';
+    story.updatedAt = '2026-09-01T00:00:00.000Z';
+    const mythosPath = path.join(mythosRoot, 'mythos.json');
+    const beforeMythos = fs.readFileSync(mythosPath, 'utf8');
+    const orig = fs.renameSync;
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(((from: fs.PathLike, to: fs.PathLike) => {
+      if (String(to) === mythosPath) {
+        const err = new Error(`${mythosPath} ENOSPC Trade paperback`) as NodeJS.ErrnoException;
+        err.code = 'ENOSPC';
+        throw err;
+      }
+      return orig.call(fs, from, to);
+    }) as typeof fs.renameSync);
+    let saved: ReturnType<typeof saveThroughWriteManifest> | undefined;
+    expect(() => {
+      saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    }).not.toThrow();
+    spy.mockRestore();
+    expect(saved?.warnings).toEqual([{ event: 'mythos-file-write-failed' }]);
+    const warningJson = JSON.stringify(saved?.warnings);
+    expect(warningJson).not.toContain(mythosPath);
+    expect(warningJson).not.toContain(bookPath);
+    expect(warningJson).not.toContain('ENOSPC');
+    expect(warningJson).not.toContain('Trade paperback');
+    expect(warningJson).not.toContain('New Title');
+    expect(Object.keys(saved?.warnings[0] ?? {})).toEqual(['event']);
+    expect(fs.readFileSync(mythosPath, 'utf8')).toBe(beforeMythos);
+  });
+
+  it('a vault-open reindex leaves a malformed book.md untouched and still warns', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('Reindex');
+    const blocked = [
+      '---',
+      'id: profiled-story',
+      'title: Old Title',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# Old Title',
+      '',
+      '<!-- mythos:spine',
+      'not json',
+      '-->',
+      '',
+    ].join('\n');
+    fs.writeFileSync(bookPath, blocked);
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    fs.writeFileSync(bookPath, blocked);
+    story.title = 'New Title';
+    const reindexed = reindexVault(storyVaultPath, manifest, null);
+    const saved = saveThroughWriteManifest(mythosRoot, storyVaultPath, reindexed.manifest);
+    expect(saved.warnings).toEqual([{ event: 'book-file-malformed', storyId: 'profiled-story' }]);
+    expect(fs.readFileSync(bookPath, 'utf8')).toBe(blocked);
+    expect(readMythosFile(mythosRoot).stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
   });
 });

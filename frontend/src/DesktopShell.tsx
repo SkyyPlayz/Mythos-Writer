@@ -26,6 +26,7 @@ import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitche
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
 import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
+import { BookSyncNotice, failedManifestRead, isLoadedManifest, manifestSaveOutcome, STORY_LIST_READ_FAILURE, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import {
   parseSceneNotes,
   serializeSceneNotes,
@@ -676,6 +677,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return next;
   }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [bookSave, setBookSave] = useState<ManifestSaveOutcome>({ ok: true, warnings: [] });
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
   // is kept separate from WindowChrome's own local `projects` state (same
@@ -1414,9 +1416,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
       }
 
-      const m = storyValid
-        ? await window.api.readManifest() as Manifest
+      const rawManifest = storyValid
+        ? await window.api.readManifest()
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
+      if (storyValid && !isLoadedManifest(rawManifest)) {
+        if (superseded()) return; // SKY-11379: stale failed read must not paint shell-error.
+        setBookSave(failedManifestRead());
+        setError(STORY_LIST_READ_FAILURE);
+        return;
+      }
+      const m = rawManifest as Manifest;
       // SKY-11379: last IPC resolved — re-check the generation once more before
       // the atomic apply below. setManifest through setActiveVaultRoot run with
       // no further awaits between them, so a single check here protects the
@@ -1425,6 +1434,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (superseded()) return;
       setManifest(m);
       setStories(m.stories ?? []);
+      const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m.bookSyncWarnings ?? [] });
+      setBookSave(read.ok ? read : { ok: true, warnings: [] });
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
@@ -2057,7 +2068,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     try {
       // SKY-6196: strip scene prose before it crosses the IPC boundary — the
       // in-memory `m` (and React state) keep full content untouched.
-      await window.api.writeManifest(stripManifestContentForIpc(m));
+      const saved = await window.api.writeManifest(stripManifestContentForIpc(m));
+      setBookSave(manifestSaveOutcome(saved));
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);
@@ -2684,14 +2696,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!window.api.onNavigatorManifestChanged) return;
     const unsub = window.api.onNavigatorManifestChanged(() => {
-      // setupIpcMain resolves `{ error }` when the read throws. That object is
-      // not a manifest — reject so this catch keeps the stories already shown.
-      (window.api.readManifest() as Promise<Manifest | { error: string } | null>).then((m) => {
-        if (m && typeof m === 'object' && 'error' in m) {
-          throw new Error(m.error || 'Could not read the story list.');
+      // `{ error }` is not a loaded manifest. Leave the stories already shown.
+      (window.api.readManifest() as Promise<unknown>).then((m) => {
+        if (!isLoadedManifest(m)) {
+          setBookSave(failedManifestRead());
+          return;
         }
-        if (m) setManifest(m);
-        setStories(m?.stories ?? []);
+        const loaded = m as Manifest;
+        setManifest(loaded);
+        setStories(loaded.stories ?? []);
+        const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: loaded.bookSyncWarnings ?? [] });
+        setBookSave(read.ok ? read : { ok: true, warnings: [] });
       }).catch(() => {});
     });
     return () => unsub?.();
@@ -6730,6 +6745,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
           §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
+      <BookSyncNotice outcome={bookSave} />
       {/* PLAN-058 L2 (06:55): the title bar is full window width. The nav
           rail starts in the row below and must not cover the top bar.
           Document tabs stay in the main column under that bar. */}
