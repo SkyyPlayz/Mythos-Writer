@@ -1,6 +1,6 @@
 // Preload script — exposes IPC bridge to renderer with context isolation.
 // Uses ipcRenderer directly (no ipcMain import) — safe in preload context.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { unwrapIpcEnvelope } from './ipcEnvelope.js';
 import type { AiActivityEntry, AiActivityTerminalEvent } from './aiActivityRegistry.js';
 
@@ -129,6 +129,17 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('story:import-pick', { format }),
   storyImportRun: (format: 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub', filePath: string) =>
     ipcRenderer.invoke('story:import-run', { format, filePath }),
+  // #1765 import hub (Settings → Vault & Files → "Import your writing").
+  // The drop path is resolved HERE with webUtils (Electron 32+ has no
+  // File.path) so the renderer never handles a filesystem path; main
+  // re-validates it (importHub/importSafety.ts) before reading anything.
+  importHub: {
+    pick: (mode: 'file' | 'folder') => ipcRenderer.invoke('import:pick', { mode }),
+    previewDropped: (file: File) =>
+      ipcRenderer.invoke('import:preview', { path: webUtils.getPathForFile(file) }),
+    commit: (token: string, options?: { story?: boolean; notes?: boolean }) =>
+      ipcRenderer.invoke('import:commit', { token, options }),
+  },
   // SKY-2991: onboarding v2 path validation + vault discovery
   onboardingValidatePath: (p: string) =>
     ipcRenderer.invoke('onboarding:validatePath', { path: p }),

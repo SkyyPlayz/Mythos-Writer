@@ -2653,10 +2653,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene]);
 
   // SKY-2966: Refresh stories when a floating navigator panel modifies the manifest.
+  // #1765: the import hub pushes this too. Adopt the WHOLE fresh manifest, not
+  // just its stories — layout saves spread `manifest`, so a stale copy would
+  // write the pre-change story list back over the new one.
   useEffect(() => {
     if (!window.api.onNavigatorManifestChanged) return;
     const unsub = window.api.onNavigatorManifestChanged(() => {
-      (window.api.readManifest() as Promise<Manifest>).then((m) => {
+      // setupIpcMain resolves `{ error }` when the read throws. That object is
+      // not a manifest — reject so this catch keeps the stories already shown.
+      (window.api.readManifest() as Promise<Manifest | { error: string } | null>).then((m) => {
+        if (m && typeof m === 'object' && 'error' in m) {
+          throw new Error(m.error || 'Could not read the story list.');
+        }
+        if (m) setManifest(m);
         setStories(m?.stories ?? []);
       }).catch(() => {});
     });
