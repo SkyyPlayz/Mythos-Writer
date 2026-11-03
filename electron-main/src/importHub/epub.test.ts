@@ -250,6 +250,20 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(story.chapters[0].scenes[0].prose).toBe('Still read.');
   });
 
+  it('a mixed-case Application/XHTML+XML media type is still a chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'c1',
+        href: 'ch1.xhtml',
+        mediaType: 'Application/XHTML+XML',
+        body: '<h1>Mixed Case Chapter</h1><p>Still read.</p>',
+      },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['Mixed Case Chapter']);
+    expect(story.chapters[0].scenes[0].prose).toBe('Still read.');
+  });
+
   it('text/html with surrounding whitespace is still a chapter', async () => {
     const buf = await makeEpub([
       {
