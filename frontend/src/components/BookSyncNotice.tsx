@@ -15,7 +15,14 @@ export interface BookSyncWarning {
 
 export type ManifestSaveOutcome =
   | { ok: true; warnings: BookSyncWarning[] }
-  | { ok: false };
+  | { ok: false; source?: 'save' | 'read' };
+
+export const STORY_LIST_READ_FAILURE = 'The story list could not be read.';
+
+/** A manifest read that is not a loaded story list. This is not a save. */
+export function failedManifestRead(): ManifestSaveOutcome {
+  return { ok: false, source: 'read' };
+}
 
 const BOOK_SYNC_EVENTS: readonly BookSyncEvent[] = [
   'book-file-cas-exhausted',
@@ -97,7 +104,7 @@ export function applyManifestRead<TStories, TManifest>(
   result: unknown,
 ): { stories: TStories; manifest: TManifest; save: ManifestSaveOutcome } {
   if (!isLoadedManifest(result)) {
-    return { stories: previous.stories, manifest: previous.manifest, save: { ok: false } };
+    return { stories: previous.stories, manifest: previous.manifest, save: failedManifestRead() };
   }
   const manifest = result as TManifest & { stories: TStories; bookSyncWarnings?: unknown };
   const warned = manifestSaveOutcome({ ok: true, bookSyncWarnings: manifest.bookSyncWarnings ?? [] });
@@ -122,7 +129,7 @@ export function BookSyncNotice({ outcome }: { outcome: ManifestSaveOutcome }) {
   if (!outcome.ok) {
     return (
       <div role="status" aria-live="polite" data-testid="book-sync-warning">
-        The save did not finish.
+        {outcome.source === 'read' ? STORY_LIST_READ_FAILURE : 'The save did not finish.'}
       </div>
     );
   }

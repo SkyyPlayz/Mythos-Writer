@@ -26,7 +26,7 @@ import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitche
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
 import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, isLoadedManifest, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
+import { BookSyncNotice, failedManifestRead, isLoadedManifest, manifestSaveOutcome, STORY_LIST_READ_FAILURE, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import {
   parseSceneNotes,
   serializeSceneNotes,
@@ -1395,7 +1395,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         ? await window.api.readManifest()
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
       if (storyValid && !isLoadedManifest(rawManifest)) {
-        setBookSave({ ok: false });
+        setBookSave(failedManifestRead());
+        setError(STORY_LIST_READ_FAILURE);
         return;
       }
       const m = rawManifest as Manifest;
@@ -2668,7 +2669,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const unsub = window.api.onNavigatorManifestChanged(() => {
       (window.api.readManifest() as Promise<unknown>).then((m) => {
         if (!isLoadedManifest(m)) {
-          setBookSave({ ok: false });
+          setBookSave(failedManifestRead());
           return;
         }
         const loaded = m as Manifest;

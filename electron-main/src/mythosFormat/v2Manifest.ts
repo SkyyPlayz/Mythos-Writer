@@ -1006,6 +1006,8 @@ export function syncCanonicalFromManifest(
           continue;
         }
         if (isBookFileRewriteRefused(err)) {
+          // The file itself is why the write stopped. The next save hits the
+          // same refusal, so this is not a pending edit to retry.
           const event: BookSyncEvent = err.event === 'book-file-malformed'
             ? 'book-file-malformed'
             : err.event === 'book-file-profiles-duplicate'

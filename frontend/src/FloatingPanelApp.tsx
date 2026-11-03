@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { applyTheme } from './theme';
 import { DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, isLoadedManifest, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
+import { BookSyncNotice, failedManifestRead, isLoadedManifest, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import type { Story, Manifest } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
@@ -114,7 +114,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const refreshStories = useCallback(() => {
     (window.api.readManifest() as Promise<unknown>).then((m) => {
       if (!isLoadedManifest(m)) {
-        setBookSave({ ok: false });
+        setBookSave(failedManifestRead());
         return;
       }
       const loaded = m as Manifest;

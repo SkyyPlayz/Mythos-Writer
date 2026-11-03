@@ -3,7 +3,7 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState } from './types
 import BlockEditor from './BlockEditor';
 import StoryNavigator from './StoryNavigator';
 import { stripManifestContentForIpc } from './manifestIpc';
-import { BookSyncNotice, isLoadedManifest, manifestSaveOutcome, type ManifestSaveOutcome } from './components/BookSyncNotice';
+import { BookSyncNotice, failedManifestRead, isLoadedManifest, manifestSaveOutcome, STORY_LIST_READ_FAILURE, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import './WritingApp.css';
 
 function generateId(): string {
@@ -66,7 +66,8 @@ export default function WritingApp() {
       try {
         const raw = await window.api.readManifest();
         if (!isLoadedManifest(raw)) {
-          setBookSave({ ok: false });
+          setBookSave(failedManifestRead());
+          setError(STORY_LIST_READ_FAILURE);
           return;
         }
         const m = raw as Manifest;

@@ -57,4 +57,22 @@ describe('manifest save outcome', () => {
     expect(text).not.toContain('/tmp/vault');
     expect(text).not.toContain('Kept story');
   });
+
+  it('a failed manifest read does not say the save failed', () => {
+    const stories = [{ id: 'keep', title: 'Kept story' }];
+    const manifest = { stories, version: '1', vaultRoot: '/tmp/vault' };
+    const read = applyManifestRead(
+      { stories, manifest },
+      { error: '/tmp/vault/Story/book.md Trade paperback' },
+    );
+    expect(read.save).toEqual({ ok: false, source: 'read' });
+    expect(read.stories).toBe(stories);
+    expect(read.manifest).toBe(manifest);
+    render(<BookSyncNotice outcome={read.save} />);
+    const text = screen.getByTestId('book-sync-warning').textContent ?? '';
+    expect(text).toBe('The story list could not be read.');
+    expect(text).not.toContain('save');
+    expect(text).not.toContain('/tmp/vault');
+    expect(text).not.toContain('Trade paperback');
+  });
 });

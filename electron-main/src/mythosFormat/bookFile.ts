@@ -101,13 +101,40 @@ function sanitizeSpine(raw: unknown): BookSpinePart[] {
   return parts;
 }
 
+/**
+ * A fence opener counts only when it is the first non-whitespace on its line.
+ * Title, synopsis, and chapter text can name the marker without becoming a fence.
+ */
+function fenceOpensAt(body: string, open: string, from: number): number {
+  let cursor = from;
+  while (cursor < body.length) {
+    const start = body.indexOf(open, cursor);
+    if (start === -1) return -1;
+    const lineStart = body.lastIndexOf('\n', start - 1) + 1;
+    if (body.slice(lineStart, start).trim() === '') return start;
+    cursor = start + open.length;
+  }
+  return -1;
+}
+
 function extractFencePayload(body: string, open: string): string | null {
-  const start = body.indexOf(open);
+  const start = fenceOpensAt(body, open, 0);
   if (start === -1) return null;
   const afterOpen = start + open.length;
   const end = body.indexOf(FENCE_CLOSE, afterOpen);
   if (end === -1) return null;
   return body.slice(afterOpen, end).trim();
+}
+
+/** Body copy of user text. A line that would open a fence is not stored as one. */
+function visibleProse(value: string): string {
+  return value.split('\n').map((line) => {
+    const bare = line.replace(/\r$/, '');
+    const lead = bare.trimStart();
+    if (!lead.startsWith(SPINE_FENCE_OPEN) && !lead.startsWith(PROFILES_FENCE_OPEN)) return bare;
+    const indent = bare.slice(0, bare.length - lead.length);
+    return `${indent}< !--${lead.slice('<!--'.length)}`;
+  }).join('\n');
 }
 
 /** Extract the JSON payload between the mythos:spine comment fences. */
@@ -153,7 +180,7 @@ function collectFences(body: string, open: string): FenceHit[] {
   const hits: FenceHit[] = [];
   let from = 0;
   while (from < body.length) {
-    const start = body.indexOf(open, from);
+    const start = fenceOpensAt(body, open, from);
     if (start === -1) break;
     const after = start + open.length;
     const end = body.indexOf(FENCE_CLOSE, after);
@@ -277,16 +304,19 @@ export function serializeBookFile(book: BookFile): string {
       fm[key] = typeof value === 'string' ? oneLine(value) : value;
     }
   }
-  const body: string[] = [`# ${book.title}`, ''];
-  if (book.synopsis) body.push(book.synopsis, '');
+  const body: string[] = [`# ${visibleProse(book.title)}`, ''];
+  if (book.synopsis) body.push(visibleProse(book.synopsis), '');
   for (const part of book.spine) {
-    body.push(`## ${part.dir}${part.label ? ` — ${part.label}` : ''}`, '');
+    const label = part.label ? visibleProse(part.label) : '';
+    body.push(`## ${part.dir}${label ? ` — ${label}` : ''}`, '');
     if (part.intro?.length) {
-      for (const line of part.intro) body.push(`> ${line}`);
+      for (const line of part.intro) {
+        for (const piece of visibleProse(line).split('\n')) body.push(`> ${piece}`);
+      }
       body.push('');
     }
     for (const ch of part.chapters) {
-      body.push(`- [[${part.dir}/${ch.dir}|${ch.title}]]`);
+      body.push(`- [[${part.dir}/${ch.dir}|${visibleProse(ch.title)}]]`);
     }
     body.push('');
   }

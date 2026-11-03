@@ -1506,6 +1506,34 @@ describe('book.md profiles survive sync (BOOK-BUILDER-V1 S0)', () => {
     const mythos = readMythosFile(mythosRoot);
     expect(mythos.stories.find((s) => s.id === 'profiled-story')?.title).toBe('New Title');
     expect(mythos.stories.find((s) => s.id === 'sibling-story')?.title).toBe('Sibling New');
+    expect(pendingBookEditCount()).toBe(0);
+  });
+
+  it('a title or synopsis that names a fence does not lock the next save', () => {
+    const { mythosRoot, storyVaultPath, bookPath } = storyWithProfiles('FenceWords');
+    const manifest = scanMythosStoryVault(mythosRoot);
+    const story = manifest.stories.find((s) => s.id === 'profiled-story');
+    expect(story).toBeTruthy();
+    if (!story) return;
+    story.title = 'Marked <!-- mythos:spine';
+    story.synopsis = 'Blurb <!-- mythos:book-profiles tail';
+    story.updatedAt = '2026-06-01T00:00:00.000Z';
+    const first = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(first.warnings).toEqual([]);
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).title).toBe('Marked <!-- mythos:spine');
+    expect(parseBookFile(fs.readFileSync(bookPath, 'utf8')).profiles).toEqual([profile]);
+
+    story.title = 'After';
+    story.synopsis = '<!-- mythos:spine';
+    story.updatedAt = '2026-07-01T00:00:00.000Z';
+    const second = saveThroughWriteManifest(mythosRoot, storyVaultPath, manifest);
+    expect(second.warnings).toEqual([]);
+    const parsed = parseBookFile(fs.readFileSync(bookPath, 'utf8'));
+    expect(parsed.title).toBe('After');
+    expect(parsed.synopsis).toBe('<!-- mythos:spine');
+    expect(parsed.profiles).toEqual([profile]);
+    expect(pendingBookEditCount()).toBe(0);
+    expect(fs.readFileSync(bookPath, 'utf8')).toContain('series: Ash Cycle');
   });
 
   it('aborts on an unrecognized profiles fence and leaves the bytes untouched', () => {
