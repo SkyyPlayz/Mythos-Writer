@@ -112,6 +112,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
 
   // Refresh the manifest from disk into local state.
   const refreshStories = useCallback(() => {
+    // `{ error }` is not a loaded manifest. Leave the stories already shown.
     (window.api.readManifest() as Promise<unknown>).then((m) => {
       if (!isLoadedManifest(m)) {
         setBookSave(failedManifestRead());

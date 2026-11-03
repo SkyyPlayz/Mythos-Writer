@@ -115,10 +115,14 @@ forwards http(s) URLs to `shell.openExternal` so the user's system browser —
 not an Electron window with preload privileges — handles them.  Non-http
 schemes (`file:`, `data:`, `javascript:`, `chrome:`, …) are dropped silently.
 
-`will-navigate` is wired on the main window's `webContents` and rejects any
-URL that is not the configured Vite dev server or a `file://` URL inside the
-app bundle.  This prevents a compromised renderer from redirecting itself to a
-remote origin that would then inherit the preload bridge.
+`will-navigate` is wired on every preload-bearing window (main, popout and
+floating panels — `guardRendererNavigation` in `main.ts`) and rejects any URL
+that is not the configured Vite dev server or the renderer's own
+`index.html` (`isAllowedRendererNavigation` in `security.ts`; any hash or
+query is fine).  This prevents a compromised renderer from redirecting itself
+to a remote origin, and a document dropped on a window (#1765 — Blink's
+default drop action) from loading in place of the app, either of which would
+then inherit the preload bridge.
 
 ## Preload exposure
 
