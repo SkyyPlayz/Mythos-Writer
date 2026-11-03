@@ -193,6 +193,36 @@ describe('epubToBlocks / parseEpubStory — (i)', () => {
     expect(JSON.stringify(story)).not.toMatch(/NCX Xhtml Chapter|SVG Xhtml Chapter/);
   });
 
+  it('a text/html-custom media type with an .xhtml href yields no chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'look',
+        href: 'custom.xhtml',
+        mediaType: 'text/html-custom',
+        body: '<h1>Html Custom Chapter</h1><p>A lookalike type is not a chapter.</p>',
+      },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/Html Custom Chapter/);
+  });
+
+  it('an application/xhtml+xml-x media type with an .xhtml href yields no chapter', async () => {
+    const buf = await makeEpub([
+      {
+        id: 'look',
+        href: 'extra.xhtml',
+        mediaType: 'application/xhtml+xml-x',
+        body: '<h1>Xhtml Extra Chapter</h1><p>A lookalike type is not a chapter.</p>',
+      },
+      { id: 'c1', href: 'ch1.xhtml', body: '<h1>The Road</h1><p>She walked.</p>' },
+    ], { title: 'Book' });
+    const { story } = await parseEpubStory(buf, 'x');
+    expect(story.chapters.map((c) => c.title)).toEqual(['The Road']);
+    expect(JSON.stringify(story)).not.toMatch(/Xhtml Extra Chapter/);
+  });
+
   it('a space before a media-type parameter is still a chapter', async () => {
     const buf = await makeEpub([
       {
