@@ -1,7 +1,8 @@
-// A failed readManifest inside loadVault used to call setError without the
-// superseded() check its sibling apply points use. A stale failure from vault
-// A, arriving after a switch to vault B had already loaded, painted the
-// full-screen shell-error and unmounted the nav rail.
+// A failed readManifest inside loadVault used to call setError and
+// setBookSave(failedManifestRead()) without the superseded() check its
+// sibling apply points use. A stale failure from vault A, arriving after a
+// switch to vault B had already loaded, painted the full-screen shell-error
+// and replaced B's book-save state.
 //
 // This drives the real DesktopShell (via <App />). The first case holds A's
 // readManifest, lets B's load finish, then fails A's read. The second case is
@@ -9,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, cleanup, waitFor } from '@testing-library/react';
 import App from './App';
+import { STORY_LIST_READ_FAILURE } from './components/BookSyncNotice';
 
 const VAULT_A = '/vault-a';
 const VAULT_B = '/vault-b';
@@ -124,6 +126,10 @@ describe('DesktopShell stale failed manifest read', () => {
     await screen.findByRole('navigation', { name: 'Main navigation' });
     expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
     expect(screen.getAllByText(STORY_B).length).toBeGreaterThan(0);
+    // B's successful read sets bookSave to ok with no warnings, so no notice
+    // is rendered. failedManifestRead() renders book-sync-warning with the
+    // story-list read failure sentence.
+    expect(screen.queryByTestId('book-sync-warning')).not.toBeInTheDocument();
 
     await act(async () => { parkedReads[0]?.resolve({ error: 'stale vault read' }); });
 
@@ -133,13 +139,16 @@ describe('DesktopShell stale failed manifest read', () => {
     expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
     expect(screen.getAllByText(STORY_B).length).toBeGreaterThan(0);
     expect(screen.queryByText('Alpha Tale')).not.toBeInTheDocument();
+    // The stale failure must not replace B's bookSave with failedManifestRead().
+    expect(screen.queryByTestId('book-sync-warning')).not.toBeInTheDocument();
+    expect(screen.queryByText(STORY_LIST_READ_FAILURE)).not.toBeInTheDocument();
   });
 
   it('shows shell-error when a cold-load read fails and nothing superseded it', async () => {
     readMode = 'fail';
     render(<App />);
 
-    const error = await screen.findByText('The story list could not be read.');
+    const error = await screen.findByText(STORY_LIST_READ_FAILURE);
     expect(error.closest('.shell-error')).not.toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('nav-rail-vaults')).not.toBeInTheDocument();
