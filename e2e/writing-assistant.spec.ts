@@ -17,7 +17,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -28,6 +27,7 @@ import {
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
 import { openPartnerWriterTips } from './helpers/partnerHub';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -476,8 +476,8 @@ let page: Page;
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-vault-'));
+  userData = makeTestTmp('wa');
+  vaultDir = makeTestTmp('wa-vault');
   seedUserData(userData, vaultDir);
 
   app = await launchApp(userData);
@@ -498,8 +498,7 @@ test.afterAll(async () => {
   } catch {
     /* already exited */
   }
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -895,8 +894,8 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
   let disabledVaultDir: string;
 
   test.beforeAll(async () => {
-    disabledUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-dis-'));
-    disabledVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-dis-vault-'));
+    disabledUserData = makeTestTmp('wa-dis');
+    disabledVaultDir = makeTestTmp('wa-dis-vault');
     seedUserData(disabledUserData, disabledVaultDir, /* waEnabled */ false);
 
     disabledApp = await launchApp(disabledUserData);
@@ -915,8 +914,8 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     } catch {
       /* already exited */
     }
-    fs.rmSync(disabledUserData, { recursive: true, force: true });
-    fs.rmSync(disabledVaultDir, { recursive: true, force: true });
+    removeRecorded(disabledUserData);
+    removeRecorded(disabledVaultDir);
   });
 
   // ─── TC-WA-26: disabled → shows disabled message, no scan UI ─────────────
@@ -983,8 +982,8 @@ test.describe('AC-WA-27: Writing Coach cadence persists to disk (real IPC)', () 
   let persistVaultDir: string;
 
   test.beforeAll(async () => {
-    persistUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-persist-'));
-    persistVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-persist-vault-'));
+    persistUserData = makeTestTmp('wa-persist');
+    persistVaultDir = makeTestTmp('wa-persist-vault');
     seedUserData(persistUserData, persistVaultDir);
 
     persistApp = await launchApp(persistUserData);
@@ -1005,8 +1004,8 @@ test.describe('AC-WA-27: Writing Coach cadence persists to disk (real IPC)', () 
     } catch {
       /* already exited */
     }
-    fs.rmSync(persistUserData, { recursive: true, force: true });
-    fs.rmSync(persistVaultDir, { recursive: true, force: true });
+    removeRecorded(persistUserData);
+    removeRecorded(persistVaultDir);
   });
 
   test('TC-WA-27-disk: numeric cadence writes agents.writingAssistant.scanIntervalSeconds to app-settings.json', async () => {
@@ -1047,8 +1046,8 @@ test.describe('Probe H1: Scan now without provider', () => {
   let barePage: Page;
 
   test.beforeAll(async () => {
-    bareUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-noprovider-'));
-    bareVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-noprovider-vault-'));
+    bareUserData = makeTestTmp('wa-noprovider');
+    bareVault = makeTestTmp('wa-noprovider-vault');
     seedUserData(bareUserData, bareVault);
     // Strip provider + legacy key so the renderer gate refuses.
     const settingsPath = path.join(bareUserData, 'app-settings.json');
@@ -1076,8 +1075,8 @@ test.describe('Probe H1: Scan now without provider', () => {
     try {
       if (proc && !proc.killed) proc.kill('SIGKILL');
     } catch { /* already exited */ }
-    fs.rmSync(bareUserData, { recursive: true, force: true });
-    fs.rmSync(bareVault, { recursive: true, force: true });
+    removeRecorded(bareUserData);
+    removeRecorded(bareVault);
   });
 
   test('Scan now with no provider shows refusal and keeps the app mounted', async () => {

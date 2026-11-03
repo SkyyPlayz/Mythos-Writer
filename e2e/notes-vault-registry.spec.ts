@@ -22,7 +22,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -31,7 +30,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const NOW = '2026-08-01T00:00:00.000Z';
@@ -192,7 +192,7 @@ test.describe.serial('SKY-11058 — Notes vault registry (fresh profile)', () =>
   let page: Page;
 
   test.beforeAll(async () => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-nvr-e2e-'));
+    tmpRoot = makeTestTmp('nvr-e2e');
     userData = path.join(tmpRoot, 'user-data');
     bundle = path.join(tmpRoot, 'Registry Vault');
     seedV2Vault(bundle);
@@ -205,7 +205,7 @@ test.describe.serial('SKY-11058 — Notes vault registry (fresh profile)', () =>
 
   test.afterAll(async () => {
     await closeElectronApp(app);
-    removeTempDirs(tmpRoot);
+    if (tmpRoot) removeRecorded(tmpRoot);
   });
 
   test('TC-NVR-01: first open migrates the registry — picker shows "Notes", notes-vaults.json written', async () => {
@@ -350,4 +350,8 @@ test.describe.serial('SKY-11058 — Notes vault registry (fresh profile)', () =>
       registry.vaults.find((v) => v.id === registry.activeId)?.displayName,
     ).toBe(SECOND_VAULT_NAME);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

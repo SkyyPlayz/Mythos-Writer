@@ -13,7 +13,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -22,6 +21,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -178,10 +178,10 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-fmt-ud-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-fmt-vault-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-fmt-notes-'));
-  exportDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-fmt-out-'));
+  userData = makeTestTmp('fmt-ud');
+  vaultDir = makeTestTmp('fmt-vault');
+  notesVaultDir = makeTestTmp('fmt-notes');
+  exportDir = makeTestTmp('fmt-out');
 
   seedVault(vaultDir);
   seedUserData(userData, vaultDir, notesVaultDir);
@@ -197,9 +197,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  for (const dir of [userData, vaultDir, notesVaultDir, exportDir]) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  cleanupTestTmp();
 });
 
 // ─── AC-M14-1: real DOCX bytes on disk ───────────────────────────────────────

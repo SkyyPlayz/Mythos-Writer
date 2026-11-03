@@ -27,7 +27,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -36,6 +35,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -100,9 +100,9 @@ let page: Page;
 let userData: string;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wp-pick-user-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wp-pick-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wp-pick-notes-'));
+  userData = makeTestTmp('wp-pick-user');
+  const vaultDir = makeTestTmp('wp-pick-vault');
+  const notesVaultDir = makeTestTmp('wp-pick-notes');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -110,7 +110,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 test('Theme match arrows cycle the preset wallpapers and the pick survives a relaunch (per vault)', async () => {

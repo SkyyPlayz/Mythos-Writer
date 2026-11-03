@@ -16,10 +16,10 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Test-suite-wide helpers ──────────────────────────────────────────────────
 
@@ -107,8 +107,8 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-e2e-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vault-'));
+  userData = makeTestTmp('e2e');
+  vaultDir = makeTestTmp('vault');
   seedUserData(userData, vaultDir);
 
   app = await launchApp(userData);
@@ -117,8 +117,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── TC-01: Open vault ────────────────────────────────────────────────────────

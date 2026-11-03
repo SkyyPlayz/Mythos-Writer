@@ -29,7 +29,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -38,7 +37,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -123,7 +123,7 @@ test.describe('SKY-11151 — shared vault-creation primitive (reachability)', ()
   let chosenParent: string;
 
   test.beforeAll(async () => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cvp-e2e-'));
+    tmpRoot = makeTestTmp('cvp-e2e');
     userData = path.join(tmpRoot, 'user-data');
     // A CHOSEN, non-default parent (NOT <userData>/vaults) — proves the caller's
     // destinationParent is honoured on disk.
@@ -136,7 +136,7 @@ test.describe('SKY-11151 — shared vault-creation primitive (reachability)', ()
 
   test.afterAll(async () => {
     await closeElectronApp(app);
-    removeTempDirs(tmpRoot);
+    if (tmpRoot) removeRecorded(tmpRoot);
   });
 
   test('TC-CVP-01: template — ready-shape (6 empty folders, no notes) at chosen parent/name', async () => {
@@ -316,4 +316,8 @@ test.describe('SKY-11151 — shared vault-creation primitive (reachability)', ()
     const storyFolders = visibleEntries(res.storyVaultPath!);
     expect(storyFolders).toHaveLength(0);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

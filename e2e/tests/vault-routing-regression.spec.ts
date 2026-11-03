@@ -23,7 +23,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -33,6 +32,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from '../helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -169,9 +169,9 @@ test.describe('TC-SKY84-02: Empty Notes Vault', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sky84-empty-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sky84-story-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sky84-notes-'));
+    userData = makeTestTmp('sky84-empty');
+    vaultDir = makeTestTmp('sky84-story');
+    notesVaultDir = makeTestTmp('sky84-notes');
     // notesVaultDir left empty intentionally — the app must initialise it on boot.
     seedUserData(userData, vaultDir, notesVaultDir);
     app = await launchApp(userData);
@@ -180,9 +180,9 @@ test.describe('TC-SKY84-02: Empty Notes Vault', () => {
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   test('TC-SKY84-02: empty notesVaultDir → Notes panel shows empty-state placeholder', async () => {
@@ -214,9 +214,9 @@ test.describe('populated vaults: routing regression', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sky84-pop-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sky84-story2-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sky84-notes2-'));
+    userData = makeTestTmp('sky84-pop');
+    vaultDir = makeTestTmp('sky84-story2');
+    notesVaultDir = makeTestTmp('sky84-notes2');
 
     // Seed storyVaultDir with a notes-looking file (lore/world-notes.md).
     // Pre-SKY-72: this file would appear in the Notes panel (wrong root).
@@ -244,9 +244,9 @@ test.describe('populated vaults: routing regression', () => {
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   // ─── TC-SKY84-01: Listing separation ──────────────────────────────────────
@@ -396,4 +396,8 @@ test.describe('populated vaults: routing regression', () => {
       page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]'),
     ).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

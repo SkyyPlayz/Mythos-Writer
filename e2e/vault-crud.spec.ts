@@ -21,7 +21,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -31,6 +30,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -190,9 +190,9 @@ let page: Page;
 const LEAKED_SCENE_UUID = '3f6a804a-1c2b-4d3e-9f10-abcdef012345';
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-two-vault-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-vault-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-notes-vault-'));
+  userData = makeTestTmp('two-vault');
+  vaultDir = makeTestTmp('story-vault');
+  notesVaultDir = makeTestTmp('notes-vault');
   // W0.1 (TC-V-08): pollute the notes vault BEFORE boot — a leaked scene-UUID
   // dir plus a legitimate note. Boot must adopt the populated root (no seed
   // dumped over it) and the tree must hide the UUID dir but show the note.
@@ -206,9 +206,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── TC-V-01: Two vaults initialized on first boot ───────────────────────────

@@ -8,7 +8,6 @@
  * NW-5: Soft-FAIL — no auto sidebar shrink to “fit” narrow window.
  */
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -17,7 +16,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const MIN_COMPOSER_INPUT_PX = 120;
@@ -43,13 +43,10 @@ function agentCfg(extra: Record<string, unknown> = {}): Record<string, unknown> 
   };
 }
 
-const nwTempDirs: string[] = [];
-
 function seedFixture(opts: { notesSidebarWidth?: number } = {}): Fixture {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-nw-ud-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-nw-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-nw-notes-'));
-  nwTempDirs.push(userData, vaultDir, notesVaultDir);
+  const userData = makeTestTmp('plan058-nw-ud');
+  const vaultDir = makeTestTmp('plan058-nw-vault');
+  const notesVaultDir = makeTestTmp('plan058-nw-notes');
 
   const tabShell = {
     activeTab: 'notes',
@@ -217,18 +214,6 @@ async function assertPropsCollapseHitTest(page: Page): Promise<void> {
 }
 
 test.describe('PLAN-058 NW — narrow-width Notes chrome', () => {
-  test.afterEach(() => {
-    while (nwTempDirs.length > 0) {
-      const dir = nwTempDirs.pop();
-      if (!dir) continue;
-      try {
-        fs.rmSync(dir, { recursive: true, force: true });
-      } catch {
-        /* best-effort */
-      }
-    }
-  });
-
   test('NW-1..NW-3 @900 / 936–962 / 1024: composer, tab labels, Properties vs Collapse', async () => {
     const fixture = seedFixture();
     let app: ElectronApplication | undefined;
@@ -291,7 +276,9 @@ test.describe('PLAN-058 NW — narrow-width Notes chrome', () => {
       expect(fs.existsSync(shotPath)).toBe(true);
     } finally {
       await closeElectronApp(app);
-      removeTempDirs(fixture.userData, fixture.vaultDir, fixture.notesVaultDir);
+      removeRecorded(fixture.userData);
+      removeRecorded(fixture.vaultDir);
+      removeRecorded(fixture.notesVaultDir);
     }
   });
 
@@ -328,7 +315,11 @@ test.describe('PLAN-058 NW — narrow-width Notes chrome', () => {
       }
     } finally {
       await closeElectronApp(app);
-      removeTempDirs(fixture.userData, fixture.vaultDir, fixture.notesVaultDir);
+      removeRecorded(fixture.userData);
+      removeRecorded(fixture.vaultDir);
+      removeRecorded(fixture.notesVaultDir);
     }
   });
 });
+
+test.afterAll(() => { cleanupTestTmp(); });
