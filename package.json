@@ -51,7 +51,7 @@
     "test:e2e:draft-history": "playwright test e2e/draft-history.spec.ts --reporter=list,html",
     "test:e2e:comments": "playwright test e2e/comments-v2.spec.ts --reporter=list,html",
     "test:e2e:brainstorm": "playwright test e2e/brainstorm.spec.ts --reporter=list,html",
-    "test:e2e:coach-page": "playwright test e2e/coach-page.spec.ts --reporter=list,html",
+    "test:e2e:coach-page": "playwright test e2e/coach-page.spec.ts e2e/coaching-opt-in.spec.ts --reporter=list,html",
     "test:e2e:agent-hub-session-picker": "playwright test e2e/agent-hub-session-picker.spec.ts --reporter=list,html",
     "test:e2e:nav-history": "playwright test e2e/nav-history.spec.ts --reporter=list,html",
     "test:e2e:brainstorm-glass": "playwright test e2e/tests/sky-11047-brainstorm-glass.spec.ts --reporter=list,html",
