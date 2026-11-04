@@ -329,6 +329,57 @@ describe('TimelineRoot — hidden modes fall back to Structure', () => {
     expect(localStorage.getItem('timeline:viewMode')).toBe('progress');
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'progress');
   });
+
+  // B2: the guard inside handleViewModeChange. A hidden mode that still
+  // reaches the handler (a control rendered before the mode was hidden) must
+  // land on Structure, persist 'structure', and never mount the hidden view.
+  const HIDDEN_SURFACES = {
+    spreadsheet: 'mock-spreadsheet',
+    tension: 'mock-tension',
+    relations: 'mock-relationships',
+    subway: 'mock-subway',
+  } as const;
+  type HiddenSurfaceMode = keyof typeof HIDDEN_SURFACES;
+
+  async function expectGuardedToStructure(hiddenSurfaceTestId: string) {
+    await act(async () => {});
+    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
+    expect(screen.getByTestId('view-mode-structure')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId(hiddenSurfaceTestId)).toBeNull();
+    expect(localStorage.getItem('timeline:viewMode')).toBe('structure');
+  }
+
+  it.each(Object.keys(HIDDEN_SURFACES) as HiddenSurfaceMode[])(
+    'a %s mode button clicked after the mode is hidden again lands on Structure, not the hidden view',
+    async (mode) => {
+      forceHiddenTimelineViewsOn();
+      await renderRoot();
+      fireEvent.click(screen.getByTestId('view-mode-progress'));
+      expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'progress');
+      const staleButton = screen.getByTestId(`view-mode-${mode}`);
+      // Hide the mode again; the button rendered while it was visible stays mounted.
+      revealState.on = false;
+      fireEvent.click(staleButton);
+      await expectGuardedToStructure(HIDDEN_SURFACES[mode]);
+      expect(screen.queryByTestId(`view-mode-${mode}`)).toBeNull();
+    },
+  );
+
+  it.each([
+    ['World Chronology', 'mock-spreadsheet'],
+    ['Per Character', 'mock-subway'],
+  ] as const)(
+    'the View filter "%s" chosen after its mode is hidden again lands on Structure',
+    async (option, hiddenSurfaceTestId) => {
+      forceHiddenTimelineViewsOn();
+      await renderRoot();
+      fireEvent.click(screen.getByTestId('view-mode-progress'));
+      expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'progress');
+      revealState.on = false;
+      fireEvent.change(screen.getByTestId('tl-view-filter'), { target: { value: option } });
+      await expectGuardedToStructure(hiddenSurfaceTestId);
+    },
+  );
 });
 
 // ─── Progress legend ───
