@@ -428,7 +428,7 @@ function PartnerChatView({
                 className="ahp-session-pill ahp-session-pill--dropdown"
                 busy={false}
               />
-              <div id="ahp-past-chats-history" hidden={!pastOpen}>
+              <div hidden={!pastOpen}>
                 {pastOpen && onOpenPartnerHistory && (
                   <button
                     type="button"
