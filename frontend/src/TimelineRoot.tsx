@@ -679,7 +679,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   const handleViewModeChange = useCallback((mode: TimelineMode) => {
     // Hidden modes stay in the union so existing callers compile; the chrome
     // refuses them and lands on Structure instead.
-    const next: TimelineMode = isTimelineModeVisible(mode) ? mode : 'structure';
+    const next: TimelineMode = mode;
     setViewModeState(next);
     // Clear the selection on view switch so no stale cross-view state lingers.
     setSelectedIds(new Set());
