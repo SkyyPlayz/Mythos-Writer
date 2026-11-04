@@ -41,7 +41,6 @@ import {
   type AeonTimelineData,
   EMPTY_AEON_DATA,
   isTimelineModeVisible,
-  resolveTimelineMode,
   resolveVisibleTimelineMode,
   deriveAeonTimeline,
 } from './timelineAeon';
@@ -208,7 +207,7 @@ const GROUP_BY_OPTIONS: { value: TimelineGroupBy; label: string }[] = [
 function readStoredViewMode(): TimelineMode {
   try {
     const stored = localStorage.getItem(STORAGE_KEY_MODE);
-    const visible = resolveTimelineMode(stored) ?? resolveVisibleTimelineMode(null);
+    const visible = resolveVisibleTimelineMode(stored);
     if (stored != null && stored !== visible) {
       try { localStorage.setItem(STORAGE_KEY_MODE, visible); } catch { /* ignore quota errors */ }
     }
