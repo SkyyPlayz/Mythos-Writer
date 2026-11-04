@@ -10,7 +10,7 @@
 //   - deriveAeonTimeline: here-index, chapter cells, event sampling, eras,
 //     bands, arcs, journeys, lines, and graceful degradation on empty input
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   resolveTimelineMode,
   resolveVisibleTimelineMode,
@@ -141,6 +141,64 @@ describe('resolveVisibleTimelineMode', () => {
       );
     } finally {
       localStorage.removeItem('timeline:hiddenModesOverride');
+    }
+  });
+});
+
+// ─── B8: no runtime unhide switch, whatever it is called ───
+//
+// The e2e bundle guard (timelineHiddenModesPatch.ts) only looks for two exact
+// names, and the storage test above only tries one key. This pins the
+// stronger property instead: computing visibility reads no storage, URL or
+// env state at all — so a switch under any new name fails here, and nothing
+// depends on the minified bundle text `HIDDEN_TIMELINE_MODES.has(`.
+
+describe('timeline visibility has no runtime unhide switch (any name)', () => {
+  it('loading timelineAeon and resolving every mode reads no storage, URL params or env', async () => {
+    const storageReads: string[] = [];
+    const proto = Storage.prototype;
+    const spies = [
+      vi.spyOn(proto, 'getItem').mockImplementation(function (this: Storage, k: string) {
+        storageReads.push(`getItem:${k}`);
+        return null;
+      }),
+      vi.spyOn(proto, 'key').mockImplementation(function (this: Storage, i: number) {
+        storageReads.push(`key:${i}`);
+        return null;
+      }),
+      vi.spyOn(URLSearchParams.prototype, 'get'),
+      vi.spyOn(URLSearchParams.prototype, 'has'),
+      vi.spyOn(URLSearchParams.prototype, 'getAll'),
+    ];
+    const realEnv = process.env;
+    try {
+      // Fresh module evaluation: a switch read at load time is caught too.
+      vi.resetModules();
+      const fresh = await import('./timelineAeon');
+      expect(storageReads, 'storage read while timelineAeon loads').toEqual([]);
+
+      const envReads: PropertyKey[] = [];
+      process.env = new Proxy(realEnv, {
+        get(target, prop, receiver) {
+          envReads.push(prop);
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+      const stored = [...fresh.VALID_TIMELINE_MODES, 'track', 'aeon', 'axis', 'kanban-nonsense', '', null];
+      const visibility = fresh.VALID_TIMELINE_MODES.map((mode) => fresh.isTimelineModeVisible(mode));
+      const resolved = stored.map((value) => fresh.resolveVisibleTimelineMode(value));
+      process.env = realEnv;
+
+      expect(storageReads, 'storage read while resolving visibility').toEqual([]);
+      expect(envReads, 'process.env read while resolving visibility').toEqual([]);
+      for (const spy of spies.slice(2)) expect(spy).not.toHaveBeenCalled();
+      // The answers are the shipped constant's, not a runtime override's.
+      expect(visibility).toEqual(fresh.VALID_TIMELINE_MODES.map((mode) => !fresh.HIDDEN_TIMELINE_MODES.has(mode)));
+      for (const value of resolved) expect(fresh.HIDDEN_TIMELINE_MODES.has(value)).toBe(false);
+    } finally {
+      process.env = realEnv;
+      for (const spy of spies) spy.mockRestore();
+      vi.resetModules();
     }
   });
 });
