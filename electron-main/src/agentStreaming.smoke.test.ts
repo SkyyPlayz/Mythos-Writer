@@ -15,7 +15,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 
@@ -30,6 +29,15 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { IpcMainInvokeEvent } from 'electron';
 import { openDb, closeDb, insertGenerationLog, listGenerationLog } from './db.js';
 import { categorizeStreamError, streamErrorUserMessage } from './streaming.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 // ─── Shared test helpers ─────────────────────────────────────────────────────
 
@@ -236,14 +244,14 @@ describe.each(AGENT_CONFIGS)('[$agentLabel] streaming smoke', (cfg) => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-smoke-'));
+    tmpDir = makeTestTmp('smoke');
     openDb(tmpDir);
     controllers = new Map();
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   // ── 1. Streaming token render ─────────────────────────────────────────────

@@ -4,7 +4,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   loadBrainstormSettings,
@@ -21,16 +20,25 @@ import {
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   type ContextCandidate,
 } from './brainstormRouting.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 function makeTmp(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-brainstorm-routing-'));
+  return makeTestTmp('brainstorm-routing');
 }
 
 describe('brainstormSettings persistence', () => {
   let userData: string;
 
   beforeEach(() => { userData = makeTmp(); });
-  afterEach(() => { fs.rmSync(userData, { recursive: true, force: true }); });
+  afterEach(() => { cleanupTestTmp(); });
 
   it('returns defaults when no settings file exists', () => {
     const s = loadBrainstormSettings(userData);
@@ -174,7 +182,7 @@ describe('listNotesVaultFolders', () => {
   let vault: string;
 
   beforeEach(() => { vault = makeTmp(); });
-  afterEach(() => { fs.rmSync(vault, { recursive: true, force: true }); });
+  afterEach(() => { cleanupTestTmp(); });
 
   it('returns the vault root option even when the vault is empty', () => {
     const folders = listNotesVaultFolders(vault);

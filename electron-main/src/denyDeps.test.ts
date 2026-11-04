@@ -1,11 +1,18 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const requireFromRoot = createRequire(path.join(repoRoot, 'package.json'));
@@ -54,15 +61,12 @@ const SCRIPT_RANGES = {
   cjk: { start: 19968, end: 40959 },
 };
 
-const temps: string[] = [];
-
 afterEach(() => {
-  for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 function tempDir(): string {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'mythos-deny-'));
-  temps.push(dir);
+  const dir = makeTestTmp('deny');
   return dir;
 }
 

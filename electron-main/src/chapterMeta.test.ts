@@ -1,7 +1,6 @@
 // SKY-10: chapter.md helpers.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   writeChapterMetaFile,
@@ -9,19 +8,28 @@ import {
   chapterMetaPath,
   CHAPTER_META_FILENAME,
 } from './vault.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 describe('chapter.md metadata', () => {
   let vaultRoot: string;
   let chapterRel: string;
 
   beforeEach(() => {
-    vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-chmeta-'));
+    vaultRoot = makeTestTmp('chmeta');
     chapterRel = path.join('Manuscript', 'Story', '01 - Opening');
     fs.mkdirSync(path.join(vaultRoot, chapterRel), { recursive: true });
   });
 
   afterEach(() => {
-    fs.rmSync(vaultRoot, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('writes chapter.md with frontmatter id + title and the supplied prose', () => {

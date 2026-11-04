@@ -1,11 +1,19 @@
 // Auto-apply policy enforcement tests — real in-memory DB, no mocks.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { openDb, closeDb, upsertSuggestion, insertGenerationLog, pruneGenerationLog } from './db.js';
 import { evaluateAutoApply, checkCallBudget, HARD_EXCLUDED_PAYLOAD_KINDS, type AgentBudgetSettings } from './budget.js';
 import type { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const BASE_SETTINGS: AgentBudgetSettings = {
   autoApply: true,
@@ -45,13 +53,13 @@ describe('evaluateAutoApply', () => {
   let db: DatabaseSync;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-budget-'));
+    tmpDir = makeTestTmp('budget');
     db = openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('returns shouldAutoApply=false when autoApply is disabled (under budget)', () => {
@@ -369,13 +377,13 @@ describe('checkCallBudget', () => {
   let db: DatabaseSync;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-call-budget-'));
+    tmpDir = makeTestTmp('call-budget');
     db = openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('allows call when no generation log entries exist', () => {
@@ -424,13 +432,13 @@ describe('checkCallBudget after pruneGenerationLog', () => {
   let db: DatabaseSync;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-call-budget-prune-'));
+    tmpDir = makeTestTmp('call-budget-prune');
     db = openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('pruning rows older than 7 days does not change budget decisions', () => {

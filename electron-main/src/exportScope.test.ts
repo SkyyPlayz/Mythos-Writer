@@ -7,12 +7,20 @@
 // holds ch-c (order 2), Part 2 holds ch-n (order 1). A global chapter.order
 // sort would reverse them; chaptersOf() must not.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChapterEntry, Manifest, PartEntry, SceneEntry, StoryEntry } from './ipc.js';
 import { defaultManifest, writeSceneFile } from './vault.js';
 import { buildTextExport, resolveExportScope } from './exportScope.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const CREATED_AT = '2026-01-01T00:00:00.000Z';
 
@@ -55,11 +63,11 @@ function makeStory(id: string, chapters: ChapterEntry[], parts: PartEntry[]): St
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-scope-test-'));
+  tmpDir = makeTestTmp('export-scope-test');
 });
 
 afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 /** Non-monotonic-across-parts fixture: Part 1 -> ch-c (order 2), Part 2 ->

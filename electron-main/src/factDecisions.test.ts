@@ -9,7 +9,6 @@
 // (derived) and fact_decisions (durable).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -27,6 +26,15 @@ import {
   rebuildDerivedFactStores,
   DERIVED_FACT_TABLES,
 } from './db.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const NOW = '2026-08-19T12:00:00.000Z';
 
@@ -34,13 +42,13 @@ describe('fact decisions', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-facts-'));
+    tmpDir = makeTestTmp('facts');
     openDb(tmpDir);
   });
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('migration v30 creates both buckets', () => {

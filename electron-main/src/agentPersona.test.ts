@@ -2,7 +2,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 
 // Hoist electron mock so ipc.ts can be imported for §6 frame-guard tests.
@@ -32,15 +31,24 @@ import {
 import type { AgentPersonaName } from './agentPersona.js';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 import type { IpcMainInvokeEvent } from 'electron';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-persona-'));
+  tmpDir = makeTestTmp('persona');
 });
 
 afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── §1  loadPersonaFile ──────────────────────────────────────────────────────

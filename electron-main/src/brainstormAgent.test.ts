@@ -3,7 +3,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   parseFacts,
@@ -30,6 +29,15 @@ import {
   type DbProposalTelemetry,
 } from './db.js';
 import { parseFrontmatter } from './vault.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 // ─── Helpers ───
 
@@ -55,7 +63,7 @@ function makeDeps(
 }
 
 function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-brainstorm-'));
+  return makeTestTmp('brainstorm');
 }
 
 // ─── parseFacts ───
@@ -185,7 +193,7 @@ describe('writeFacts', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('creates a vault file for each fact', () => {
@@ -516,7 +524,7 @@ describe('writeFacts — vaultPath validation', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('vaultPath: ".mythos" throws and writes no files', () => {
@@ -579,7 +587,7 @@ describe('writeFacts — real DB persistence', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('persisted suggestion is retrievable from the DB', () => {
@@ -839,7 +847,7 @@ describe('DB migration v12 — NoteProposal columns survive on existing rows', (
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('existing suggestion rows persist with null NoteProposal columns after migration', () => {
@@ -922,7 +930,7 @@ describe('DB migration v13 — proposal_telemetry table', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('inserts and round-trips a confirm telemetry entry', () => {

@@ -4,7 +4,6 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 
 vi.mock('@mythos-writer/shared/aiSuggestOnly', () => ({
@@ -14,6 +13,15 @@ vi.mock('@mythos-writer/shared/aiSuggestOnly', () => ({
 import { AI_TEXT_APPLY_ENABLED } from '@mythos-writer/shared/aiSuggestOnly';
 import { applyVaultWrite } from './suggestionApply.js';
 import type { DbSuggestion } from './db.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const V1_FIXTURE = path.resolve(__dirname, '../../e2e/fixtures/v1-vault-pre-templates-v2');
 
@@ -21,7 +29,7 @@ describe('flag true still refuses a scene write', () => {
   let vaultDir = '';
 
   afterEach(() => {
-    if (vaultDir) fs.rmSync(vaultDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('refuses a vault-kind scene row while the flag module is true', () => {
@@ -31,7 +39,7 @@ describe('flag true still refuses a scene write', () => {
     expect(applySrc).not.toContain('AI_TEXT_APPLY_ENABLED');
     expect(guardSrc).not.toContain('AI_TEXT_APPLY_ENABLED');
 
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-b2-flag-'));
+    vaultDir = makeTestTmp('b2-flag');
     fs.cpSync(V1_FIXTURE, vaultDir, { recursive: true });
     const scene = path.join(vaultDir, 'stories/story-1/chapters/chapter-1/scenes/Opening.md');
     const before = fs.readFileSync(scene);

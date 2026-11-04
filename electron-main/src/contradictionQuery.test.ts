@@ -8,7 +8,6 @@
 //         eyeballed.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { performance } from 'node:perf_hooks';
 import {
@@ -19,6 +18,15 @@ import {
   type DbContinuityIssue,
 } from './db.js';
 import { queryGlobalContradictions } from './contradictionQuery.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmpDir: string;
 
@@ -45,13 +53,13 @@ function issue(overrides: Partial<DbContinuityIssue> & { id: string }): DbContin
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'contradiction-query-test-'));
+  tmpDir = makeTestTmp('contradiction-query-test');
   openDb(tmpDir);
 });
 
 afterEach(() => {
   closeDb();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 describe('queryGlobalContradictions', () => {
