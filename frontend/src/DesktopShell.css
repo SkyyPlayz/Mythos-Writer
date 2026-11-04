@@ -1043,23 +1043,6 @@
 
 /* ─── Chapter continuous view (SKY-3211 C2) — per-scene editable bands ─── */
 
-/* Container class still applied to the ManuscriptView wrap in DesktopShell. */
-.chapter-continuous-view {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* Container class still applied to the ManuscriptView wrap in DesktopShell. */
-.book-outline-view {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
 
 /* Text prompt modal (replaces window.prompt, unsupported in Electron) */
 .prompt-modal-overlay {
