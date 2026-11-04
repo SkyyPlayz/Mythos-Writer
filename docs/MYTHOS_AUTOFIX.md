@@ -23,7 +23,7 @@ Related: [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENC
 ### Shadow window
 
 1. While `MYTHOS_AUTOFIX_MODE=shadow` **and** `now < MYTHOS_AUTOFIX_SHADOW_UNTIL`:
-   circuit breaker set, auto ready-for-review, and trend throttle are **log only**
+   circuit breaker set and trend throttle are **log only**
    (issue comment / Actions summary / `out/shadow-log.md` artifact). **Do not execute.**
 2. When `now >= MYTHOS_AUTOFIX_SHADOW_UNTIL` and mode is still `shadow`:
    Actions **auto-flips** to `live` via idempotent `gh variable set MYTHOS_AUTOFIX_MODE … -b live`
@@ -34,7 +34,7 @@ Related: [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENC
    cannot be set from Actions, Ivy sets it in the UI.
 
 Flip helpers: `scripts/mythos-autofix/shadow-mode.mjs` · wired from
-`scripts/mythos-token-audit/loud-digest.mjs` and `.github/workflows/mythos-pr-hygiene.yml`.
+`scripts/mythos-token-audit/loud-digest.mjs`.
 
 ## Coordination (priority / mutual exclusion)
 
@@ -42,13 +42,12 @@ High → low:
 
 1. **Circuit breaker** (`MYTHOS_WAKE_CIRCUIT_BREAKER`) — suppresses wakes
 2. **Trend throttle** (`MYTHOS_TIP_FIX_WINDOW_MINUTES` 20→10)
-3. **Auto ready-for-review** (hygiene `draft-ready-on-green`)
 
 Rules:
 
-- While the circuit breaker ISO is **in the future**: **do not** auto
-  ready-for-review; **do not** fire trend-throttle changes. Log
-  `suppressed by circuit breaker` in shadow/live audit / shadow-log.
+- While the circuit breaker ISO is **in the future**: **do not** fire
+  trend-throttle changes. Log `suppressed by circuit breaker` in shadow/live
+  audit / shadow-log.
 - Circuit breaker may still be **set** (highest priority) when tip-storms spike.
 - Trend throttle must not race the breaker on the same audit event — breaker
   is evaluated first; throttle only runs if breaker is inactive.
@@ -59,7 +58,6 @@ Rules:
 | --- | --- | --- | --- |
 | Set `MYTHOS_WAKE_CIRCUIT_BREAKER` | Log only | Set var | n/a (is the breaker) |
 | Set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10` | Log only | Set var | **Yes** |
-| `gh pr ready` after 2 greens | Log only | Execute | **Yes** |
 
 ## Rollback (one command each)
 
@@ -76,7 +74,9 @@ gh variable set MYTHOS_WAKE_CIRCUIT_BREAKER -R SkyyPlayz/Mythos-Writer -b ""
 gh variable set MYTHOS_WAKE_CIRCUIT_BREAKER -R SkyyPlayz/Mythos-Writer -b "1970-01-01T00:00:00.000Z"
 ```
 
-### Draft auto ready-for-review (undo ready → draft)
+### Manual convert ready → draft
+
+Hygiene no longer marks a draft ready. This remains the manual convert-to-draft:
 
 ```bash
 # Replace <n> with PR number
@@ -102,7 +102,7 @@ gh variable set MYTHOS_AUTOFIX_MODE -R SkyyPlayz/Mythos-Writer -b disabled
 | Path | Role |
 | --- | --- |
 | `.github/workflows/mythos-token-audit.yml` | Weekly audit + loud digest (breaker + throttle + **loop**) |
-| `.github/workflows/mythos-pr-hygiene.yml` | Auto-rebase + draft-CI comment + draft→ready |
+| `.github/workflows/mythos-pr-hygiene.yml` | Auto-rebase + draft-CI comment. A LIGHT-GREEN run skips the failure sticky. Nothing in the workflow marks a PR ready. |
 | `scripts/mythos-autofix/shadow-mode.mjs` | Resolve mode / flip / shadow-log append |
 | `scripts/mythos-autofix/loop.mjs` | Allow-listed self-improvement propose / shadow / APPLY / MISS |
 | `scripts/mythos-autofix/rollback.sh` | One-command rollbacks |

@@ -17,7 +17,7 @@ Health canary (weekday mornings + after audit/hygiene completes). Sticky marker:
 
 - **token-audit:** red if silent **>8d** or the latest completed run failed. No completed runs yet (workflow just landed; first Wed cron has not fired) is a **WARN**, not a failure. A missing workflow file is still a failure.
 - **pr-hygiene:** red on silence (**>26h since last success**) or when there is still no success and completed runs are older than the 26h bootstrap grace. A latest failure with a success inside 26h is OK (noted). No completed runs yet is a WARN. Last-success age is the newest `conclusion==success` on the **primary** workflow-run list (`list_workflow_runs_until_success` in `scripts/mythos-ops/ops-guards.sh`). Do not use `gh run list --status success` / `?status=success`: that filter is a search index and can lag the primary list by many hours (false SILENT on 2026-09-29, canary run 36584459444, while hygiene successes were minutes old).
-- **Main-push `workflow_run`:** `GET /actions/runs/{id}/pull_requests` is HTTP 404 (no PRs). `gh api` still prints that error JSON on stdout. Hygiene (`draft-ready-on-green`, `draft-ci-comment`, and the same list path in auto-rebase) soft-skips exit 0. Non-numeric tokens are never passed to `gh pr view`.
+- **Main-push `workflow_run`:** `GET /actions/runs/{id}/pull_requests` is HTTP 404 (no PRs). `gh api` still prints that error JSON on stdout. Hygiene (`draft-ci-comment` and the same list path in auto-rebase) soft-skips exit 0. Non-numeric tokens are never passed to `gh pr view`.
 
 ## Dependency map
 
@@ -29,7 +29,7 @@ Health canary (weekday mornings + after audit/hygiene completes). Sticky marker:
 | Circuit breaker | `MYTHOS_WAKE_CIRCUIT_BREAKER` | Grok Bot `mythos-pr-ci-watch` / Forge must stay SILENT while ISO future |
 | Shadow / autofix | `MYTHOS_AUTOFIX_MODE`, `MYTHOS_AUTOFIX_SHADOW_UNTIL` | [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md) |
 | Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE`, allow-listed tip-window / batch / circuit / retry vars | Wed audit proposes one tweak; shadow 1w; APPLY or MISS |
-| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (logged, not rebased); draft-CI sticky; draft→ready | No `gh` update-branch (#1703). Draft-CI comment and draft→ready remain. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
+| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (logged, not rebased); draft-CI sticky skips LIGHT-GREEN | No `gh` update-branch (#1703). Draft-CI comment remains. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
 | Branch protection | [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) + `scripts/branch-protection/apply-main-ruleset.mjs` | Manual admin apply after merge |
@@ -47,7 +47,7 @@ Canonical detail: [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md). Helper:
 | Circuit breaker | `gh variable delete MYTHOS_WAKE_CIRCUIT_BREAKER -R SkyyPlayz/Mythos-Writer` |
 | Tip-fix window | `gh variable set MYTHOS_TIP_FIX_WINDOW_MINUTES -R SkyyPlayz/Mythos-Writer -b 20` |
 | Autofix kill switch | `gh variable set MYTHOS_AUTOFIX_MODE -R SkyyPlayz/Mythos-Writer -b disabled` |
-| Undo draft→ready | `gh pr ready <n> --undo -R SkyyPlayz/Mythos-Writer` |
+| Manual convert ready → draft | `gh pr ready <n> --undo -R SkyyPlayz/Mythos-Writer` |
 | Loop kill switch | `gh variable set MYTHOS_LOOP_ENABLED -R SkyyPlayz/Mythos-Writer -b false` |
 | Clear loop state | `gh variable set MYTHOS_LOOP_STATE -R SkyyPlayz/Mythos-Writer -b ""` |
 

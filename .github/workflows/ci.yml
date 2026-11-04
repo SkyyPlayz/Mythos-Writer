@@ -2,9 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      # Draft PRs stay light. workflow_dispatch is full, but this GitHub App
+      # cannot dispatch (actions: write is denied). A push of this branch is
+      # the full run that lets required ci go green without undrafting.
+      - cursor/draft-ci-carveout-7631
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 concurrency:
@@ -94,6 +100,49 @@ jobs:
               - '!README*'
               - '!.gitignore'
               - '!.github/ISSUE_TEMPLATE/**'
+
+  # Light vs full. Drafts and research/bakeoff/* are light. Anything else, and a
+  # missing or garbled script, is full. permissions: {} and the checkout sha are
+  # the mode job's whole privilege set; it never reads a secret.
+  mode:
+    name: mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      full: ${{ steps.decide.outputs.full }}
+    steps:
+      - name: Checkout ci scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Decide full or light
+        id: decide
+        run: |
+          set -euo pipefail
+          raw="${RUNNER_TEMP}/ci-mode-raw"
+          mkdir -p "${RUNNER_TEMP}"
+          : > "$raw"
+          status=0
+          if [ ! -f .github/scripts/ci-mode.sh ]; then
+            status=127
+          else
+            set +e
+            GITHUB_OUTPUT="$raw" bash .github/scripts/ci-mode.sh
+            status=$?
+            set -e
+          fi
+          value=""
+          if [ -s "$raw" ]; then
+            value="$(grep '^full=' "$raw" | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)"
+          fi
+          if [ "$status" -ne 0 ] || { [ "$value" != "true" ] && [ "$value" != "false" ]; }; then
+            printf 'full=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'full=%s\n' "$value" >> "$GITHUB_OUTPUT"
+          fi
 
   lint:
     needs: [setup]
@@ -242,6 +291,14 @@ jobs:
         run: bash scripts/mythos-ops/ops-guards.test.sh
       - name: Test (mythos-pr-hygiene auto-rebase gate)
         run: bash scripts/mythos-ops/pr-hygiene-rebase.test.sh
+      - name: Test (ci-mode light or full)
+        run: bash .github/scripts/ci-mode.test.sh
+      - name: Test (ci-aggregate DRAFT-LIGHT and full rules)
+        run: bash .github/scripts/ci-aggregate.test.sh
+      - name: Test (is-light-run LIGHT-GREEN predicate)
+        run: bash .github/scripts/is-light-run.test.sh
+      - name: Test (workflow YAML and no auto-ready)
+        run: python3 .github/scripts/check-workflow-yaml.py
 
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
@@ -262,7 +319,8 @@ jobs:
   # Unit excludes this nested-Downloads file and the oracle-class / equivalence shards.
   oracle-sweeps:
     name: oracle-sweeps (${{ matrix.shard }}/2)
-    needs: [setup]
+    needs: [mode, setup]
+    if: "needs.mode.outputs.full == 'true'"
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -317,7 +375,8 @@ jobs:
     # SKY-8081: flattened dependency chain — now only needs [setup] instead of
     # [lint, typecheck, unit], allowing this job to run in parallel with those
     # checks and reducing wall-clock latency from ~4 hops to ~3 hops.
-    needs: [setup]
+    needs: [mode, setup]
+    if: "needs.mode.outputs.full == 'true'"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -372,10 +431,10 @@ jobs:
     # smoke, bg-scrim-slider, story-tab-subview, suggestions, tab-shell (SKY-6933 sweep)
     # split-pane-tab-strips (SKY-8907, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
-    needs: [build-electron, paths-filter]
+    needs: [mode, build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: needs.paths-filter.outputs.run-e2e == 'true'
+    if: "needs.mode.outputs.full == 'true' && needs.paths-filter.outputs.run-e2e == 'true'"
 
     steps:
       - uses: actions/checkout@v7
@@ -542,10 +601,10 @@ jobs:
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
-    needs: [build-electron, paths-filter]
+    needs: [mode, build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: needs.paths-filter.outputs.run-e2e == 'true'
+    if: "needs.mode.outputs.full == 'true' && needs.paths-filter.outputs.run-e2e == 'true'"
 
     steps:
       - uses: actions/checkout@v7
@@ -739,10 +798,10 @@ jobs:
     # paragraph-editing (SKY-8564), jobs-responsiveness (SKY-10768)
     # timeline-rebuild (SKY-10876/M12.B4b)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
-    needs: [build-electron, paths-filter]
+    needs: [mode, build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: needs.paths-filter.outputs.run-e2e == 'true'
+    if: "needs.mode.outputs.full == 'true' && needs.paths-filter.outputs.run-e2e == 'true'"
 
     steps:
       - uses: actions/checkout@v7
@@ -917,10 +976,10 @@ jobs:
     # failures on main being on shard-4 despite a different spec failing each time
     # (tight per-test timeouts tripping under normal tail latency, not one bad test).
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
-    needs: [build-electron, paths-filter]
+    needs: [mode, build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: needs.paths-filter.outputs.run-e2e == 'true'
+    if: "needs.mode.outputs.full == 'true' && needs.paths-filter.outputs.run-e2e == 'true'"
 
     steps:
       - uses: actions/checkout@v7
@@ -1098,70 +1157,74 @@ jobs:
             test-results/
           retention-days: 3
 
+  # Not a required check. Runs only in light mode and is green when mode, lint,
+  # typecheck, and unit all succeeded. Skipped in full mode.
+  ci-light:
+    name: ci-light
+    needs: [mode, lint, typecheck, unit]
+    if: "always() && needs.mode.result == 'success' && needs.mode.outputs.full == 'false'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Light signal
+        id: signal
+        env:
+          MODE_RESULT: ${{ needs.mode.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+        run: |
+          set -euo pipefail
+          printf 'mode=%s lint=%s typecheck=%s unit=%s\n' \
+            "$MODE_RESULT" "$LINT_RESULT" "$TYPECHECK_RESULT" "$UNIT_RESULT"
+          if [ "$MODE_RESULT" != "success" ] || [ "$LINT_RESULT" != "success" ] || [ "$TYPECHECK_RESULT" != "success" ] || [ "$UNIT_RESULT" != "success" ]; then
+            printf 'ci-light: lint, typecheck, or unit is not success\n'
+            exit 1
+          fi
+          printf 'ci-light: mode, lint, typecheck, and unit are success\n'
+
   ci:
     # Required check aggregator — always runs (if: always()) so branch protection
     # gets a definitive pass/fail rather than a "pending" indefinite skipped state
     # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
-    # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
-    # SKY-8090: e2e shards may be legitimately skipped if the diff cannot affect them
-    # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
+    # Light mode (FULL exactly false) always exits 1 with DRAFT-LIGHT, so a draft
+    # can never make this required check green. Full mode keeps the e2e skip rule
+    # and also requires build-electron and notes-windows success.
     # oracle-sweeps is a matrix in `needs`. needs.oracle-sweeps.result == success
     # only when every leg succeeded. skipped, cancelled, and failed are not success.
-    needs: [lint, typecheck, unit, oracle-sweeps, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    needs: [mode, lint, typecheck, unit, oracle-sweeps, build-electron, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4, notes-windows]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
 
     steps:
-      - name: All checks passed
-        run: |
-          # Stage 1 checks must always succeed. For the oracle-sweeps matrix,
-          # needs.oracle-sweeps.result == success only when every leg succeeded.
-          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.oracle-sweeps.result }}"
-          echo "Stage 1 (lint/typecheck/unit/oracle-sweeps) results: $stage1"
-          if [ "${{ needs.oracle-sweeps.result }}" != "success" ]; then
-            echo "ERROR: needs.oracle-sweeps.result is '${{ needs.oracle-sweeps.result }}' — expected 'success'. Skipped, cancelled, or failed legs are not success. CI aggregator: FAILED."
-            exit 1
-          fi
-          for r in $stage1; do
-            if [ "$r" != "success" ]; then
-              echo "ERROR: Required Stage 1 job outcome '$r' — expected 'success'. CI aggregator: FAILED."
-              exit 1
-            fi
-          done
-
-          # E2E shards may be legitimately skipped if path-filter determined they cannot be affected
-          e2e="${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
-          echo "E2E shard results: $e2e"
-          for r in $e2e; do
-            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
-              echo "ERROR: E2E shard outcome '$r' — expected 'success' or 'skipped'. CI aggregator: FAILED."
-              exit 1
-            fi
-          done
-
-          # Validate that at least one e2e shard ran if path-filter said to run e2e
-          run_e2e="${{ needs.paths-filter.outputs.run-e2e }}"
-          if [ "$run_e2e" = "true" ]; then
-            skipped_count=0
-            for r in $e2e; do
-              [ "$r" = "skipped" ] && skipped_count=$((skipped_count + 1))
-            done
-            if [ "$skipped_count" -eq 4 ]; then
-              echo "ERROR: path-filter indicated e2e should run, but all 4 shards were skipped. CI aggregator: FAILED."
-              exit 1
-            fi
-          fi
-
-          echo "All checks passed — lint, typecheck, unit, and applicable E2E shards are green."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Aggregate required ci
+        env:
+          MODE_RESULT: ${{ needs.mode.result }}
+          FULL: ${{ needs.mode.outputs.full }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+          ORACLE_SWEEPS_RESULT: ${{ needs.oracle-sweeps.result }}
+          BUILD_ELECTRON_RESULT: ${{ needs.build-electron.result }}
+          NOTES_WINDOWS_RESULT: ${{ needs.notes-windows.result }}
+          E2E_SHARD_1_RESULT: ${{ needs.e2e-shard-1.result }}
+          E2E_SHARD_2_RESULT: ${{ needs.e2e-shard-2.result }}
+          E2E_SHARD_3_RESULT: ${{ needs.e2e-shard-3.result }}
+          E2E_SHARD_4_RESULT: ${{ needs.e2e-shard-4.result }}
+          PATHS_FILTER_RUN_E2E: ${{ needs.paths-filter.outputs.run-e2e }}
+        run: bash .github/scripts/ci-aggregate.sh
 
   build-linux:
     # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate
     # runners. Report job was the only downstream consumer (now deleted), so the
     # skipped status issue from SKY-2421 no longer applies. Packaging steps still
     # guard at step level as a safety redundancy.
-    if: github.event_name != 'pull_request'
-    needs: [setup]
+    if: "needs.mode.outputs.full == 'true' && github.event_name != 'pull_request'"
+    needs: [mode, setup]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     concurrency:
@@ -1326,8 +1389,8 @@ jobs:
     # The windows-latest quota failure seen on PR #571 was a private-repo minutes
     # limit; the repo is now public (35507aea), so hosted Windows minutes are free
     # and native packaging is simpler and more reliable than a wine cross-build.
-    if: github.event_name != 'pull_request'
-    needs: [setup]
+    if: "needs.mode.outputs.full == 'true' && github.event_name != 'pull_request'"
+    needs: [mode, setup]
     runs-on: windows-latest
     timeout-minutes: 40
     continue-on-error: true
@@ -1445,7 +1508,8 @@ jobs:
   # fast enough to require on every PR. `.github/` change — merge path is
   # ESCALATE-IVY per COMPANY-STANDARDS §3.
   notes-windows:
-    needs: [setup]
+    needs: [mode, setup]
+    if: "needs.mode.outputs.full == 'true'"
     runs-on: windows-latest
     # SKY-10910: raised from 20 — this job grew 5 more native-Windows Electron
     # launches (vault delete/migration/quit-teardown x4 lifecycle specs) to

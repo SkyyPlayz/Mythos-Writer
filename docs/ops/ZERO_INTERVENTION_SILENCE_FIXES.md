@@ -3,18 +3,18 @@
 Creed: **cut waste, don't weaken quality.**
 
 Canonical loud digest: [TOKEN_AUDIT_LOUD_DIGEST.md](../TOKEN_AUDIT_LOUD_DIGEST.md).
-PR hygiene (rebase + draft-CI comment + draft→ready): [`.github/workflows/mythos-pr-hygiene.yml`](../../.github/workflows/mythos-pr-hygiene.yml).
+PR hygiene (rebase + draft-CI comment): [`.github/workflows/mythos-pr-hygiene.yml`](../../.github/workflows/mythos-pr-hygiene.yml).
 
 ## Map (trigger → action → silence failure prevented)
 
-### 1. Draft ready after 2 consecutive CI greens (same tip)
+### 1. Draft ready after 2 consecutive CI greens (same tip) — removed
 
 | | |
 | --- | --- |
-| **Trigger** | `mythos-pr-hygiene` `draft-ready-on-green`: CI `workflow_run` **success** on a **draft** PR; sticky `<!-- mythos-draft-green:SHA -->` reaches `green_streak≥2` on the **same** tip SHA. |
-| **Action** | `gh pr ready` (mark ready-for-review). **Never** auto-close drafts. |
-| **Silence failure prevented** | Draft rot / forever-draft with green CI nobody notices. |
-| **Committed** | `.github/workflows/mythos-pr-hygiene.yml` |
+| **Trigger** | Removed (Ivy R2). `draft-ready-on-green` is deleted. |
+| **Action** | Removed. No workflow marks a PR ready. |
+| **Silence failure prevented** | n/a. The job is gone. |
+| **Committed** | `.github/workflows/mythos-pr-hygiene.yml` (job deleted) |
 
 ### 2. Self-healing audit-down
 
@@ -62,7 +62,7 @@ PR hygiene (rebase + draft-CI comment + draft→ready): [`.github/workflows/myth
 | | |
 | --- | --- |
 | **Trigger** | CI `workflow_run` on a **main push** (no associated pull request). `GET /actions/runs/{id}/pull_requests` returns HTTP 404 and `gh api` still writes the error JSON to stdout. Separately, `mythos-token-audit.yml` may have zero completed runs until the first Wednesday cron. |
-| **Action** | `draft-ready-on-green` and `draft-ci-comment` soft-skip (exit 0). Non-numeric tokens never reach `gh pr view`. Ops canary logs a WARN for a token-audit that has never completed, and does not go red on a hygiene failure when a success exists within 26h. |
+| **Action** | `draft-ci-comment` soft-skips (exit 0). Non-numeric tokens never reach `gh pr view`. Ops canary logs a WARN for a token-audit that has never completed, and does not go red on a hygiene failure when a success exists within 26h. |
 | **Silence failure prevented** | A green main CI run painting hygiene (and then the ops canary) red, which looks like a product outage and invites noise. |
 | **Committed** | `.github/workflows/mythos-pr-hygiene.yml`, `.github/workflows/mythos-ops-health.yml`, `scripts/mythos-ops/ops-guards.sh` |
 

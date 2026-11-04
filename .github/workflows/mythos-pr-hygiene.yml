@@ -13,7 +13,7 @@
 #
 # Autofix shadow / coordination: docs/MYTHOS_AUTOFIX.md
 #   MYTHOS_AUTOFIX_MODE, MYTHOS_AUTOFIX_SHADOW_UNTIL
-# Priority: circuit-breaker > trend-throttle > auto ready-for-review
+# Priority: circuit-breaker > trend-throttle
 #
 # Main-push workflow_run has no associated PRs. GET .../pull_requests is HTTP 404
 # and `gh api` still prints the error JSON on stdout. Resolve via
@@ -149,6 +149,35 @@ jobs:
             fi
             # Dedupe: one sticky comment marker per head SHA
             HEAD=$(gh pr view "$n" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)
+            # LIGHT-GREEN: this ci run is the light set and the PR is still a draft at
+            # that head. Unreadable jobs or draft state are not light, so the sticky
+            # still posts. No PR title or body is read here.
+            CLASS="NOT-LIGHT"
+            JOBS_JSON="$(mktemp)"
+            COMBINED="$(mktemp)"
+            if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "$GITHUB_EVENT_PATH" ]; then
+              RUN_PATH="$(jq -r '.workflow_run.path // empty' "$GITHUB_EVENT_PATH")"
+              RUN_SHA="$(jq -r '.workflow_run.head_sha // empty' "$GITHUB_EVENT_PATH")"
+              if gh api --paginate --jq '.jobs[]' "repos/${{ github.repository }}/actions/runs/${RUN_ID}/jobs?per_page=100" | jq -s '.' > "$JOBS_JSON"; then
+                RUN_KEY="$(printf '%s_%s' workflow run)"
+                if jq -n \
+                  --arg key "$RUN_KEY" \
+                  --arg path "$RUN_PATH" \
+                  --arg head "$RUN_SHA" \
+                  --arg prhead "$HEAD" \
+                  --argjson draft "$DRAFT" \
+                  --slurpfile jobs "$JOBS_JSON" \
+                  '{($key):{path:$path, head_sha:$head}, jobs:$jobs[0], pull_request:{draft:$draft, head_sha:$prhead}}' \
+                  > "$COMBINED"; then
+                  CLASS="$(bash "${GITHUB_WORKSPACE}/.github/scripts/is-light-run.sh" "$COMBINED" || true)"
+                fi
+              fi
+            fi
+            rm -f "$JOBS_JSON" "$COMBINED"
+            if [ "$CLASS" = "LIGHT-GREEN" ]; then
+              echo "skip #$n LIGHT-GREEN"
+              continue
+            fi
             MARKER="<!-- mythos-draft-ci:${HEAD} -->"
             EXISTING=$(gh api "repos/${{ github.repository }}/issues/$n/comments" --paginate \
               --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1 || true)
@@ -165,138 +194,4 @@ jobs:
             fi
           done
 
-  # Zero-intervention: after 2 consecutive CI greens on the SAME draft tip → ready-for-review.
-  # NEVER auto-close drafts. Marker tracks green streak per tip SHA.
-  draft-ready-on-green:
-    name: draft-ready-on-green
-    if: >
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'draft-ci' || github.event.inputs.mode == 'both'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Mark draft ready after 2 greens on same tip (shadow / breaker aware)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MYTHOS_AUTOFIX_MODE: ${{ vars.MYTHOS_AUTOFIX_MODE }}
-          MYTHOS_AUTOFIX_SHADOW_UNTIL: ${{ vars.MYTHOS_AUTOFIX_SHADOW_UNTIL }}
-          MYTHOS_WAKE_CIRCUIT_BREAKER: ${{ vars.MYTHOS_WAKE_CIRCUIT_BREAKER }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC1091
-          source "${GITHUB_WORKSPACE}/scripts/mythos-ops/ops-guards.sh"
-          MODE="${MYTHOS_AUTOFIX_MODE:-shadow}"
-          UNTIL="${MYTHOS_AUTOFIX_SHADOW_UNTIL:-}"
-          BREAKER="${MYTHOS_WAKE_CIRCUIT_BREAKER:-}"
-          NOW_MS=$(($(date +%s) * 1000))
-          EXECUTE=1
-          if [ "$MODE" = "disabled" ]; then
-            EXECUTE=0
-            echo "autofix disabled — log-only for ready-for-review"
-          elif [ "$MODE" = "shadow" ]; then
-            if [ -z "$UNTIL" ]; then
-              EXECUTE=0
-              echo "shadow (UNTIL unset) — log-only"
-            else
-              UNTIL_MS=$(date -d "$UNTIL" +%s 2>/dev/null || date -u -d "$UNTIL" +%s 2>/dev/null || echo 0)
-              UNTIL_MS=$((UNTIL_MS * 1000))
-              if [ "$UNTIL_MS" -gt 0 ] && [ "$NOW_MS" -lt "$UNTIL_MS" ]; then
-                EXECUTE=0
-                echo "shadow until $UNTIL — log-only"
-              else
-                echo "shadow window elapsed — treat as live for this job (weekly audit flips var)"
-              fi
-            fi
-          fi
-          BREAKER_ON=0
-          if [ -n "$BREAKER" ]; then
-            B_MS=$(date -d "$BREAKER" +%s 2>/dev/null || date -u -d "$BREAKER" +%s 2>/dev/null || echo 0)
-            B_MS=$((B_MS * 1000))
-            if [ "$B_MS" -gt "$NOW_MS" ]; then
-              BREAKER_ON=1
-              echo "circuit breaker active until $BREAKER — suppress auto ready-for-review"
-            fi
-          fi
-
-          RUN_ID="${{ github.event.workflow_run.id }}"
-          if [ -z "${RUN_ID:-}" ]; then
-            echo "no workflow_run id — soft skip"
-            exit 0
-          fi
-          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
-          # Main-push CI success has no PRs (HTTP 404). Soft skip — do not word-split the error JSON.
-          if ! PRS=$(resolve_run_prs "$RUN_ID"); then
-            echo "no pull_requests for run ${RUN_ID} (main push / 404) — soft skip"
-            exit 0
-          fi
-          if [ -z "$(printf '%s' "$PRS" | tr -d '[:space:]')" ]; then
-            exit 0
-          fi
-          for n in $PRS; do
-            case "$n" in
-              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
-            esac
-            META=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft,headRefOid,labels \
-              --jq '{draft:.isDraft,sha:.headRefOid,labels:[.labels[].name]}')
-            DRAFT=$(jq -r '.draft' <<<"$META")
-            SHA=$(jq -r '.sha' <<<"$META")
-            if [ "$DRAFT" != "true" ]; then
-              echo "skip #$n not draft"
-              continue
-            fi
-            if [ -n "$HEAD_SHA" ] && [ "$SHA" != "$HEAD_SHA" ]; then
-              echo "skip #$n tip moved"
-              continue
-            fi
-            case ",$(jq -r '.labels | join(",")' <<<"$META")," in
-              *,tip-freeze,*) echo "skip #$n tip-freeze"; continue ;;
-            esac
-            MARKER="<!-- mythos-draft-green:${SHA} -->"
-            EXISTING=$(gh api "repos/${{ github.repository }}/issues/$n/comments" --paginate \
-              --jq ".[] | select(.body | contains(\"mythos-draft-green\")) | {id,body}" | jq -s '.[0] // empty' || true)
-            streak=1
-            if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
-              body=$(jq -r '.body // empty' <<<"$EXISTING")
-              cid=$(jq -r '.id // empty' <<<"$EXISTING")
-              if echo "$body" | grep -q "$MARKER"; then
-                prev=$(echo "$body" | sed -n 's/.*<!-- green_streak=\([0-9]*\) -->.*/\1/p' | head -1)
-                streak=$(( ${prev:-1} + 1 ))
-              else
-                streak=1
-              fi
-              NEW=$(printf '%s\n<!-- green_streak=%s -->\nDraft CI green streak **%s** on tip `%s`.\n' "$MARKER" "$streak" "$streak" "$SHA")
-              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$cid" -f body="$NEW" >/dev/null
-            else
-              NEW=$(printf '%s\n<!-- green_streak=1 -->\nDraft CI green streak **1** on tip `%s`.\n' "$MARKER" "$SHA")
-              gh pr comment "$n" --repo "${{ github.repository }}" --body "$NEW"
-            fi
-            if [ "$streak" -lt 2 ]; then
-              continue
-            fi
-            if [ "$BREAKER_ON" -eq 1 ]; then
-              SUP=$(printf '%s\n%s\n' \
-                '<!-- mythos-draft-ready-suppressed -->' \
-                "Auto ready-for-review suppressed by circuit breaker (streak=$streak tip \`${SHA}\`). See docs/MYTHOS_AUTOFIX.md.")
-              gh pr comment "$n" --repo "${{ github.repository }}" --body "$SUP"
-              continue
-            fi
-            if [ "$EXECUTE" -eq 0 ]; then
-              SH=$(printf '%s\n%s\n' \
-                '<!-- mythos-draft-ready-shadow -->' \
-                "Shadow mode: would mark PR ready (green streak=$streak on tip \`${SHA}\`). Not executed. See docs/MYTHOS_AUTOFIX.md.")
-              gh pr comment "$n" --repo "${{ github.repository }}" --body "$SH"
-              echo "SHADOW would gh pr ready #$n"
-              continue
-            fi
-            echo "escalate #$n draft→ready (green streak=$streak on same tip)"
-            gh pr ready "$n" --repo "${{ github.repository }}" || echo "gh pr ready soft-fail #$n"
-            ESC=$(printf '%s\n%s\n%s\n%s\n' \
-              '<!-- mythos-draft-ready-escalate -->' \
-              '## Auto-escalation: draft → ready-for-review' \
-              "Two consecutive CI greens on tip \`${SHA}\`. Marked ready (never auto-close)." \
-              'See docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md · docs/MYTHOS_AUTOFIX.md.')
-            gh pr comment "$n" --repo "${{ github.repository }}" --body "$ESC"
-          done
+# draft-ready-on-green was removed. No job in this workflow marks a PR ready.

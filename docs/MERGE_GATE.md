@@ -37,6 +37,8 @@ While the bot PAT returns 403, Critic/Shield/Probe verdicts posted in the Mythos
    - `notes-windows`
    - `screenshot-check`
    - `carve-out-check` must be **completed** (it never fails the build; it labels/comments only).
+   - No bypass merge of a PR whose newest `ci` isn't `success`. The newest check run for a name is the one that counts. A light run ends `ci` as `failure` (`DRAFT-LIGHT`) and has no success path. `ci-light` is not a required check.
+   - Tip-freeze source of truth: Mythos-Ops `rules/gates/FORGE_TIP_FREEZE.md`. Freeze line: Ivy undrafts (= the freeze). Builders push code only; builders never undraft, re-draft or re-run.
 3. **Tip-bound gate signals from trusted authors** — issue comments and/or PR reviews by allowlisted accounts (`SkyyPlayz`, `SkyHigh-Mythos-Bot`) whose bodies reference the **current head SHA** (full or ≥7-char prefix) and include:
    - Critic: latest tip-bound decision must be `APPROVE` (body must include Critic; COMMENT reviews count; a later tip-bound `CHANGES_REQUESTED` revokes an earlier APPROVE)
    - Shield: body must include `Shield` + `CLEAR`
@@ -75,4 +77,6 @@ Nothing posts that marker now.
   auto-applied by Actions).
 - Tip-freeze / CI-fix batching soft cap — see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md)
   and [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) (comment-only draft CI sticky).
+  The freeze line's source of truth is Mythos-Ops `rules/gates/FORGE_TIP_FREEZE.md`:
+  Ivy undrafts (= the freeze). Builders push code only; builders never undraft, re-draft or re-run.
 - `release.yml` publish / draft policy
