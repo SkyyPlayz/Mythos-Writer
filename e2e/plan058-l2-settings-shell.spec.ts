@@ -113,8 +113,8 @@ test('L2: Settings nav order, centered page, and Model & keys without the old pr
   await expect(page.getByLabel('Default note view')).toBeVisible();
   await expect(page.getByLabel('Default manuscript zoom')).toBeVisible();
 
-  fs.mkdirSync('test-results', { recursive: true });
+  // #1707 sweep: write under this test's own output dir, not a shared fixed path.
   await page.screenshot({
-    path: path.resolve(__dirname, '../test-results/plan058-l2-settings-shell.png'),
+    path: test.info().outputPath('plan058-l2-settings-shell.png'),
   });
 });
