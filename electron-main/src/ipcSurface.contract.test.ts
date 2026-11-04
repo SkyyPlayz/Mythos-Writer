@@ -1047,3 +1047,118 @@ describe('ipc surface contract', () => {
     ]);
   });
 });
+
+// Renderer fs lock. The renderer reaches disk only through the preload's IPC
+// keys. A `require('fs')` or `import … from 'fs'` in frontend/src would be a
+// second path to disk that no channel, handler or exposed key in this lock can
+// see (mutant R2). Production renderer sources only; `.test.` / `.spec.` files
+// run under Node and may read fixtures.
+
+const RENDERER_DIR = path.resolve(SRC_DIR, '..', '..', 'frontend', 'src');
+const RENDERER_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const FS_SPEC = String.raw`(?:node:)?fs(?:/promises)?`;
+const RENDERER_FS_FORMS: readonly { form: string; re: RegExp }[] = [
+  { form: 'require', re: new RegExp(String.raw`\brequire\s*\(\s*(['"\x60])${FS_SPEC}\1\s*\)`, 'g') },
+  { form: 'dynamic-import', re: new RegExp(String.raw`\bimport\s*\(\s*(['"\x60])${FS_SPEC}\1\s*\)`, 'g') },
+  { form: 'import-from', re: new RegExp(String.raw`\b(?:import|export)\b[^;'"\x60]*?\bfrom\s*(['"])${FS_SPEC}\1`, 'g') },
+  { form: 'import-bare', re: new RegExp(String.raw`\bimport\s*(['"])${FS_SPEC}\1`, 'g') },
+];
+
+function isRendererProductionSource(name: string): boolean {
+  if (!RENDERER_EXTS.some((ext) => name.endsWith(ext))) return false;
+  if (name.endsWith('.d.ts')) return false;
+  return !(name.includes('.test.') || name.includes('.spec.') || name.includes('.bench.'));
+}
+
+function readRendererSources(root: string): SourceFile[] {
+  const out: SourceFile[] = [];
+  const walk = (dir: string, relDir: string): void => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = relDir ? `${relDir}/${ent.name}` : ent.name;
+      const abs = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === 'node_modules') continue;
+        walk(abs, rel);
+      } else if (ent.isFile() && isRendererProductionSource(ent.name)) {
+        out.push({ rel, text: fs.readFileSync(abs, 'utf8') });
+      }
+    }
+  };
+  walk(root, '');
+  return out.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
+/**
+ * `rel:line form` for every fs load in renderer sources, sorted. Raw text, not
+ * comment-masked: a comment that spells out an fs import is a visible false
+ * red, while a masking slip on JSX apostrophes would be a silent miss.
+ */
+function rendererFsHits(files: readonly SourceFile[]): string[] {
+  const hits = new Set<string>();
+  for (const file of files) {
+    const newlines = newlinePositions(file.text);
+    for (const { form, re } of RENDERER_FS_FORMS) {
+      for (const match of file.text.matchAll(new RegExp(re.source, 'g'))) {
+        hits.add(`${file.rel}:${lineAt(newlines, match.index ?? 0)} ${form}`);
+      }
+    }
+  }
+  return [...hits].sort();
+}
+
+const rendererFiles = readRendererSources(RENDERER_DIR);
+
+function withRendererLine(rel: string, line: string): SourceFile[] {
+  const files = rendererFiles.map((file) => ({ ...file }));
+  const target = files.find((file) => file.rel === rel);
+  if (!target) throw new Error(`${rel} missing from renderer scan`);
+  target.text = `${line}\n${target.text}`;
+  return files;
+}
+
+describe('renderer has no direct fs access', () => {
+  it('walks the production renderer, not its tests', () => {
+    const rels = rendererFiles.map((file) => file.rel);
+    expect(rels).toContain('main.tsx');
+    expect(rels).toContain('App.tsx');
+    expect(rels.length).toBeGreaterThan(300);
+    expect(rels.filter((rel) => !isRendererProductionSource(path.basename(rel)))).toEqual([]);
+  });
+
+  it("no renderer source loads fs, node:fs or fs/promises", () => {
+    expect(rendererFsHits(rendererFiles)).toEqual([]);
+  });
+
+  it.each([
+    ["const fs = require('fs');", 'require'],
+    ['const fsp = require("node:fs/promises");', 'require'],
+    ["import fs from 'fs';", 'import-from'],
+    ["import * as fsp from 'node:fs/promises';", 'import-from'],
+    ["import { readFileSync, writeFileSync } from 'node:fs';", 'import-from'],
+    ["export { readFileSync } from 'fs';", 'import-from'],
+    ["import 'fs';", 'import-bare'],
+    ["const lazy = () => import('fs');", 'dynamic-import'],
+  ])('R2: goes red when the renderer adds %s', (line, form) => {
+    const hits = rendererFsHits(withRendererLine('App.tsx', line));
+    expect(hits).toEqual([`App.tsx:1 ${form}`]);
+    console.log(`[mutant R2] RED ${line} -> ${hits.join(', ')}`);
+  });
+
+  it('R2: a nested renderer file is scanned too', () => {
+    const nested = rendererFiles.find((file) => file.rel.includes('/'));
+    if (!nested) throw new Error('no nested renderer file');
+    expect(rendererFsHits(withRendererLine(nested.rel, "const fs = require('fs');"))).toEqual([
+      `${nested.rel}:1 require`,
+    ]);
+  });
+
+  it('does not flag modules that only look like fs', () => {
+    const lines = [
+      "import { fsLike } from './fs';",
+      "import memfs from 'memfs';",
+      "import fsx from 'fs-extra-lite';",
+      "const label = 'fs';",
+    ].join('\n');
+    expect(rendererFsHits(withRendererLine('App.tsx', lines))).toEqual([]);
+  });
+});
