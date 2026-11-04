@@ -2,6 +2,9 @@
  * Slice C — Settings › Writing partner.
  * Identity binds B partner store (agentNames.brainstorm).
  * Slice D: also syncs name/icon to Agents Vault partner.md.
+ * PLAN-COACHING-OPT-IN: Teaching style chips and the Teacher register are
+ * disabled (values kept) unless Coaching is on in Teacher mode, because only
+ * then do coach prompts carry them.
  */
 import { useEffect, useState } from 'react';
 import {
@@ -11,6 +14,7 @@ import {
   type PartnerHandId,
 } from '../agents/partnerIdentity';
 import {
+  effectiveCoachingMode,
   PARTNER_TRAIT_LABELS,
   traitDetail,
   traitOptions,
@@ -71,6 +75,13 @@ export default function WritingPartnerSection({
 }: WritingPartnerSectionProps) {
   const partner = resolveWritingPartner(settings);
   const partnerName = resolvePartnerDisplayName(settings.agentNames);
+  const coachingMode = effectiveCoachingMode(settings);
+  const teachingApplies = coachingMode === 'teacher';
+  const teachingGatedHint = coachingMode === 'off'
+    ? 'Teaching style and the Teacher register apply only when Coaching is on (Writing Coach, above).'
+    : 'Teaching style and the Teacher register apply only in Coaching’s Teacher mode.';
+  const isGatedChip = (key: PartnerTraitKey, opt: string): boolean =>
+    !teachingApplies && (key === 'teach' || (key === 'register' && opt === 'Teacher'));
   const [lastTrait, setLastTrait] = useState<PartnerTraitKey>('teach');
   const provider = partner.modelKeysProvider;
   const modelOpts = modelsForProvider(provider);
@@ -196,14 +207,24 @@ export default function WritingPartnerSection({
               return (
                 <div key={key} className="wp-trait-row">
                   <span className="wp-trait-label">{PARTNER_TRAIT_LABELS[key]}</span>
-                  <div className="wp-chips" role="group" aria-label={PARTNER_TRAIT_LABELS[key]}>
+                  <div
+                    className="wp-chips"
+                    role="group"
+                    aria-label={PARTNER_TRAIT_LABELS[key]}
+                    aria-describedby={
+                      !teachingApplies && (key === 'teach' || key === 'register')
+                        ? 'wp-teach-gated-hint'
+                        : undefined
+                    }
+                  >
                     {traitOptions(key).map((opt) => (
                       <button
                         key={opt}
                         type="button"
-                        className={`wp-chip${value === opt ? ' wp-chip--on' : ''}`}
+                        className={`wp-chip${value === opt ? ' wp-chip--on' : ''}${isGatedChip(key, opt) ? ' wp-chip--gated' : ''}`}
                         data-testid={`wp-trait-${key}-${opt.replace(/\s+/g, '-').toLowerCase()}`}
                         aria-pressed={value === opt}
+                        disabled={isGatedChip(key, opt)}
                         onClick={() => {
                           setLastTrait(key);
                           if (key === 'tone') patchPartner(setSettings, { tone: opt as WritingPartnerSettings['tone'] });
@@ -223,6 +244,15 @@ export default function WritingPartnerSection({
                   {key === 'teach' && (
                     <p className="settings-hint wp-teach-hint">
                       How {partnerName} teaches craft when you ask for help.
+                    </p>
+                  )}
+                  {key === 'teach' && !teachingApplies && (
+                    <p
+                      className="settings-hint wp-teach-hint"
+                      id="wp-teach-gated-hint"
+                      data-testid="wp-teach-gated-hint"
+                    >
+                      {teachingGatedHint}
                     </p>
                   )}
                 </div>
