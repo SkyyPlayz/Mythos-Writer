@@ -12,6 +12,7 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
 
 ### Added
+- **Background scans wait for a typing pause.** Background manuscript scans you start from the Continuity panel now wait until you pause typing (2 minutes by default, adjustable in Settings → Editor → Idle catch-up). If a background scan already started, it may finish after you start typing again. ([#1814](https://github.com/SkyyPlayz/Mythos-Writer/pull/1814))
 - **Book profiles stay in the book file.** A book's print profiles are saved inside the book file and kept the next time the story is saved. The panel for editing them comes later. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
 

@@ -5,6 +5,30 @@ import ContinuityPanel from './ContinuityPanel';
 import type { InconsistencyItem } from './InconsistencyCard';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 import type { Scene } from './types';
+import { idleCatchUpGate } from './idleCatchUp/idleCatchUpGate';
+import type { IdleEnqueueHooks, IdleEnqueueResult } from './idleCatchUp/enqueueIdle';
+
+type EnqueueIdleFn = typeof import('./idleCatchUp/enqueueIdle').enqueueIdle;
+
+/** PLAN-IDLE-CATCH-UP: records every `enqueueIdle` call. With no `override`
+ *  the REAL gate runs — no shell host is mounted here, so it bypasses staging
+ *  and calls `window.api.jobs.enqueue` immediately (the M12.3 rows rely on
+ *  that). Rows that need a staged / late outcome set `override`. */
+const idleSeam = vi.hoisted(() => ({
+  calls: [] as unknown[][],
+  override: null as null | EnqueueIdleFn,
+}));
+
+vi.mock('./idleCatchUp/enqueueIdle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./idleCatchUp/enqueueIdle')>();
+  return {
+    ...actual,
+    enqueueIdle: (...args: Parameters<EnqueueIdleFn>) => {
+      idleSeam.calls.push(args);
+      return idleSeam.override ? idleSeam.override(...args) : actual.enqueueIdle(...args);
+    },
+  };
+});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Callback = (...args: any[]) => void;
@@ -84,6 +108,8 @@ const mockScene: Scene = {
 beforeEach(() => {
   vi.resetAllMocks();
   __resetAiEnabledForTests();
+  idleSeam.calls = [];
+  idleSeam.override = null;
   onStartCb = null;
   onResultCb = null;
   onErrorCb = null;
@@ -662,5 +688,221 @@ describe('ContinuityPanel — M12.3 global contradictions (scope-independent)', 
     });
     await renderContinuity(<ContinuityPanel scene={mockScene} />);
     expect(screen.queryByTestId('cp-global-contradictions')).not.toBeInTheDocument();
+  });
+});
+
+// PLAN-IDLE-CATCH-UP r2: the background manuscript scan goes through the idle
+// gate; its terminal outcome (immediate or minutes later) still lands in the
+// panel. The LLM continuity scan stays immediate.
+describe('ContinuityPanel — idle catch-up background scan', () => {
+  const MAY_FINISH = 'If a background scan already started, it may finish after you start typing again.';
+
+  interface HeldIdleCall {
+    hooks?: IdleEnqueueHooks;
+    resolve: (result: IdleEnqueueResult) => void;
+    reject: (err: unknown) => void;
+  }
+
+  /** Every `enqueueIdle` call stays pending until the test settles it. */
+  function holdIdleCalls(): HeldIdleCall[] {
+    const held: HeldIdleCall[] = [];
+    idleSeam.override = (_type, _opts, hooks) =>
+      new Promise<IdleEnqueueResult>((resolve, reject) => {
+        held.push({ hooks, resolve, reject });
+      });
+    return held;
+  }
+
+  async function stage(call: HeldIdleCall) {
+    await act(async () => {
+      call.hooks?.onStaged?.();
+      await Promise.resolve();
+    });
+  }
+
+  async function settle(call: HeldIdleCall, result: IdleEnqueueResult) {
+    await act(async () => {
+      call.resolve(result);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  function jobsBridge() {
+    return {
+      enqueue: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      list: vi.fn().mockResolvedValue({ jobs: [] }),
+      progress: vi.fn().mockResolvedValue({}),
+      cancel: vi.fn().mockResolvedValue({ cancelled: false }),
+      onEvent: vi.fn(() => vi.fn()),
+    };
+  }
+
+  async function renderAndScan() {
+    const result = await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
+    return result;
+  }
+
+  function expectRoutedThroughGate() {
+    expect(idleSeam.calls).toHaveLength(1);
+    expect(idleSeam.calls[0]).toEqual([
+      'manuscript-scan',
+      { scope: { level: 'scene', sceneId: 'sc-1' } },
+      { onStaged: expect.any(Function) },
+    ]);
+  }
+
+  it('starts the LLM continuity scan immediately while the background scan waits in the gate', async () => {
+    const held = holdIdleCalls();
+    await renderAndScan();
+    expect(mockArchiveScanContinuity).toHaveBeenCalledTimes(1);
+    expect(mockArchiveScanContinuity).toHaveBeenCalledWith(
+      'sc-1',
+      expect.stringContaining('Her eyes were green'),
+      'active_scene',
+      'story_vault',
+    );
+    expectRoutedThroughGate();
+    expect(held).toHaveLength(1);
+  });
+
+  it('a staged scan that fails to start later: queued line first, then the error replaces it', async () => {
+    const held = holdIdleCalls();
+    await renderAndScan();
+    expectRoutedThroughGate();
+    // Not staged yet → no optimistic line.
+    expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+
+    await stage(held[0]);
+    const queued = screen.getByTestId('cp-bg-scan-queued');
+    expect(queued).toHaveTextContent(
+      'Background manuscript scan queued — it starts after you pause typing for 2 minutes.',
+    );
+    expect(queued).toHaveTextContent(MAY_FINISH);
+    expect(queued).not.toHaveTextContent(/paused|stopped|killed/i);
+    expect(screen.queryByTestId('cp-action-error')).not.toBeInTheDocument();
+
+    await settle(held[0], { accepted: 'rejected', reason: 'enqueue-failed', error: 'boom' });
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent('Background scan didn’t start — boom');
+    expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+  });
+
+  it('the queued line names the idle minutes from the gate settings', async () => {
+    const held = holdIdleCalls();
+    idleCatchUpGate.configure({ enabled: true, minutes: 1 });
+    try {
+      await renderAndScan();
+      await stage(held[0]);
+      expect(screen.getByTestId('cp-bg-scan-queued')).toHaveTextContent(
+        'Background manuscript scan queued — it starts after you pause typing for 1 minute.',
+      );
+      await settle(held[0], { accepted: 'submitted', jobId: 'job-1' });
+      expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('cp-action-error')).not.toBeInTheDocument();
+    } finally {
+      idleCatchUpGate.configure(undefined);
+    }
+  });
+
+  it('an immediate enqueue failure ({ error }) is surfaced with the gate in the path', async () => {
+    const jobs = jobsBridge();
+    jobs.enqueue.mockResolvedValue({ error: 'no scenes in scope' });
+    setApi({ jobs });
+    await renderAndScan();
+    await flushAsyncEffects();
+    expectRoutedThroughGate();
+    expect(jobs.enqueue).toHaveBeenCalledWith('manuscript-scan', {
+      scope: { level: 'scene', sceneId: 'sc-1' },
+    });
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent('Background scan didn’t start — no scenes in scope');
+    expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+  });
+
+  it('an immediate enqueue throw is surfaced, not swallowed', async () => {
+    const jobs = jobsBridge();
+    jobs.enqueue.mockRejectedValue(new Error('ipc down'));
+    setApi({ jobs });
+    await renderAndScan();
+    await flushAsyncEffects();
+    expect(jobs.enqueue).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent('Background scan didn’t start — ipc down');
+  });
+
+  it('a rejected gate promise is surfaced too (defensive catch)', async () => {
+    idleSeam.override = () => Promise.reject(new Error('gate exploded'));
+    await renderAndScan();
+    await flushAsyncEffects();
+    expectRoutedThroughGate();
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent('Background scan didn’t start — gate exploded');
+  });
+
+  it('a full staging buffer tells the writer what to do', async () => {
+    const held = holdIdleCalls();
+    await renderAndScan();
+    await settle(held[0], { accepted: 'rejected', reason: 'buffer-full' });
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent(
+      'Too many background scans are waiting — pause typing so they can start, then try again.',
+    );
+  });
+
+  it.each(['coalesced', 'vault-switch', 'cleared'] as const)(
+    'a %s outcome releases the queued line without an error',
+    async (reason) => {
+      const held = holdIdleCalls();
+      await renderAndScan();
+      await stage(held[0]);
+      expect(screen.getByTestId('cp-bg-scan-queued')).toBeInTheDocument();
+      await settle(held[0], { accepted: 'rejected', reason });
+      expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('cp-action-error')).not.toBeInTheDocument();
+    },
+  );
+
+  it('coalescing two scans keeps the queued line until the surviving one settles', async () => {
+    const held = holdIdleCalls();
+    await renderAndScan();
+    await stage(held[0]);
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
+    expect(held).toHaveLength(2);
+    await stage(held[1]);
+    await settle(held[0], { accepted: 'rejected', reason: 'coalesced' });
+    expect(screen.getByTestId('cp-bg-scan-queued')).toBeInTheDocument();
+    expect(screen.queryByTestId('cp-action-error')).not.toBeInTheDocument();
+    await settle(held[1], { accepted: 'submitted', jobId: 'job-2' });
+    expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+  });
+
+  it('a failure that lands after unmount is dropped: a fresh mount shows no error and no queued line', async () => {
+    const held = holdIdleCalls();
+    const first = await renderAndScan();
+    await stage(held[0]);
+    first.unmount();
+
+    await settle(held[0], { accepted: 'rejected', reason: 'enqueue-failed', error: 'late boom' });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    expect(screen.queryByText(/late boom/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cp-bg-scan-queued')).not.toBeInTheDocument();
+  });
+
+  it('unmounting while the scan is staged, then a late failure, updates nothing and warns nothing', async () => {
+    const held = holdIdleCalls();
+    const { unmount } = await renderAndScan();
+    expectRoutedThroughGate();
+    await stage(held[0]);
+    expect(screen.getByTestId('cp-bg-scan-queued')).toBeInTheDocument();
+    unmount();
+
+    const errorSpy = vi.spyOn(console, 'error');
+    try {
+      await settle(held[0], { accepted: 'rejected', reason: 'enqueue-failed', error: 'late boom' });
+      const messages = errorSpy.mock.calls.map((args) => args.map((a) => String(a)).join(' '));
+      expect(messages.filter((m) => /unmounted component|not wrapped in act/i.test(m))).toEqual([]);
+      expect(screen.queryByText(/late boom/)).not.toBeInTheDocument();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

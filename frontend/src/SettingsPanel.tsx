@@ -49,6 +49,7 @@ import EditorSettingsSection from './components/SettingsPanel/sections/EditorSet
 // Beta 4 M28: manuscript-only appearance cards live on the Editor page (§13)
 import EditorManuscriptSection from './components/SettingsPanel/sections/EditorManuscriptSection';
 import NotesBoardSection from './components/SettingsPanel/sections/NotesBoardSection';
+import IdleCatchUpSettingsSection from './idleCatchUp/IdleCatchUpSettingsSection';
 import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSection';
 import ShortcutsSection from './components/SettingsPanel/sections/ShortcutsSection';
 import AboutSection from './components/SettingsPanel/sections/AboutSection';
@@ -1171,6 +1172,8 @@ export default function SettingsPanel({
               />
               {/* SKY-11186: the Boards zoom-out cap — a visible performance setting (owner ruling 4). */}
               <NotesBoardSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+              {/* PLAN-IDLE-CATCH-UP: wait for a typing pause before background scans (applies live). */}
+              <IdleCatchUpSettingsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
             </>
           )}
 
