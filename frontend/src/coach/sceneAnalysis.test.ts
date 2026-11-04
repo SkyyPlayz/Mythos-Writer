@@ -53,6 +53,10 @@ interface MockApiOptions {
   chatResponse?: string;
   chatError?: Error;
   omitChat?: boolean;
+  /** PLAN-COACHING-OPT-IN: stored coaching opt-in (absent = default off). */
+  coaching?: unknown;
+  /** Master AI switch (absent = on). */
+  aiEnabled?: boolean;
 }
 
 function installMockApi(opts: MockApiOptions = {}) {
@@ -94,6 +98,8 @@ function installMockApi(opts: MockApiOptions = {}) {
           provider: { kind: 'ollama', model: 'qwen' },
         },
       },
+      ...(opts.coaching !== undefined ? { coaching: opts.coaching } : {}),
+      ...(opts.aiEnabled !== undefined ? { ai: { enabled: opts.aiEnabled } } : {}),
     })),
   };
   if (!opts.omitChat) api.agentWritingAssistant = agentWritingAssistant;
@@ -115,8 +121,8 @@ describe('buildSceneAnalysisTitle', () => {
   });
 });
 
-describe('buildCoachReadPrompt (the M13 agent prompt)', () => {
-  const prompt = buildCoachReadPrompt();
+describe('buildCoachReadPrompt (the M13 agent prompt — Coaching on, Teacher mode)', () => {
+  const prompt = buildCoachReadPrompt('teacher');
 
   it('asks for all four judgment fields plus takeaway and drill', () => {
     for (const key of ['"purpose"', '"tension"', '"pacing"', '"pov"', '"takeaway"', '"drill"']) {
@@ -131,6 +137,41 @@ describe('buildCoachReadPrompt (the M13 agent prompt)', () => {
 
   it('restates the agent contract — the coach never writes prose (§14.6)', () => {
     expect(prompt).toMatch(/never rewrite the scene or generate manuscript prose/);
+  });
+});
+
+describe('buildCoachReadPrompt — PLAN-COACHING-OPT-IN quiet default', () => {
+  it('defaults to Coaching off', () => {
+    expect(buildCoachReadPrompt()).toBe(buildCoachReadPrompt('off'));
+  });
+
+  for (const mode of ['off', 'assistant'] as const) {
+    describe(`mode ${mode}`, () => {
+      const prompt = buildCoachReadPrompt(mode);
+
+      it('asks for no teaching clause and no drill', () => {
+        expect(prompt).not.toMatch(/teach/i);
+        expect(prompt).not.toMatch(/drill/i);
+      });
+
+      it('keeps the same four judgment fields + takeaway in JSON-only shape', () => {
+        for (const key of ['"purpose"', '"tension"', '"pacing"', '"pov"', '"takeaway"']) {
+          expect(prompt).toContain(key);
+        }
+        expect(prompt).toMatch(/ONLY a JSON object/);
+        // Verdict — note shape keeps compactReadValue working on the panel rows.
+        expect(prompt).toMatch(/<Rising, Falling, Flat, or Uneven> — /);
+      });
+
+      it('still restates the agent contract — never writes prose (§14.6)', () => {
+        expect(prompt).toMatch(/never rewrite the scene or generate manuscript prose/);
+      });
+    });
+  }
+
+  it('Teacher differs from the quiet prompt only by asking to teach', () => {
+    expect(buildCoachReadPrompt('teacher')).not.toBe(buildCoachReadPrompt('assistant'));
+    expect(buildCoachReadPrompt('assistant')).toBe(buildCoachReadPrompt('off'));
   });
 });
 
@@ -244,6 +285,46 @@ describe('runFullSceneAnalysis', () => {
     expect(card.computed).toHaveLength(6);
     expect(card.read).toHaveLength(4);
     expect(isSceneAnalysisPending()).toBe(false);
+  });
+
+  it('PLAN-COACHING-OPT-IN: Coaching off (default) and Assistant send the plain read — no teaching clause', async () => {
+    for (const coaching of [undefined, { optIn: false, mode: 'teacher' }, { optIn: true, mode: 'assistant' }]) {
+      __resetAgentSessionStores();
+      const mock = installMockApi({ coaching });
+      await runFullSceneAnalysis(makeScene());
+      expect(mock.agentWritingAssistant).toHaveBeenCalledTimes(1);
+      const [prompt] = mock.agentWritingAssistant.mock.calls[0] as unknown as [string, string];
+      expect(prompt).toBe(buildCoachReadPrompt('off'));
+      expect(prompt).not.toMatch(/teaching clause/);
+    }
+  });
+
+  it('PLAN-COACHING-OPT-IN: Coaching on in Teacher mode sends the teaching-clause prompt', async () => {
+    const mock = installMockApi({ coaching: { optIn: true, mode: 'teacher' } });
+    await runFullSceneAnalysis(makeScene());
+    const [prompt] = mock.agentWritingAssistant.mock.calls[0] as unknown as [string, string];
+    expect(prompt).toBe(buildCoachReadPrompt('teacher'));
+    expect(prompt).toMatch(/teaching clause/);
+    expect(prompt).toContain('"drill"');
+  });
+
+  it('PLAN-COACHING-OPT-IN: malformed coaching never enables the teaching prompt', async () => {
+    const mock = installMockApi({ coaching: { optIn: 'yes', mode: 'teacher' } });
+    await runFullSceneAnalysis(makeScene());
+    const [prompt] = mock.agentWritingAssistant.mock.calls[0] as unknown as [string, string];
+    expect(prompt).toBe(buildCoachReadPrompt('off'));
+  });
+
+  it('AI Off: refuses before any request (Teacher on or not) — computed-only card', async () => {
+    const mock = installMockApi({ aiEnabled: false, coaching: { optIn: true, mode: 'teacher' } });
+    const outcome = await runFullSceneAnalysis(makeScene());
+    expect(outcome).toBe('appended');
+    expect(mock.agentWritingAssistant).not.toHaveBeenCalled();
+    const [, turns] = mock.agentSessions.appendTurns.mock.calls[0];
+    const card = decodeCoachCard(turns[0].text);
+    if (card?.kind !== 'analysis') throw new Error('expected analysis card');
+    expect(card.computed).toHaveLength(6);
+    expect(card.readNote).toMatch(/AI features are off/);
   });
 
   it('M13 acceptance: with AI erroring, the computed section still lands with an honest note', async () => {

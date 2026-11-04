@@ -87,4 +87,54 @@ describe('WritingPartnerSection', () => {
     expect(screen.getByTestId('wp-session-history')).toBeInTheDocument();
     expect(screen.getByTestId('session-history-toggle-brainstorm')).toBeInTheDocument();
   });
+
+  describe('PLAN-COACHING-OPT-IN — teaching chips wait for Coaching (Teacher mode)', () => {
+    const withCoaching = (coaching: unknown, writingPartner: Record<string, unknown> = {}) =>
+      ({ ...baseSettings, coaching, writingPartner } as unknown as AppSettings);
+
+    const renderSection = (settings: AppSettings, setSettings = vi.fn()) =>
+      render(
+        <WritingPartnerSection
+          settings={settings}
+          setSettings={setSettings}
+          setAgentDisplayName={vi.fn()}
+          setSavedOk={vi.fn()}
+        />,
+      );
+
+    it('Coaching off: Teaching style + Teacher register disabled, stored values kept', () => {
+      const setSettings = vi.fn();
+      renderSection(withCoaching(undefined, { register: 'Teacher', teach: 'Socratic' }), setSettings);
+      for (const id of ['socratic', 'guided-practice', 'feynman', 'just-tell-me', 'adaptive']) {
+        expect(screen.getByTestId(`wp-trait-teach-${id}`)).toBeDisabled();
+      }
+      const teacherRegister = screen.getByTestId('wp-trait-register-teacher');
+      expect(teacherRegister).toBeDisabled();
+      // The stale Teacher pick stays visible as selected — never silently rewritten.
+      expect(teacherRegister).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('wp-trait-teach-socratic')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('wp-trait-register-dual')).toBeEnabled();
+      expect(screen.getByTestId('wp-trait-register-companion')).toBeEnabled();
+      expect(screen.getByTestId('wp-trait-tone-blunt')).toBeEnabled();
+      expect(screen.getByTestId('wp-teach-gated-hint')).toHaveTextContent(/only when Coaching is on/);
+      fireEvent.click(screen.getByTestId('wp-trait-teach-feynman'));
+      expect(setSettings).not.toHaveBeenCalled();
+    });
+
+    it('Coaching on in Assistant mode: still gated, with the Teacher-mode hint', () => {
+      renderSection(withCoaching({ optIn: true, mode: 'assistant' }));
+      expect(screen.getByTestId('wp-trait-teach-adaptive')).toBeDisabled();
+      expect(screen.getByTestId('wp-trait-register-teacher')).toBeDisabled();
+      expect(screen.getByTestId('wp-teach-gated-hint')).toHaveTextContent(/only in Coaching’s Teacher mode/);
+    });
+
+    it('Coaching on in Teacher mode: chips enabled, hint gone, picks write', () => {
+      const setSettings = vi.fn();
+      renderSection(withCoaching({ optIn: true, mode: 'teacher' }), setSettings);
+      expect(screen.queryByTestId('wp-teach-gated-hint')).toBeNull();
+      expect(screen.getByTestId('wp-trait-register-teacher')).toBeEnabled();
+      fireEvent.click(screen.getByTestId('wp-trait-teach-feynman'));
+      expect(setSettings).toHaveBeenCalledTimes(1);
+    });
+  });
 });

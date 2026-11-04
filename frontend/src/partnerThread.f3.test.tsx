@@ -10,6 +10,7 @@ import {
 } from './agents/partnerIdentity';
 import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
 import { useCoachConversation } from './coach/useCoachConversation';
+import { QUIET_ASSISTANT_DIRECTIVE } from './partner/partnerPersonality';
 import type { Scene } from './types';
 
 /** Seed enough turns that an uncapped send would exceed MAX_HISTORY_TURNS (Shield: 60 ≠ 20). */
@@ -181,8 +182,11 @@ describe('F3#1 shared partner thread + history cap', () => {
     const [prompt, context] = agentWritingAssistant.mock.calls[0] as [string, string | undefined];
     expect(context).toContain('Fog rolled in from the quay');
 
-    // Shield S1 — pin exact window + order (split on blank lines).
-    const entries = prompt.split(/\n\n/);
+    // PLAN-COACHING-OPT-IN — the coaching mode prefix opens the prompt as its
+    // own blank-line block (Coaching off by default → the quiet directive).
+    // Shield S1 — pin exact window + order after it (split on blank lines).
+    const [modePrefix, ...entries] = prompt.split(/\n\n/);
+    expect(modePrefix).toBe(QUIET_ASSISTANT_DIRECTIVE);
     expect(entries).toHaveLength(MAX_HISTORY_TURNS + 1);
     expect(entries[0]).toBe(`User: coach-user-${OVER_CAP_EXCHANGES - MAX_HISTORY_TURNS / 2}`);
     expect(entries[19]).toBe(`Coach: coach-agent-${OVER_CAP_EXCHANGES - 1}`);
