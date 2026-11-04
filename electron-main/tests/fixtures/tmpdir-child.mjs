@@ -22,6 +22,12 @@ function say(line) {
   fs.writeSync(1, `${line}\n`);
 }
 
+/** Print a refusal's path and its exact error message so the spec can assert both. */
+function sayRefusal(label, p, err) {
+  say(`${label}-dir ${p}`);
+  say(`${label}-msg ${err instanceof Error ? err.message : String(err)}`);
+}
+
 function recreateDifferentInode(p, remove) {
   const before = fs.lstatSync(p);
   remove(p);
@@ -68,8 +74,9 @@ async function refusals() {
   let aThrew = false;
   try {
     removeRecorded(dirA);
-  } catch {
+  } catch (err) {
     aThrew = true;
+    sayRefusal('case-a', dirA, err);
   }
   setEnv('TMPDIR', savedTmp);
   console.log(`case-a ${aThrew && fs.existsSync(dirA) ? 'survived' : 'lost'}`);
@@ -79,8 +86,9 @@ async function refusals() {
   let bThrew = false;
   try {
     removeRecorded(dirB);
-  } catch {
+  } catch (err) {
     bThrew = true;
+    sayRefusal('case-b', dirB, err);
   }
   setEnv('MYTHOS_TEST_RUN_ID', savedRun);
   console.log(`case-b ${bThrew && fs.existsSync(dirB) ? 'survived' : 'lost'}`);
@@ -91,8 +99,9 @@ async function refusals() {
   let cThrew = false;
   try {
     removeRecorded(dirC);
-  } catch {
+  } catch (err) {
     cThrew = true;
+    sayRefusal('case-c', dirC, err);
   }
   const targetOk = fs.existsSync(marker);
   console.log(`case-c ${cThrew && targetOk ? 'target-intact' : 'lost'}`);
@@ -102,8 +111,9 @@ async function refusals() {
   let dThrew = false;
   try {
     removeRecorded(unrecorded);
-  } catch {
+  } catch (err) {
     dThrew = true;
+    sayRefusal('case-d', unrecorded, err);
   }
   console.log(`case-d ${dThrew && fs.existsSync(unrecorded) ? 'survived' : 'lost'}`);
 
@@ -122,8 +132,9 @@ async function refusals() {
   let eThrew = false;
   try {
     removeRecorded(dirE);
-  } catch {
+  } catch (err) {
     eThrew = true;
+    sayRefusal('case-e', dirE, err);
   }
   console.log(`case-e ${eThrew && fs.existsSync(dirE) ? 'survived' : 'lost'}`);
   fs.unlinkSync(link);
@@ -135,8 +146,9 @@ async function refusals() {
   let fThrew = false;
   try {
     removeRecorded(dirF);
-  } catch {
+  } catch (err) {
     fThrew = true;
+    sayRefusal('case-f', dirF, err);
   }
   console.log(`case-f ${fThrew && fs.existsSync(dirF) ? 'new-dir-survived' : 'lost'}`);
 
@@ -274,6 +286,73 @@ async function main() {
       fs.writeFileSync(path.join(p, 'new.txt'), 'new');
       for (const burned of burns) rawRm(burned);
       console.log(`dir ${p}`);
+      return;
+    }
+    case 'not-a-dir': {
+      // M3: the recorded directory was replaced by a regular file.
+      const { removeRecorded } = await loadTmp();
+      const p = makeTestTmp('m3');
+      rawRm(p);
+      fs.writeFileSync(p, 'not a dir');
+      recordRm();
+      try {
+        removeRecorded(p);
+        say('m3 removed');
+      } catch (err) {
+        sayRefusal('m3', p, err);
+      }
+      say(`m3 file-intact ${fs.readFileSync(p, 'utf8') === 'not a dir' ? 'yes' : 'no'}`);
+      say(`rm calls ${rmCalls()}`);
+      restoreRm();
+      fs.unlinkSync(p);
+      return;
+    }
+    case 'retry-after-failed-rm': {
+      // M16: a failed delete keeps the record, so a later retry still removes it.
+      const { removeRecorded } = await loadTmp();
+      const p = makeTestTmp('m16');
+      failRm();
+      try {
+        removeRecorded(p);
+        say('first removed');
+      } catch (err) {
+        say(`first-msg ${err instanceof Error ? err.message : String(err)}`);
+      }
+      restoreRm();
+      say(`exists-after-fail ${fs.existsSync(p) ? 'yes' : 'no'}`);
+      try {
+        removeRecorded(p);
+        say('retry ok');
+      } catch (err) {
+        sayRefusal('retry', p, err);
+      }
+      say(`exists-after-retry ${fs.existsSync(p) ? 'yes' : 'no'}`);
+      cleanupTestTmp();
+      say('cleanup ok');
+      return;
+    }
+    case 'dotdot': {
+      // Literal ../ is refused both as a tmp name and as a path to remove.
+      const { removeRecorded } = await loadTmp();
+      try {
+        makeTestTmp('../x');
+        say('name accepted');
+      } catch (err) {
+        say(`name-msg ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const p = makeTestTmp('dotdot');
+      const sneaky = `${p}${path.sep}..${path.sep}${path.basename(p)}`;
+      recordRm();
+      try {
+        removeRecorded(sneaky);
+        say('sneaky removed');
+      } catch (err) {
+        sayRefusal('sneaky', sneaky, err);
+      }
+      say(`rm calls ${rmCalls()}`);
+      restoreRm();
+      say(`dotdot survived ${fs.existsSync(p) ? 'yes' : 'no'}`);
+      removeRecorded(p);
       return;
     }
     case 'leak-wait': {
