@@ -52,7 +52,7 @@
     "test:e2e:comments": "playwright test e2e/comments-v2.spec.ts --reporter=list,html",
     "test:e2e:brainstorm": "playwright test e2e/brainstorm.spec.ts --reporter=list,html",
     "test:e2e:coach-page": "playwright test e2e/coach-page.spec.ts --reporter=list,html",
-    "test:e2e:agent-hub-session-picker": "playwright test e2e/agent-hub-session-picker.spec.ts --reporter=list,html",
+    "test:e2e:agent-hub-session-picker": "playwright test e2e/agent-hub-session-picker.spec.ts e2e/plan058-fid-r3.spec.ts --reporter=list,html",
     "test:e2e:nav-history": "playwright test e2e/nav-history.spec.ts --reporter=list,html",
     "test:e2e:brainstorm-glass": "playwright test e2e/tests/sky-11047-brainstorm-glass.spec.ts --reporter=list,html",
     "test:e2e:liquid-neon-views": "playwright test e2e/tests/sky-11209-liquid-neon-views.spec.ts e2e/tests/settings-overlay-glass-plus10.spec.ts --reporter=list,html",

@@ -385,6 +385,16 @@ function PartnerChatView({
     setPastOpen(false);
     pastToggleRef.current?.focus();
   };
+  useEffect(() => {
+    if (!pastOpen) return undefined;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setPastOpen(false);
+      pastToggleRef.current?.focus();
+    };
+    document.addEventListener('keydown', onDocKey);
+    return () => document.removeEventListener('keydown', onDocKey);
+  }, [pastOpen]);
   // Tip cards always mounted (N4-A tips-only WA); chat stays on the partner thread.
   const [showWriterTips, setShowWriterTips] = useState(false);
 
