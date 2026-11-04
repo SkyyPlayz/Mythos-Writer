@@ -119,3 +119,41 @@ test('past chats picker is a dropdown inside the hub header card', async () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// H3 (FD-9 #3): Past chats handles Escape only inside its own region. Escape
+// pressed while the writer is in the manuscript editor must leave focus in
+// the editor and must not close (or steal focus to) an open Past chats.
+test('H3: Escape in the editor keeps focus in the editor while Past chats is open', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-fid-r3-h3-'));
+  const userData = path.join(root, 'ud');
+  seed(userData, path.join(root, 'story'), path.join(root, 'notes'));
+  const app = await launch(userData);
+  try {
+    const page = await app.firstWindow();
+    await openPartnerHub(page);
+
+    const toggle = page.getByTestId('partner-card').getByTestId('ahp-past-chats-toggle');
+    await expect(toggle).toBeVisible({ timeout: 6_000 });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    const editor = page.locator('.block-editor .ProseMirror').first();
+    await editor.click();
+    await page.keyboard.type('H3');
+    const focusInEditor = () =>
+      page.evaluate(() => document.activeElement?.closest('.ProseMirror') !== null);
+    expect(await focusInEditor()).toBe(true);
+
+    await page.keyboard.press('Escape');
+
+    expect(await focusInEditor(), 'Escape in the editor must not move focus').toBe(true);
+    await expect(toggle).not.toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    // Typing still lands in the editor after Escape.
+    await page.keyboard.type('!');
+    await expect(editor).toContainText('H3!');
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
