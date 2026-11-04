@@ -43,9 +43,6 @@ export const HIDDEN_TIMELINE_MODES: ReadonlySet<TimelineMode> = new Set([
 
 /** True when `mode` is offered in the timeline chrome. */
 export function isTimelineModeVisible(mode: TimelineMode): boolean {
-  try {
-    if (globalThis.localStorage?.getItem('timeline:showAllModes') === '1') return true;
-  } catch { /* storage unavailable */ }
   return !HIDDEN_TIMELINE_MODES.has(mode);
 }
 
