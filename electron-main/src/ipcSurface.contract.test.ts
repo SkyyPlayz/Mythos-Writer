@@ -17,7 +17,8 @@
 // Census counts are a summary. The lock is the exact sorted name lists
 // (IPC channel values, handlers, main listeners, push channels), the sorted
 // exposeInMainWorld key → channel snapshot, and the handler ↔ preload invoke
-// map in both directions.
+// map in both directions. Each preload listener key must also remove the same
+// channel + handler it registered (cleanup pairing, mutants P1/P2).
 //
 // Exact equality: a new gap fails, and an allowlist entry whose gap was fixed
 // fails until this list shrinks. Paired channels do not need a new test file;
@@ -31,6 +32,9 @@ import { fileURLToPath } from 'node:url';
 const SRC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 
 const PUSH_COUNTER = 'resolved-send-arguments' as const;
+
+/** ipcRenderer.on/once/addListener calls in preload.ts. Each must have its own removeListener. */
+const PRELOAD_LISTENER_REGISTRATIONS = 57;
 
 type GapKind =
   | 'preload-invoke-without-handler'
@@ -104,6 +108,22 @@ interface Surface {
    */
   handlerToInvoke: string[];
   invokeToHandler: string[];
+  /** Preload listener ↔ cleanup pairing. See `listenerCleanupFor`. */
+  cleanup: ListenerCleanup;
+}
+
+interface ListenerCleanup {
+  /**
+   * `world key channel handler CLEANED|LEAK`, sorted. One line per
+   * `ipcRenderer.on/once/addListener` inside an exposeInMainWorld key. CLEANED
+   * means the same key also calls `ipcRenderer.removeListener/off` with the
+   * same channel and the same handler reference.
+   */
+  pairs: string[];
+  /** `world key channel handler` for a cleanup call no registration in its key matches. */
+  orphans: string[];
+  /** Every registration call in preload.ts, inside an exposed key or not. */
+  preloadRegistrations: number;
 }
 
 const NON_IPC = 'NON_IPC';
@@ -630,9 +650,27 @@ function channelsIn(value: string): string[] {
   return [...found].sort();
 }
 
+interface ExposedEntry {
+  world: string;
+  key: string;
+  value: string;
+}
+
 /** One sorted line per key of each contextBridge.exposeInMainWorld object. */
-function exposedLines(src: string): string[] {
-  const lines: string[] = [];
+function exposedLines(entries: readonly ExposedEntry[]): string[] {
+  const lines = entries.map((entry) => {
+    const channels = channelsIn(entry.value);
+    return channels.length === 0
+      ? `${entry.world} ${entry.key} ${NON_IPC}`
+      : `${entry.world} ${entry.key} ${channels.join(',')}`;
+  });
+  lines.sort();
+  return lines;
+}
+
+/** Every leaf key of each contextBridge.exposeInMainWorld object, with its value source. */
+function exposedEntries(src: string): ExposedEntry[] {
+  const entries: ExposedEntry[] = [];
   const callRe = /contextBridge\.exposeInMainWorld\(\s*/g;
   let match: RegExpExecArray | null;
   while ((match = callRe.exec(src))) {
@@ -644,13 +682,12 @@ function exposedLines(src: string): string[] {
     if (brace < 0) continue;
     const body = readBalanced(src, brace, '{', '}');
     if (!body) continue;
-    collectExposedKeys(body, world, '', lines);
+    collectExposedKeys(body, world, '', entries);
   }
-  lines.sort();
-  return lines;
+  return entries;
 }
 
-function collectExposedKeys(body: string, world: string, prefix: string, lines: string[]): void {
+function collectExposedKeys(body: string, world: string, prefix: string, entries: ExposedEntry[]): void {
   let i = 1;
   const end = body.length - 1;
   while (i < end) {
@@ -699,13 +736,49 @@ function collectExposedKeys(body: string, world: string, prefix: string, lines: 
     if (trimmed.startsWith('{')) {
       const nested = readBalanced(value, value.indexOf('{'), '{', '}');
       if (nested && nested.trim() === trimmed) {
-        collectExposedKeys(nested, world, pathKey, lines);
+        collectExposedKeys(nested, world, pathKey, entries);
         continue;
       }
     }
-    const channels = channelsIn(value);
-    lines.push(channels.length === 0 ? `${world} ${pathKey} ${NON_IPC}` : `${world} ${pathKey} ${channels.join(',')}`);
+    entries.push({ world, key: pathKey, value });
   }
+}
+
+const REGISTER_RE = /ipcRenderer\.(?:on|once|addListener)\(\s*/g;
+const CLEANUP_RE = /ipcRenderer\.(?:removeListener|off)\(\s*/g;
+
+/** `channel handler` for each call: first arg as a string literal (else its raw text), second arg as written. */
+function channelHandlerCalls(src: string, pattern: RegExp): string[] {
+  const out: string[] = [];
+  for (const call of callArgs(src, new RegExp(pattern.source, 'g'))) {
+    const channelText = call.arg.trim();
+    const channel = parseStringLiteral(channelText) ?? `UNRESOLVED:${channelText.replace(/\s+/g, '')}`;
+    const afterChannel = call.at + call.arg.length;
+    const handler = src[afterChannel] === ',' ? readArg(src, afterChannel + 1).trim().replace(/\s+/g, ' ') : 'NONE';
+    out.push(`${channel} ${handler || 'NONE'}`);
+  }
+  return out;
+}
+
+function listenerCleanupFor(preloadSrc: string, entries: readonly ExposedEntry[]): ListenerCleanup {
+  const pairs: string[] = [];
+  const orphans: string[] = [];
+  for (const entry of entries) {
+    const remaining = channelHandlerCalls(entry.value, CLEANUP_RE);
+    for (const registration of channelHandlerCalls(entry.value, REGISTER_RE)) {
+      const match = remaining.indexOf(registration);
+      if (match >= 0) remaining.splice(match, 1);
+      pairs.push(`${entry.world} ${entry.key} ${registration} ${match >= 0 ? 'CLEANED' : 'LEAK'}`);
+    }
+    for (const cleanup of remaining) orphans.push(`${entry.world} ${entry.key} ${cleanup}`);
+  }
+  pairs.sort();
+  orphans.sort();
+  return {
+    pairs,
+    orphans,
+    preloadRegistrations: callArgs(preloadSrc, new RegExp(REGISTER_RE.source, 'g')).length,
+  };
 }
 
 function exposedKeysByChannel(exposed: readonly string[]): Map<string, string[]> {
@@ -815,7 +888,8 @@ function scanSources(files: readonly SourceFile[]): Surface {
 
   const handlerNames = sortedSet(handlers);
   const invokeNames = sortedSet(invokes);
-  const exposed = exposedLines(preload.src);
+  const entries = exposedEntries(preload.src);
+  const exposed = exposedLines(entries);
   ipcChannelNames.sort();
 
   return {
@@ -839,6 +913,7 @@ function scanSources(files: readonly SourceFile[]): Surface {
     exposed,
     handlerToInvoke: handlerInvokeLines(handlerNames, exposed),
     invokeToHandler: invokeHandlerLines(invokeNames, handlers),
+    cleanup: listenerCleanupFor(preload.src, entries),
   };
 }
 
@@ -1031,6 +1106,106 @@ describe('ipc surface contract', () => {
     expect(mutated.invokeToHandler).toContain('vault:read-removed -> NO_HANDLER');
     expect(mutated.invokeToHandler).not.toEqual(FREEZE.invokeToHandler);
     console.log("[mutant vault:read] RED handler 'vault:read <- NONE' (was api.readVault,mythosIPC.readVaultFile); invoke 'vault:read -> HANDLER' gone; 'vault:read-removed -> NO_HANDLER'");
+  });
+
+  // Listener cleanup. A preload `on*` key hands the renderer an unsubscribe.
+  // If that unsubscribe drops the removeListener (P1) or removes a different
+  // channel or handler than it registered (P2), every remount stacks another
+  // live listener. The channel census above cannot see either: the channel is
+  // still listened to, so no gap, name list or exposed line changes.
+
+  it('every preload listener is removed by its own key with the same channel and handler', () => {
+    const leaks = surface.cleanup.pairs.filter((line) => !line.endsWith(' CLEANED'));
+    expect(leaks).toEqual([]);
+    expect(surface.cleanup.orphans).toEqual([]);
+    // No registration hides outside an exposeInMainWorld key, where pairing cannot see it.
+    expect(surface.cleanup.pairs).toHaveLength(surface.cleanup.preloadRegistrations);
+    expect(surface.cleanup.preloadRegistrations).toBe(PRELOAD_LISTENER_REGISTRATIONS);
+    expect(surface.cleanup.pairs).toContain('api onVaultFileChanged vault:file-changed cb CLEANED');
+    expect(surface.cleanup.pairs).toContain('api jobs.onEvent jobs:event handler CLEANED');
+  });
+
+  it('P1: goes red when any listener key drops its removeListener', () => {
+    // Pairing reads preload.ts only, so each mutant re-pairs that one file.
+    const preloadText = sourceFile(productionCopies(), 'preload.ts').text;
+    const killed: string[] = [];
+    for (const pair of surface.cleanup.pairs) {
+      const [world, key, channel, handler] = pair.split(' ');
+      const needle = `ipcRenderer.removeListener('${channel}', ${handler})`;
+      expect(preloadText.split(needle).length - 1, needle).toBe(1);
+      const text = maskComments(preloadText.replace(needle, 'undefined'));
+      const mutated = listenerCleanupFor(text, exposedEntries(text));
+      expect(mutated.pairs.filter((line) => line.endsWith(' LEAK')), needle).toEqual([
+        `${world} ${key} ${channel} ${handler} LEAK`,
+      ]);
+      expect(mutated.orphans, needle).toEqual([]);
+      killed.push(channel);
+    }
+    expect(killed).toHaveLength(PRELOAD_LISTENER_REGISTRATIONS);
+    console.log(`[mutant P1] RED for all ${killed.length} listener keys: removeListener dropped -> LEAK`);
+  });
+
+  it('P1: the channel census alone does not see a dropped removeListener', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const needle = "return () => ipcRenderer.removeListener('ai-activity:update', handler);";
+    expect(preload.text.includes(needle)).toBe(true);
+    preload.text = preload.text.replace(needle, 'return () => {};');
+    const mutated = scanSources(files);
+    // Every pre-existing lock stays green under this mutant ...
+    expect(driftReport(mutated.gaps, ALLOWLIST)).toEqual([]);
+    expect(mutated.census).toEqual(CENSUS);
+    expect(mutated.names).toEqual(FREEZE.names);
+    expect(mutated.exposed).toEqual(FREEZE.exposed);
+    expect(mutated.handlerToInvoke).toEqual(FREEZE.handlerToInvoke);
+    expect(mutated.invokeToHandler).toEqual(FREEZE.invokeToHandler);
+    // ... and only the cleanup pairing goes red.
+    const leaks = mutated.cleanup.pairs.filter((line) => line.endsWith(' LEAK'));
+    expect(leaks).toEqual(['api onAiActivityUpdate ai-activity:update handler LEAK']);
+    console.log(`[mutant P1 ai-activity:update] RED ${leaks.join('; ')}`);
+  });
+
+  it('P2: goes red when removeListener names a different channel than the key registered', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const needle = "ipcRenderer.removeListener('stream:end', handler)";
+    expect(preload.text.split(needle).length - 1).toBe(1);
+    // Copy-paste slip: the stream:end unsubscribe removes the stream:token channel.
+    preload.text = preload.text.replace(needle, "ipcRenderer.removeListener('stream:token', handler)");
+    const mutated = scanSources(files);
+    expect(driftReport(mutated.gaps, ALLOWLIST)).toEqual([]);
+    expect(mutated.exposed).toEqual(FREEZE.exposed);
+    const leaks = mutated.cleanup.pairs.filter((line) => line.endsWith(' LEAK'));
+    expect(leaks).toEqual(['api onStreamEnd stream:end handler LEAK']);
+    expect(mutated.cleanup.orphans).toEqual(['api onStreamEnd stream:token handler']);
+    console.log(`[mutant P2 channel] RED ${leaks.join('; ')}; orphan ${mutated.cleanup.orphans.join('; ')}`);
+  });
+
+  it('P2: goes red when removeListener passes a different handler than the key registered', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const needle = "ipcRenderer.removeListener('vault:file-changed', cb)";
+    expect(preload.text.split(needle).length - 1).toBe(1);
+    // A fresh function is never the registered one, so Electron removes nothing.
+    preload.text = preload.text.replace(needle, "ipcRenderer.removeListener('vault:file-changed', () => cb)");
+    const mutated = scanSources(files);
+    expect(driftReport(mutated.gaps, ALLOWLIST)).toEqual([]);
+    expect(mutated.exposed).toEqual(FREEZE.exposed);
+    const leaks = mutated.cleanup.pairs.filter((line) => line.endsWith(' LEAK'));
+    expect(leaks).toEqual(['api onVaultFileChanged vault:file-changed cb LEAK']);
+    expect(mutated.cleanup.orphans).toEqual(['api onVaultFileChanged vault:file-changed () => cb']);
+    console.log(`[mutant P2 handler] RED ${leaks.join('; ')}; orphan ${mutated.cleanup.orphans.join('; ')}`);
+  });
+
+  it('goes red when a listener is registered outside any exposeInMainWorld key', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    preload.text += "\nipcRenderer.on('vault:file-changed', () => undefined);\n";
+    const mutated = scanSources(files);
+    expect(mutated.cleanup.preloadRegistrations).toBe(PRELOAD_LISTENER_REGISTRATIONS + 1);
+    expect(mutated.cleanup.pairs).toHaveLength(PRELOAD_LISTENER_REGISTRATIONS);
+    expect(mutated.cleanup.pairs).not.toHaveLength(mutated.cleanup.preloadRegistrations);
+    console.log('[mutant unscoped] RED registration outside an exposed key: 58 registrations, 57 paired');
   });
 
   it('an allowlist entry whose gap was fixed must shrink the list', () => {
