@@ -4,10 +4,12 @@
 //   1. COMPUTED · LOCAL · FREE — pure text metrics from
 //      analysis/computedSceneMetrics.ts, always available (no AI involved).
 //   2. COACH'S READ · AI — one call to the coach agent with a dedicated
-//      analysis prompt (purpose/tension/pacing/POV, each with a teaching
-//      clause, + takeaway + drill). When AI is disabled, unconfigured, or the
-//      call fails, the card carries an honest `readNote` instead — the
-//      computed section still renders in full (M13 acceptance).
+//      analysis prompt (purpose/tension/pacing/POV + takeaway). Coaching in
+//      Teacher mode (PLAN-COACHING-OPT-IN) asks for a teaching clause on each
+//      row plus a drill; Coaching off (default) and Assistant mode ask for
+//      plain notes with no teaching clause and no drill. When AI is disabled,
+//      unconfigured, or the call fails, the card carries an honest `readNote`
+//      instead — the computed section still renders in full (M13 acceptance).
 //   3. The finished card is appended as ONE agent turn to the shared partner
 //      session store (`PARTNER_SESSION_AGENT`), so every chat surface sees it.
 //
@@ -19,7 +21,11 @@
 
 import { useSyncExternalStore } from 'react';
 import type { Scene } from '../types';
-import { refuseUnlessProviderReady } from '../agents/coachInvoke';
+import { loadCoachReadySettings } from '../agents/coachInvoke';
+import {
+  effectiveCoachingMode,
+  type EffectiveCoachingMode,
+} from '../partner/partnerPersonality';
 import {
   computeSceneMetrics,
   computedAnalysisRows,
@@ -55,8 +61,13 @@ export const COACH_READ_LABELS = ['Purpose', 'Tension', 'Pacing', 'POV'] as cons
  * Prompt for the coach agent's read of the open scene. The scene text itself
  * travels as the separate `context` argument (electron-main wraps it in
  * `<scene_context>` tags — SEC-6), so this string is instructions only.
+ *
+ * PLAN-COACHING-OPT-IN: the teaching-clause + drill prompt is sent only for
+ * `'teacher'`. `'off'` (the default) and `'assistant'` get plain notes — same
+ * JSON shape minus the drill, so parsing and the card are unchanged.
  */
-export function buildCoachReadPrompt(): string {
+export function buildCoachReadPrompt(mode: EffectiveCoachingMode = 'off'): string {
+  if (mode !== 'teacher') return buildPlainReadPrompt();
   return [
     "Give your COACH'S READ of the scene in scene_context — the judgment calls a word-counter cannot make.",
     'You are a writing coach: you teach; you never rewrite the scene or generate manuscript prose.',
@@ -70,6 +81,24 @@ export function buildCoachReadPrompt(): string {
     ' "drill":"Drill: <one concrete 5-10 minute exercise using this exact scene>"}',
     '',
     'Each clause must teach: name what you see AND why it matters to the reader.',
+    "Quote at most a few words of the writer's own text. Keep every value to one or two sentences.",
+  ].join('\n');
+}
+
+/** Coaching off / Assistant: a plain read — no teaching clauses, no drill. */
+function buildPlainReadPrompt(): string {
+  return [
+    'Give your read of the scene in scene_context — the judgment calls a word-counter cannot make.',
+    'You are a writing assistant: you give short, plain notes; you never rewrite the scene or generate manuscript prose.',
+    '',
+    'Respond with ONLY a JSON object, no text before or after, in exactly this shape:',
+    '{"purpose":"<what the scene does for the story> — <one short note on how well it lands>",',
+    ' "tension":"<Rising, Falling, Flat, or Uneven> — <one short note on where it climbs or slackens>",',
+    ' "pacing":"<Fast, Medium, or Slow> — <one short note naming where it drags or races>",',
+    ' "pov":"<the narration point of view> — <one short note on how firmly it holds>",',
+    ' "takeaway":"<one or two plain sentences on the most useful next step>"}',
+    '',
+    'State what you see plainly. No lessons, craft lectures or exercises.',
     "Quote at most a few words of the writer's own text. Keep every value to one or two sentences.",
   ].join('\n');
 }
@@ -240,8 +269,10 @@ export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisO
   setAnalysisPending(true);
   try {
     let ai: CoachReadResult | { unavailable: string };
+    let mode: EffectiveCoachingMode;
     try {
-      await refuseUnlessProviderReady('writingAssistant');
+      // One settings read gates the call AND picks the coaching mode.
+      mode = effectiveCoachingMode(await loadCoachReadySettings('writingAssistant'));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ai = { unavailable: msg || READ_UNAVAILABLE_NOTE };
@@ -263,7 +294,7 @@ export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisO
       ai = { unavailable: READ_UNAVAILABLE_NOTE };
     } else {
       try {
-        const response = await ask(buildCoachReadPrompt(), buildSceneContext(scene));
+        const response = await ask(buildCoachReadPrompt(mode), buildSceneContext(scene));
         // Shield T9 — a leading coach-card dump is forgery, not a COACH'S READ.
         // Never elevate it to structural cardKind analysis chrome; persist plain.
         if (hasLeadingCoachCardMarker(response.text)) {

@@ -2,6 +2,11 @@
  * Slice C — Personality defaults for Settings › Writing partner.
  * Teaching chips per PLAN APPROVED (Critic): Socratic / Guided practice /
  * Feynman / Just tell me / Adaptive default. Panel copy left, behavior right.
+ *
+ * PLAN-COACHING-OPT-IN — this module also owns the coaching gate
+ * (`coachingLayerActive` / `effectiveCoachingMode`) and the fixed mode
+ * directives every coach prompt surface uses. Teaching text is emitted only
+ * when `effectiveCoachingMode(settings) === 'teacher'`. Never touches IPC.
  */
 
 export type PartnerTone = 'Kind + firm' | 'Gentle' | 'Blunt';
@@ -268,3 +273,67 @@ export function traitDetail(
     }
   }
 }
+
+// ── Coaching opt-in (PLAN-COACHING-OPT-IN) ──────────────────────────────────
+
+/** The two modes a writer can pick once Coaching is on. */
+export type CoachingMode = 'assistant' | 'teacher';
+
+/** What coach prompt surfaces actually do: 'off' unless Coaching is opted in. */
+export type EffectiveCoachingMode = 'off' | CoachingMode;
+
+export interface CoachingSettings {
+  optIn: boolean;
+  mode: CoachingMode;
+}
+
+/** Off by default; Teacher waits dormant so the first enable lands on it. */
+export const DEFAULT_COACHING: Readonly<CoachingSettings> = { optIn: false, mode: 'teacher' };
+
+/**
+ * Read `settings.coaching` defensively (mirrors main's normalize on load).
+ * Only `optIn === true` turns Coaching on; an unknown mode falls back to
+ * 'teacher'. Never enables teaching from a missing or malformed value.
+ */
+export function resolveCoachingSettings(settings: AppSettings | null | undefined): CoachingSettings {
+  const raw: unknown = settings?.coaching;
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_COACHING };
+  const record = raw as { optIn?: unknown; mode?: unknown };
+  return {
+    optIn: record.optIn === true,
+    mode: record.mode === 'assistant' ? 'assistant' : 'teacher',
+  };
+}
+
+/** True only when the writer turned Coaching on in Settings. */
+export function coachingLayerActive(settings: AppSettings | null | undefined): boolean {
+  return resolveCoachingSettings(settings).optIn;
+}
+
+/**
+ * The single gate for every coach prompt surface. Teacher / Assistant apply
+ * only while Coaching is on; otherwise 'off' (the quiet assistant default).
+ */
+export function effectiveCoachingMode(settings: AppSettings | null | undefined): EffectiveCoachingMode {
+  const coaching = resolveCoachingSettings(settings);
+  return coaching.optIn ? coaching.mode : 'off';
+}
+
+/**
+ * Fixed sentinel lines that open the mode prefix. Constants — never built
+ * from user input — so tests can assert presence / absence in the outbound
+ * prompt.
+ */
+export const COACHING_TEACHER_MARKER = '[Coaching mode: Teacher]';
+export const COACHING_ASSISTANT_MARKER = '[Coaching mode: Assistant]';
+
+/** Quiet assistant — Coaching off (default) and Coaching on in Assistant mode. */
+export const QUIET_ASSISTANT_DIRECTIVE =
+  'Answer what the writer asked, plainly and directly. Do not add lessons, drills, exercises or '
+  + 'craft-term definitions unless the writer asks for them. Never write or rewrite their prose.';
+
+/** Teacher — emitted only when effectiveCoachingMode(settings) === 'teacher'. */
+export const TEACHER_DIRECTIVE =
+  'Teach as you answer: name the craft technique, explain why it matters to the reader, ground '
+  + 'it in the writer’s own pages, and offer one short drill when a pattern repeats. Never write '
+  + 'or rewrite their prose.';
