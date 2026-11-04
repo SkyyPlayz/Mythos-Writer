@@ -155,23 +155,42 @@ describe('resolveVisibleTimelineMode', () => {
 
 describe('timeline visibility has no runtime unhide switch (any name)', () => {
   it('loading timelineAeon and resolving every mode reads no storage, URL params or env', async () => {
+    // Record ANY access on whatever storage objects are installed (setupTests
+    // swaps localStorage for a plain mock, so prototype spies alone miss it).
     const storageReads: string[] = [];
-    const proto = Storage.prototype;
-    const spies = [
-      vi.spyOn(proto, 'getItem').mockImplementation(function (this: Storage, k: string) {
-        storageReads.push(`getItem:${k}`);
-        return null;
-      }),
-      vi.spyOn(proto, 'key').mockImplementation(function (this: Storage, i: number) {
-        storageReads.push(`key:${i}`);
-        return null;
-      }),
+    const recording = (label: string, target: Storage): Storage =>
+      new Proxy(target, {
+        get(t, prop) {
+          storageReads.push(`${label}.${String(prop)}`);
+          const value = Reflect.get(t, prop, t) as unknown;
+          return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(t) : value;
+        },
+      });
+    const realLocal = window.localStorage;
+    const realSession = window.sessionStorage;
+    // Install on both window and globalThis in case they are distinct objects.
+    const hosts = Array.from(new Set<object>([window, globalThis]));
+    const swap = (name: 'localStorage' | 'sessionStorage', value: Storage): void => {
+      for (const host of hosts) {
+        try {
+          Object.defineProperty(host, name, { value, configurable: true, writable: true });
+        } catch {
+          (host as Record<string, unknown>)[name] = value; // writable but not configurable
+        }
+      }
+    };
+    const urlSpies = [
       vi.spyOn(URLSearchParams.prototype, 'get'),
       vi.spyOn(URLSearchParams.prototype, 'has'),
       vi.spyOn(URLSearchParams.prototype, 'getAll'),
     ];
     const realEnv = process.env;
     try {
+      swap('localStorage', recording('localStorage', realLocal));
+      swap('sessionStorage', recording('sessionStorage', realSession));
+      expect(globalThis.localStorage, 'recording proxy installed').not.toBe(realLocal);
+      storageReads.length = 0; // only count reads made by timelineAeon below
+
       // Fresh module evaluation: a switch read at load time is caught too.
       vi.resetModules();
       const fresh = await import('./timelineAeon');
@@ -191,13 +210,15 @@ describe('timeline visibility has no runtime unhide switch (any name)', () => {
 
       expect(storageReads, 'storage read while resolving visibility').toEqual([]);
       expect(envReads, 'process.env read while resolving visibility').toEqual([]);
-      for (const spy of spies.slice(2)) expect(spy).not.toHaveBeenCalled();
+      for (const spy of urlSpies) expect(spy).not.toHaveBeenCalled();
       // The answers are the shipped constant's, not a runtime override's.
       expect(visibility).toEqual(fresh.VALID_TIMELINE_MODES.map((mode) => !fresh.HIDDEN_TIMELINE_MODES.has(mode)));
       for (const value of resolved) expect(fresh.HIDDEN_TIMELINE_MODES.has(value)).toBe(false);
     } finally {
       process.env = realEnv;
-      for (const spy of spies) spy.mockRestore();
+      swap('localStorage', realLocal);
+      swap('sessionStorage', realSession);
+      for (const spy of urlSpies) spy.mockRestore();
       vi.resetModules();
     }
   });
