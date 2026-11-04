@@ -283,6 +283,71 @@ describe('AutoLinkerExtension plugin — decoration correctness across edits', (
   });
 });
 
+// ─── #1734 Probe: plugin-level expandToTextblocks widening is load-bearing ──
+//
+// The keystroke path rescans whole text nodes via doc.nodesBetween(from, to).
+// A deletion that collapses to a caret at the edge of a text node gives a raw
+// changed range that visits NO text node, so without the plugin's
+// expandToTextblocks call the new mention is never found. Each case asserts
+// both halves in one run: the raw range visits no text node (what a
+// no-widening mutant would scan), and the plugin still decorates the mention.
+
+function textNodesVisited(doc: Editor['state']['doc'], from: number, to: number): string[] {
+  const seen: string[] = [];
+  doc.nodesBetween(from, to, (node) => {
+    if (node.isText && node.text) seen.push(node.text);
+    return true;
+  });
+  return seen;
+}
+
+describe('AutoLinkerExtension plugin — expandToTextblocks widening (kill the no-widen mutant)', () => {
+  const cases: Array<{ name: string; html: string; deleteAt: (size: number) => [number, number] }> = [
+    {
+      name: 'Backspace at the end of a block completes a mention',
+      html: '<p>Elarax</p>',
+      // paragraph content is 1..7; "x" sits at 6..7.
+      deleteAt: (size) => [size - 2, size - 1],
+    },
+    {
+      name: 'Delete at the start of a block completes a mention',
+      html: '<p>xElara</p>',
+      deleteAt: () => [1, 2],
+    },
+  ];
+
+  for (const c of cases) {
+    it(c.name, () => {
+      const editor = makeAutoLinkerEditor(c.html, [makeEntity('e1', 'Elara')]);
+      try {
+        expect(editor.view.dom.querySelectorAll('.archive-wl-hint')).toHaveLength(0);
+
+        const [from, to] = c.deleteAt(editor.state.doc.content.size);
+        const tr = editor.state.tr.delete(from, to);
+        const changed = changedRanges(tr);
+        if (changed === null) throw new Error('expected a changed range');
+        expect(changed.from).toBe(changed.to);
+        // What the plugin would rescan without widening: nothing.
+        expect(
+          textNodesVisited(tr.doc, changed.from, changed.to),
+          'raw caret range unexpectedly visits a text node — this case no longer kills the no-widen mutant',
+        ).toEqual([]);
+        // What it rescans with widening: the whole block.
+        const widened = expandToTextblocks(tr.doc, changed.from, changed.to);
+        expect(textNodesVisited(tr.doc, widened.from, widened.to)).toEqual(['Elara']);
+
+        editor.view.dispatch(tr);
+        const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
+        expect(hints, 'plugin did not rescan the widened block after a caret-edge deletion').toHaveLength(1);
+        expect(hints[0]?.textContent).toBe('Elara');
+        expect(hints[0]?.getAttribute('data-wl-link')).toBe('[[Elara]]');
+      } finally {
+        editor.destroy();
+      }
+    });
+  }
+});
+
 // ─── editor/changedRanges (pure move of the keystroke rescan helpers) ────────
 
 describe('editor/changedRanges', () => {
