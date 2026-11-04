@@ -127,6 +127,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-editor',
       'section-editor-manuscript',
       'section-notes-board', // SKY-11186: Boards zoom-out limit — a visible performance setting
+      'section-idle-catch-up', // PLAN-IDLE-CATCH-UP: wait for a typing pause before background scans
     ],
   },
   {

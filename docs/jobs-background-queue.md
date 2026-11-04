@@ -74,6 +74,41 @@ Rules the split encodes:
    any filesystem scope in `jobsIpc.ts` — never trust renderer paths.
 4. Cover checkpoint/resume for the handler (see `vaultScanJob.test.ts`).
 
+## Idle catch-up (PLAN-IDLE-CATCH-UP)
+
+The Continuity panel's background manuscript scan (`manuscript-scan`) can wait
+for a pause in typing before it is handed to the queue. The renderer owns this;
+main and the queue above are unchanged.
+
+- **What it does.** `frontend/src/idleCatchUp/idleCatchUpGate.ts` keeps a
+  renderer-side staging buffer (at most 8 items). Requests with the same type +
+  scope coalesce, so only the newest one is kept. Once the writer has not typed
+  for the idle time, staged items are submitted one per animation frame through
+  the existing `jobs.enqueue`. The default is 2 minutes, clamped to 1–30
+  (Settings → Editor → Idle catch-up). With the feature off, or in a window
+  with no editor shell (floating panels), scans are submitted immediately, as
+  before. Turning the feature off also submits anything still waiting. Before
+  the writer has typed in the shell, the session counts as idle.
+- **Typing.** Typing stops further submissions. Anything not yet submitted
+  stays staged until the next pause. If a background scan already started, it
+  may finish after you start typing again.
+- **Vault switch.** Switching projects clears staged work. An item staged for
+  one vault is never submitted to another. A failed vault read is not a
+  switch: the item stays staged and the gate tries again after the next full
+  idle window.
+- **Errors.** The panel's call settles only when the request reaches a final
+  outcome. A submit that fails, right away or after the wait, still shows
+  "Background scan didn’t start — …" in the Continuity panel. A full buffer
+  asks the writer to pause typing and try again. The panel shows a "queued"
+  line while its scan is waiting. If the panel is closed before the outcome
+  arrives, that outcome is dropped — the panel never updates after it closes.
+- **No new IPC, no AI calls.** The gate only delays an existing
+  `jobs:enqueue` call. It behaves the same in AI Off, Local Only and Full AI.
+- **E2E seam.** `window.__E2E_IDLE_CATCHUP__` is test-only and production never
+  sets it. When set, the gate exposes a hold-only controller on
+  `window.__E2E_IDLE_CATCHUP_GATE__`, which parks a flush just before a submit
+  so a spec can type in that window.
+
 ## Known limits (v1, deliberate)
 
 - One job runs at a time (FIFO). Parallel lanes are a later concern.

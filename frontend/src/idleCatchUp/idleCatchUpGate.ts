@@ -17,6 +17,8 @@
  *   await `getVaultRoot` → (3) recheck again + vaultKey compare →
  *   (4) `jobs.enqueue`. One item per animation frame — never a microtask
  *   drain. Activity / `active=false` aborts the rest; items stay staged.
+ *   Turning the feature off instead submits staged items right away.
+ * - A failed vault read is never treated as a vault switch.
  * - Hot path: activity is one timestamp write + one integer bump. Timers run
  *   only while something is staged.
  */
@@ -100,7 +102,11 @@ interface StagedItem {
   settle: (result: IdleEnqueueResult) => void;
 }
 
-/** Hidden windows get a slow timer instead of rAF so a minimized app still catches up. */
+/**
+ * Slow pacing timer: the only pace while hidden, and the fallback when the
+ * window is minimized after rAF was requested (background throttling stops
+ * rAF), so a minimized app still catches up.
+ */
 const HIDDEN_FRAME_MS = 250;
 
 export function idleStageKey(type: string, opts: IdleEnqueueOpts | undefined): string {
@@ -130,8 +136,11 @@ function defaultDeps(): IdleCatchUpGateDeps {
     isHidden: () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
     getJobs: () => w?.api?.jobs as JobsApi | undefined,
     getVaultRoot: async () => {
-      const res = await w?.api?.getVaultRoot?.();
-      return typeof res?.vaultRoot === 'string' ? res.vaultRoot : '';
+      // main resolves `{ error }` when the handler throws — that is a failed
+      // read, not an empty vault, so it must throw (never compare as '').
+      const res = (await w?.api?.getVaultRoot?.()) as { vaultRoot?: unknown; error?: unknown } | undefined;
+      if (typeof res?.vaultRoot === 'string' && res.vaultRoot) return res.vaultRoot;
+      throw new Error(typeof res?.error === 'string' && res.error ? res.error : 'vault root unavailable');
     },
     isE2E: () => Boolean(w?.__E2E_IDLE_CATCHUP__),
     exposeE2E: (controller) => {
@@ -153,7 +162,8 @@ export class IdleCatchUpGate {
   private everHosted = false;
   private flushing = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private frame: { handle: number; hidden: boolean; resolve: () => void } | null = null;
+  /** The pending paced frame; `resolve` also cancels its rAF + slow timer. */
+  private frame: { resolve: () => void } | null = null;
   private e2eHoldAt: number | null = null;
   private e2eRelease: (() => void) | null = null;
   readonly __e2e: IdleCatchUpE2EController;
@@ -166,24 +176,25 @@ export class IdleCatchUpGate {
         this.e2eHoldAt = Number.isInteger(n) && n > 0 ? n : null;
       },
       isHeld: () => this.e2eRelease !== null,
-      release: () => {
-        const release = this.e2eRelease;
-        this.e2eRelease = null;
-        release?.();
-      },
+      release: () => this.releaseE2EHold(),
       stagedKeys: () => [...this.buffer.keys()],
     };
   }
 
   // ── host lifecycle (useIdleCatchUp) ───────────────────────────────────────
 
-  /** Apply settings. Re-enable restarts the idle countdown; a minutes change re-arms it. */
+  /**
+   * Apply settings. Re-enable restarts the idle countdown; a minutes change
+   * re-arms it. Turning the feature off sends anything already staged down
+   * the immediate path, the same as a new request while off.
+   */
   configure(raw: unknown): void {
     const next = normalizeIdleCatchUp(raw);
     const wasEnabled = this.settings.enabled;
     this.settings = next;
     if (!next.enabled) {
       this.abortRun();
+      this.drainStaged();
       return;
     }
     if (!wasEnabled) this.lastActivity = this.deps.now();
@@ -201,8 +212,11 @@ export class IdleCatchUpGate {
    */
   attach(): () => void {
     this.hosts += 1;
+    // First host in this window: nothing has been typed yet, so the session
+    // starts idle. A re-attach restarts the window, because typing while
+    // detached is not observed.
+    this.lastActivity = this.everHosted ? this.deps.now() : Number.NEGATIVE_INFINITY;
     this.everHosted = true;
-    this.lastActivity = this.deps.now();
     this.exposeE2EIfFlagged();
     this.schedule();
     let detached = false;
@@ -240,6 +254,8 @@ export class IdleCatchUpGate {
     const items = [...this.buffer.values()];
     this.buffer.clear();
     this.cancelTimer();
+    // A parked e2e hold resumes, fails its buffer recheck and ends the run.
+    this.releaseE2EHold();
     for (const item of items) item.settle({ accepted: 'rejected', reason });
   }
 
@@ -287,6 +303,34 @@ export class IdleCatchUpGate {
       hooks?.onStaged?.();
       this.schedule();
     });
+  }
+
+  /** Empty the buffer through the immediate path (feature turned off). */
+  private drainStaged(): void {
+    if (this.buffer.size === 0) return;
+    const items = [...this.buffer.values()];
+    this.buffer.clear();
+    void this.submitDrained(items);
+  }
+
+  private async submitDrained(items: StagedItem[]): Promise<void> {
+    const epoch = this.clearEpoch;
+    let currentVault: string | null;
+    try {
+      currentVault = await this.deps.getVaultRoot();
+    } catch {
+      // Same fallback as a stage without a vault key: main stamps vaultRoot.
+      currentVault = null;
+    }
+    // A project switch during the read: these items belong to the old vault.
+    const switched = epoch !== this.clearEpoch;
+    for (const item of items) {
+      if (switched || (currentVault !== null && currentVault !== item.vaultKey)) {
+        item.settle({ accepted: 'rejected', reason: 'vault-switch' });
+      } else {
+        void this.submit(item.type, item.opts).then(item.settle);
+      }
+    }
   }
 
   private async submitBypass(type: IdleJobType, opts: IdleEnqueueOpts | undefined): Promise<IdleEnqueueResult> {
@@ -352,25 +396,48 @@ export class IdleCatchUpGate {
     const frame = this.frame;
     if (frame) {
       this.frame = null;
-      if (frame.hidden) this.deps.clearTimer(frame.handle as unknown as ReturnType<typeof setTimeout>);
-      else this.deps.cancelFrame(frame.handle);
       frame.resolve();
     }
     // Bump so a flush parked in an await sees the stop on its next recheck.
     this.generation += 1;
+    // A parked e2e hold resumes and fails that recheck, so `flushing` resets.
+    this.releaseE2EHold();
   }
 
+  private releaseE2EHold(): void {
+    const release = this.e2eRelease;
+    this.e2eRelease = null;
+    release?.();
+  }
+
+  /**
+   * One paced step. While visible, rAF races the slow timer (whichever fires
+   * first wins and cancels the other), so a window minimized after the
+   * request still advances; while hidden, only the slow timer runs.
+   */
   private nextFrame(): Promise<void> {
     return new Promise<void>((resolve) => {
+      let rafHandle: number | null = null;
+      let slowTimer: ReturnType<typeof setTimeout> | null = null;
       const done = () => {
+        if (rafHandle !== null) this.deps.cancelFrame(rafHandle);
+        if (slowTimer !== null) this.deps.clearTimer(slowTimer);
+        rafHandle = null;
+        slowTimer = null;
         if (this.frame?.resolve === done) this.frame = null;
         resolve();
       };
-      const hidden = this.deps.isHidden();
-      const handle = hidden
-        ? (this.deps.setTimer(done, HIDDEN_FRAME_MS) as unknown as number)
-        : this.deps.requestFrame(done);
-      this.frame = { handle, hidden, resolve: done };
+      slowTimer = this.deps.setTimer(() => {
+        slowTimer = null;
+        done();
+      }, HIDDEN_FRAME_MS);
+      if (!this.deps.isHidden()) {
+        rafHandle = this.deps.requestFrame(() => {
+          rafHandle = null;
+          done();
+        });
+      }
+      this.frame = { resolve: done };
     });
   }
 
@@ -411,7 +478,10 @@ export class IdleCatchUpGate {
       try {
         currentVault = await this.deps.getVaultRoot();
       } catch {
-        return; // keep staged; the next idle window retries
+        // Keep staged and wait a full idle window before the next read, so a
+        // failing read can't repeat once per frame.
+        this.lastActivity = this.deps.now();
+        return;
       }
       // (3) recheck again after the async vault read, right before enqueue.
       if (!this.stillOk(startGen) || this.buffer.get(item.key) !== item) return;
