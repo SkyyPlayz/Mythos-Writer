@@ -6,6 +6,7 @@ import {
   createEntity,
   readEntity,
   updateEntity,
+  updateEntityGuarded,
   deleteEntity,
   listEntities,
   reindexEntities,
@@ -171,6 +172,46 @@ describe('updateEntity', () => {
 
   it('throws for unknown id', () => {
     expect(() => updateEntity(tmpDir, manifest, 'no-such', { name: 'X' })).toThrow('Entity not found');
+  });
+
+  it('refuses an explicit but empty checked path instead of falling back to an unguarded write', () => {
+    const entry = createEntity(tmpDir, manifest, { name: 'Aria', type: 'character' });
+    const file = path.join(tmpDir, entry.path);
+    const before = fs.readFileSync(file, 'utf-8');
+
+    expect(() => updateEntity(tmpDir, manifest, entry.id, { name: 'Hijacked' }, '')).toThrow(
+      'AI entity write refused: no checked path',
+    );
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+    expect(manifest.entities[0].name).toBe('Aria');
+  });
+});
+
+// ─── updateEntityGuarded (AI write boundary) ───
+//
+// AI callers must never reach the unguarded vault writer. Without a checked
+// absolute path from assertAiWritable the guarded API refuses before writing.
+
+describe('updateEntityGuarded', () => {
+  it('writes through the checked path', () => {
+    const entry = createEntity(tmpDir, manifest, { name: 'Old Name', type: 'character' });
+    const updated = updateEntityGuarded(tmpDir, manifest, entry.id, { name: 'New Name' }, path.join(tmpDir, entry.path));
+
+    expect(updated.name).toBe('New Name');
+    expect(fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8')).toContain('name: New Name');
+    expect(manifest.entities[0].name).toBe('New Name');
+  });
+
+  it('refuses and writes nothing when the checked path is missing', () => {
+    const entry = createEntity(tmpDir, manifest, { name: 'Aria', type: 'character' });
+    const file = path.join(tmpDir, entry.path);
+    const before = fs.readFileSync(file, 'utf-8');
+
+    expect(() =>
+      updateEntityGuarded(tmpDir, manifest, entry.id, { name: 'Hijacked' }, undefined as unknown as string),
+    ).toThrow('AI entity write refused: no checked path');
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+    expect(manifest.entities[0].name).toBe('Aria');
   });
 });
 
@@ -430,6 +471,14 @@ describe('Obsidian compatibility', () => {
 // handler uses for typed-relation suggestions. Catches the SKY-901 regression
 // (source-side write skipped) without paying the 8s E2E poll.
 
+// The real caller (suggestionApply) passes the abs paths assertAiWritable
+// returned for each side; mirror that here.
+function checkedPaths(sourceId: string, targetId: string): { source: string; target: string } {
+  const abs = (id: string) =>
+    path.join(tmpDir, manifest.entities.find((e) => e.id === id)?.path ?? entityRelPath('character', id));
+  return { source: abs(sourceId), target: abs(targetId) };
+}
+
 describe('applyTypedRelation', () => {
   it('writes the forward relation to the source entity file', () => {
     const elara = createEntity(tmpDir, manifest, { name: 'Elara', type: 'character' });
@@ -439,7 +488,7 @@ describe('applyTypedRelation', () => {
       relationType: 'married to',
       sourceEntityId: elara.id,
       targetEntityId: dorian.id,
-    });
+    }, checkedPaths(elara.id, dorian.id));
 
     expect(sourceWritten).toBe(true);
     expect(targetWritten).toBe(true);
@@ -458,7 +507,7 @@ describe('applyTypedRelation', () => {
       relationType: 'married to',
       sourceEntityId: elara.id,
       targetEntityId: dorian.id,
-    });
+    }, checkedPaths(elara.id, dorian.id));
 
     const targetRaw = fs.readFileSync(path.join(tmpDir, dorian.path), 'utf-8');
     expect(targetRaw).toContain('relations:');
@@ -474,7 +523,7 @@ describe('applyTypedRelation', () => {
       relationType: 'parent of',
       sourceEntityId: parent.id,
       targetEntityId: child.id,
-    });
+    }, checkedPaths(parent.id, child.id));
 
     const parentRaw = fs.readFileSync(path.join(tmpDir, parent.path), 'utf-8');
     const childRaw = fs.readFileSync(path.join(tmpDir, child.path), 'utf-8');
@@ -492,7 +541,7 @@ describe('applyTypedRelation', () => {
       relationType: 'ally of',
       sourceEntityId: a.id,
       targetEntityId: b.id,
-    });
+    }, checkedPaths(a.id, b.id));
 
     const aEntry = manifest.entities.find((e) => e.id === a.id);
     const bEntry = manifest.entities.find((e) => e.id === b.id);
@@ -508,7 +557,7 @@ describe('applyTypedRelation', () => {
       relationType: 'sibling of',
       sourceEntityId: a.id,
       targetEntityId: b.id,
-    });
+    }, checkedPaths(a.id, b.id));
     expect(first.sourceWritten).toBe(true);
     expect(first.targetWritten).toBe(true);
 
@@ -516,7 +565,7 @@ describe('applyTypedRelation', () => {
       relationType: 'sibling of',
       sourceEntityId: a.id,
       targetEntityId: b.id,
-    });
+    }, checkedPaths(a.id, b.id));
     expect(second.sourceWritten).toBe(false);
     expect(second.targetWritten).toBe(false);
 
@@ -536,7 +585,7 @@ describe('applyTypedRelation', () => {
       relationType: 'ally of',
       sourceEntityId: a.id,
       targetEntityId: b.id,
-    });
+    }, checkedPaths(a.id, b.id));
 
     const aEntry = manifest.entities.find((e) => e.id === a.id);
     expect(aEntry?.relations).toEqual([
@@ -552,7 +601,7 @@ describe('applyTypedRelation', () => {
       relationType: 'married to',
       sourceEntityId: 'missing-source-id',
       targetEntityId: dorian.id,
-    });
+    }, checkedPaths('missing-source-id', dorian.id));
 
     // Caller (suggestionsAccept) uses this to downgrade 'applied' to 'accepted'
     // when nothing was actually persisted, instead of silently claiming success.
@@ -565,9 +614,47 @@ describe('applyTypedRelation', () => {
       relationType: 'married to',
       sourceEntityId: 'missing-a',
       targetEntityId: 'missing-b',
-    });
+    }, checkedPaths('missing-a', 'missing-b'));
 
     expect(result.sourceWritten).toBe(false);
     expect(result.targetWritten).toBe(false);
+  });
+
+  it('refuses and writes neither entity when the checked paths are missing', () => {
+    const a = createEntity(tmpDir, manifest, { name: 'A', type: 'character' });
+    const b = createEntity(tmpDir, manifest, { name: 'B', type: 'character' });
+    const aBefore = fs.readFileSync(path.join(tmpDir, a.path), 'utf-8');
+    const bBefore = fs.readFileSync(path.join(tmpDir, b.path), 'utf-8');
+
+    expect(() =>
+      applyTypedRelation(tmpDir, manifest, {
+        relationType: 'ally of',
+        sourceEntityId: a.id,
+        targetEntityId: b.id,
+      }, undefined as unknown as { source: string; target: string }),
+    ).toThrow('AI entity write refused: no checked path');
+
+    expect(fs.readFileSync(path.join(tmpDir, a.path), 'utf-8')).toBe(aBefore);
+    expect(fs.readFileSync(path.join(tmpDir, b.path), 'utf-8')).toBe(bBefore);
+    expect(manifest.entities.every((e) => (e.relations ?? []).length === 0)).toBe(true);
+  });
+
+  it('refuses before writing the source when only the target checked path is missing', () => {
+    const a = createEntity(tmpDir, manifest, { name: 'A', type: 'character' });
+    const b = createEntity(tmpDir, manifest, { name: 'B', type: 'character' });
+    const aBefore = fs.readFileSync(path.join(tmpDir, a.path), 'utf-8');
+    const bBefore = fs.readFileSync(path.join(tmpDir, b.path), 'utf-8');
+
+    expect(() =>
+      applyTypedRelation(tmpDir, manifest, {
+        relationType: 'ally of',
+        sourceEntityId: a.id,
+        targetEntityId: b.id,
+      }, { source: path.join(tmpDir, a.path) } as unknown as { source: string; target: string }),
+    ).toThrow('AI entity write refused: no checked path');
+
+    expect(fs.readFileSync(path.join(tmpDir, a.path), 'utf-8')).toBe(aBefore);
+    expect(fs.readFileSync(path.join(tmpDir, b.path), 'utf-8')).toBe(bBefore);
+    expect(manifest.entities.every((e) => (e.relations ?? []).length === 0)).toBe(true);
   });
 });
