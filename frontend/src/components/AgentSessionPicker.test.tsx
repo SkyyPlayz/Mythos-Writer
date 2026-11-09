@@ -70,6 +70,54 @@ describe('AgentSessionPicker', () => {
     expect(screen.getByText('+ New chat')).not.toBeDisabled();
   });
 
+  // #1717 Critic N1: the picker lives inside the Past chats panel, which
+  // closes on Escape. Escape must close only the innermost layer.
+  describe('Escape keyboard handling', () => {
+    it('closes only the session list and keeps Escape from reaching the parent panel', () => {
+      const store = makeStore();
+      const parentKeyDown = vi.fn();
+      act(() => {
+        render(
+          <div onKeyDown={parentKeyDown}>
+            <AgentSessionPicker store={store} />
+          </div>,
+        );
+      });
+      openDropdown();
+      const rowButton = screen.getByRole('option', { name: /Session 2/ }).querySelector('.asp-row-label')!;
+
+      fireEvent.keyDown(rowButton, { key: 'Escape' });
+
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(parentKeyDown).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Session:/ }));
+    });
+
+    it('cancels a rename on Escape and returns focus to the session pill', () => {
+      const store = makeStore();
+      const parentKeyDown = vi.fn();
+      act(() => {
+        render(
+          <div onKeyDown={parentKeyDown}>
+            <AgentSessionPicker store={store} />
+          </div>,
+        );
+      });
+      openDropdown();
+      fireEvent.click(screen.getByRole('button', { name: /Rename session Session 2/ }));
+      const input = screen.getByLabelText('Rename session');
+      expect(document.activeElement).toBe(input);
+      fireEvent.change(input, { target: { value: 'Discarded name' } });
+
+      fireEvent.keyDown(input, { key: 'Escape' });
+
+      expect(screen.queryByLabelText('Rename session')).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Session:/ }));
+      expect(store.renameSession).not.toHaveBeenCalled();
+      expect(parentKeyDown).not.toHaveBeenCalled();
+    });
+  });
+
   describe('§10: session ordering', () => {
     it('pins the active session first, then sorts the rest newest-first', () => {
       const store = makeStore({
