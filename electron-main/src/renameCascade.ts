@@ -28,6 +28,8 @@ import { mapVaultWriteError } from './vault/writeErrors.js';
 import { SESSIONS_DIRNAME } from './mythosFormat/agentSessions.js';
 import { rewriteWikiLinksForRename } from '@mythos-writer/shared/wikiLinkRename';
 import { BOARD_SIDECAR_FILE_NAME, rewriteBoardSidecarTextForRename } from './notesBoard.js';
+import { ORDER_FILE_NAME, readOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
+import { ICONS_DIR_NAME, ICONS_FILE_NAME, readIconMap, rewriteIconsOnMove } from './vaultIcons.js';
 import type {
   RenameCascadeLinkUpdate,
   RenameCascadeProgress,
@@ -193,10 +195,24 @@ export function renameNoteWithCascade(
   const plan = cascade
     ? retargetRenamedNote(buildPlan(notesRoot, storyRoot, oldStem, newStem), fromPath, toPath)
     : [];
+  // After the move, the NOTES_VAULT_MOVE handler rewrites the folder-order
+  // file and the icon map when either names the moved entry. Same condition
+  // and same paths here, so a refused write there aborts before the move.
+  const notesMetaWrite = (relPath: string): VaultPlannedChange => ({
+    side: 'notes', kind: 'note', relPath, newContent: '', linkCount: 0, mode: 'update-display',
+  });
+  const metaWrites: VaultPlannedChange[] = [];
+  if (rewriteOrderOnMove(readOrderMap(notesRoot), fromPath, toPath)) {
+    metaWrites.push(notesMetaWrite(ORDER_FILE_NAME));
+  }
+  if (rewriteIconsOnMove(readIconMap(notesRoot), fromPath, toPath)) {
+    metaWrites.push(notesMetaWrite(`${ICONS_DIR_NAME}/${ICONS_FILE_NAME}`));
+  }
   // The destination itself is a write. A dangling link there is refused
   // before the note moves (A12), and every planned rewrite is checked too.
   preflightCascadeWrites(notesRoot, storyRoot, [
     { side: 'notes', kind: 'note', relPath: toPath, newContent: '', linkCount: 0, mode: 'update-display' },
+    ...metaWrites,
     ...plan,
   ]);
 

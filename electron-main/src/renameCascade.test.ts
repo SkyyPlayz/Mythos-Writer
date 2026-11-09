@@ -149,6 +149,58 @@ describe('collision — refused before anything is written', () => {
   });
 });
 
+// The move handler rewrites `.vb-order.json` and `.mythos/icons.json` after the
+// rename when either names the moved note. A refused write there used to land
+// after the note had moved and its links were rewritten, so it is preflighted.
+describe('order and icon files — refused before anything is written', () => {
+  function expectRefusedBeforeAnyWrite(linkPath: string, realPath: string, realContent: string) {
+    writeNote('Jasper.md', 'The man himself.');
+    writeNote('Allies.md', 'See [[Jasper]] for details.');
+    writeNote(realPath, realContent);
+    fs.symlinkSync(path.join(notesRoot, realPath), path.join(notesRoot, linkPath), 'file');
+
+    let writes = 0;
+    const countingWriter: VaultWriter = (root, relPath, content) => {
+      writes++;
+      writeVaultFileAtomic(root, relPath, content);
+    };
+
+    expect(() =>
+      renameNoteWithCascade({
+        notesRoot,
+        storyRoot,
+        fromPath: 'Jasper.md',
+        toPath: 'Jasper Thorne.md',
+        writeFile: countingWriter,
+      }),
+    ).toThrow(/shortcut \(symbolic link\)/);
+
+    expect(writes).toBe(0);
+    expect(readNote('Jasper.md')).toBe('The man himself.');
+    expect(fs.existsSync(path.join(notesRoot, 'Jasper Thorne.md'))).toBe(false);
+    expect(readNote('Allies.md')).toBe('See [[Jasper]] for details.');
+    expect(fs.lstatSync(path.join(notesRoot, linkPath)).isSymbolicLink()).toBe(true);
+    expect(readNote(realPath)).toBe(realContent);
+    expect(undoLastRenameCascade({ notesRoot, storyRoot }).undone).toBe(false);
+  }
+
+  it('refuses the rename when .vb-order.json would be refused by the write guard', () => {
+    expectRefusedBeforeAnyWrite(
+      '.vb-order.json',
+      'order-real.json',
+      JSON.stringify({ '': ['Allies.md', 'Jasper.md'] }),
+    );
+  });
+
+  it('refuses the rename when .mythos/icons.json would be refused by the write guard', () => {
+    expectRefusedBeforeAnyWrite(
+      '.mythos/icons.json',
+      '.mythos/icons-real.json',
+      JSON.stringify({ 'Jasper.md': '🗡️' }),
+    );
+  });
+});
+
 describe('per-side rewrite behaviour (owner ruling)', () => {
   it('notes vault gets Obsidian behaviour, story vault preserves visible words', () => {
     writeNote('Jasper.md', 'He knows [[Jasper]] well.'); // self-link
