@@ -21,8 +21,16 @@ const RULES = [
   { id: 'private-key', source: String.raw`-----BEGIN ([A-Z]+ )?PRIVATE KEY-----` },
 ];
 
-function contentHits(line) {
-  const allowed = line.includes(MARKER);
+function isTestPath(file) {
+  const norm = String(file || '').replace(/\\/g, '/');
+  if (norm === 'e2e' || norm.startsWith('e2e/')) return true;
+  if (norm.split('/').includes('__fixtures__')) return true;
+  const base = norm.slice(norm.lastIndexOf('/') + 1);
+  return base.includes('.test.') || base.includes('.spec.');
+}
+
+function contentHits(line, file) {
+  const allowed = isTestPath(file) && String(line).includes(MARKER);
   const hits = [];
   for (const rule of RULES) {
     if (new RegExp(rule.source).test(line)) hits.push({ id: rule.id, allowed });
@@ -59,7 +67,7 @@ function scanUnifiedDiff(diffText) {
     if (file == null) continue;
     if (line.startsWith('+')) {
       const text = line.slice(1);
-      for (const hit of contentHits(text)) {
+      for (const hit of contentHits(text, file)) {
         findings.push({ file, line: newLine, rule: hit.id, allowed: hit.allowed });
       }
       newLine += 1;
@@ -96,11 +104,21 @@ function scanNameStatus(text) {
 
 const MAX_GIT_BUFFER = 256 * 1024 * 1024;
 
+function resolveMaxBuffer() {
+  // Test-only. CI leaves this unset and uses MAX_GIT_BUFFER.
+  const raw = process.env.DIFF_GUARD_MAX_BUFFER;
+  if (raw && /^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (Number.isSafeInteger(n) && n > 0) return n;
+  }
+  return MAX_GIT_BUFFER;
+}
+
 function git(args, cwd) {
   const result = spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    maxBuffer: MAX_GIT_BUFFER,
+    maxBuffer: resolveMaxBuffer(),
   });
   if (result.error || result.status !== 0) return { ok: false };
   return { ok: true, stdout: result.stdout || '' };
@@ -172,7 +190,11 @@ function main() {
     process.exit(0);
   }
   const spec = `${range.base}...${range.head}`;
-  const diff = git(['diff', '--unified=0', spec], process.cwd());
+  // --text: a binary attribute, -diff, or a NUL byte must not hide added lines.
+  const diff = git(
+    ['diff', '--text', '--no-textconv', '--no-ext-diff', '--no-color', '--unified=0', spec],
+    process.cwd(),
+  );
   const names = git(['diff', '--name-status', '--find-renames', spec], process.cwd());
   if (!diff.ok || !names.ok) {
     process.stderr.write('diff-guard: git error\n');
@@ -187,4 +209,11 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { scanUnifiedDiff, contentHits, scanNameStatus, isDisallowedEnv };
+module.exports = {
+  scanUnifiedDiff,
+  contentHits,
+  scanNameStatus,
+  isDisallowedEnv,
+  isTestPath,
+  MAX_GIT_BUFFER,
+};

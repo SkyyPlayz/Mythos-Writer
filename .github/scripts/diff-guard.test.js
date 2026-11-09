@@ -17,7 +17,7 @@ const test = require('node:test');
 
 const SCRIPT = path.join(__dirname, 'diff-guard.js');
 const REPO = path.resolve(__dirname, '..', '..');
-const { scanUnifiedDiff, contentHits } = require('./diff-guard.js');
+const { scanUnifiedDiff, contentHits, isTestPath } = require('./diff-guard.js');
 
 function allowMarker() {
   return 'diff-' + 'guard: ' + 'allow-' + 'fake';
@@ -75,7 +75,7 @@ function commitAll(root, message) {
   return git(root, ['rev-parse', 'HEAD']);
 }
 
-function runGuard(root, eventName, event) {
+function runGuard(root, eventName, event, extraEnv) {
   const eventPath = path.join(os.tmpdir(), `diff-guard-event-${process.pid}-${Date.now()}-${Math.random()}.json`);
   fs.writeFileSync(eventPath, JSON.stringify(event || {}));
   try {
@@ -89,6 +89,7 @@ function runGuard(root, eventName, event) {
         TMPDIR: process.env.TMPDIR || os.tmpdir(),
         GITHUB_EVENT_NAME: eventName,
         GITHUB_EVENT_PATH: eventPath,
+        ...(extraEnv || {}),
       },
     });
   } finally {
@@ -194,11 +195,25 @@ test('the allow marker lists its own line and does not fail the build', () => {
   withRepo((root) => {
     writeFile(root, 'README.md', 'clean\n');
     const base = commitAll(root, 'base');
-    writeFile(root, 'fake.txt', `${key} ${allowMarker()}\n`);
+    writeFile(root, 'src/app.test.js', `${key} ${allowMarker()}\n`);
     commitAll(root, 'head');
     const result = runGuard(root, 'push', pushEvent(base));
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout.trim(), 'fake.txt:1 gh-token');
+    assert.equal(result.stdout.trim(), 'src/app.test.js:1 gh-token');
+    assertNoValue(result, key);
+  });
+});
+
+test('an allow marker on a product path is red', () => {
+  const key = fakes()[0][1];
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    writeFile(root, 'src/app.js', `${key} ${allowMarker()}\n`);
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /^src\/app\.js:1 gh-token$/m);
     assertNoValue(result, key);
   });
 });
@@ -406,29 +421,100 @@ test('a missing pull_request sha fails closed', () => {
   });
 });
 
-function disallowedContentHits(line) {
-  return contentHits(line).filter((hit) => !hit.allowed);
+test('a gitattributes binary file still reports an added fake key', () => {
+  const key = fakes()[0][1];
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    writeFile(root, '.gitattributes', 'secret.bin binary\n');
+    writeFile(root, 'secret.bin', `${key}\n`);
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /^secret\.bin:1 gh-token$/m);
+    assertNoValue(result, key);
+  });
+});
+
+test('a gitattributes -diff file still reports an added fake key', () => {
+  const key = fakes()[2][1];
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    writeFile(root, '.gitattributes', 'nodiff.bin -diff\n');
+    writeFile(root, 'nodiff.bin', `${key}\n`);
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /^nodiff\.bin:1 sk-ant$/m);
+    assertNoValue(result, key);
+  });
+});
+
+test('a file with a NUL byte still reports an added fake key', () => {
+  const key = fakes()[6][1];
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    const full = path.join(root, 'nul.bin');
+    fs.writeFileSync(full, Buffer.concat([Buffer.from(`${key}\n`), Buffer.from([0])]));
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /^nul\.bin:1 aws-akia$/m);
+    assertNoValue(result, key);
+  });
+});
+
+test('a git diff over the injected buffer limit fails closed', () => {
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    writeFile(root, 'big.txt', `${'a'.repeat(80)}\n`.repeat(200));
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base), { DIFF_GUARD_MAX_BUFFER: '1024' });
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, /diff-guard: git error/);
+    assert.equal(result.stdout.trim(), '');
+  });
+});
+
+function disallowedContentHits(line, file) {
+  return contentHits(line, file).filter((hit) => !hit.allowed);
 }
 
-function isExemptPath(rel) {
-  if (rel === 'e2e' || rel.startsWith('e2e/')) return true;
-  if (rel.split('/').includes('__fixtures__')) return true;
-  const base = rel.slice(rel.lastIndexOf('/') + 1);
-  return base.includes('.test.') || base.includes('.spec.');
+function hitsOutsideTestPaths(entries) {
+  const hits = [];
+  for (const [rel, text] of entries) {
+    if (!rel || isTestPath(rel)) continue;
+    const lines = String(text).split('\n');
+    for (let i = 0; i < lines.length; i += 1) {
+      for (const hit of contentHits(lines[i], rel)) {
+        hits.push(`${rel}:${i + 1} ${hit.id}`);
+      }
+    }
+  }
+  return hits;
 }
 
-test('full-tree accounting ignores a same-line allow marker', () => {
+test('full-tree accounting counts a same-line allow marker on a product path', () => {
   const key = fakes()[0][1];
   const line = `${key} ${allowMarker()}`;
-  assert.deepEqual(disallowedContentHits(line), []);
-  assert.ok(contentHits(line).some((hit) => hit.allowed && hit.id === 'gh-token'));
+  assert.equal(isTestPath('src/app.js'), false);
+  assert.equal(isTestPath('src/app.test.js'), true);
+  assert.deepEqual(contentHits(line, 'src/app.js'), [{ id: 'gh-token', allowed: false }]);
+  assert.deepEqual(contentHits(line, 'src/app.test.js'), [{ id: 'gh-token', allowed: true }]);
+  assert.deepEqual(disallowedContentHits(line, 'src/app.js'), [{ id: 'gh-token', allowed: false }]);
+  assert.deepEqual(disallowedContentHits(line, 'src/app.test.js'), []);
+  assert.deepEqual(hitsOutsideTestPaths([['src/app.js', `${line}\n`]]), ['src/app.js:1 gh-token']);
+  assert.deepEqual(hitsOutsideTestPaths([['src/app.test.js', `${line}\n`]]), []);
 });
 
 test('tracked tree at HEAD has 0 content hits outside test paths', () => {
   const listed = git(REPO, ['ls-files', '-z']);
-  const hits = [];
+  const entries = [];
   for (const rel of listed.split('\0')) {
-    if (!rel || isExemptPath(rel)) continue;
+    if (!rel || isTestPath(rel)) continue;
     const full = path.join(REPO, rel);
     let buf;
     try {
@@ -437,13 +523,7 @@ test('tracked tree at HEAD has 0 content hits outside test paths', () => {
       continue;
     }
     if (buf.includes(0)) continue;
-    const text = buf.toString('utf8');
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i += 1) {
-      for (const hit of disallowedContentHits(lines[i])) {
-        hits.push(`${rel}:${i + 1} ${hit.id}`);
-      }
-    }
+    entries.push([rel, buf.toString('utf8')]);
   }
-  assert.deepEqual(hits, []);
+  assert.deepEqual(hitsOutsideTestPaths(entries), []);
 });

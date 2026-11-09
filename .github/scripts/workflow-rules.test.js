@@ -132,6 +132,36 @@ test('carve-out-check checks out the PR head and can create a label', () => {
   assert.equal(doc.permissions.contents, 'read');
 });
 
+test('carve-out-check loads migration-flag from the base ref and skips when it is absent', () => {
+  const doc = loadWorkflow('carve-out-check.yml');
+  const on = triggerOf(doc);
+  assert.ok(on.pull_request);
+  assert.equal(JSON.stringify(on).includes('pull_request_target'), false);
+  assert.deepEqual(Object.keys(doc.permissions).sort(), ['contents', 'issues', 'pull-requests']);
+  assert.equal(doc.permissions.contents, 'read');
+
+  const steps = doc.jobs['carve-out-check'].steps;
+  const rmAt = steps.findIndex((step) => String(step.run || '').includes('rm -rf trusted-base'));
+  const checkouts = steps.filter((step) => String(step.uses || '').startsWith('actions/checkout'));
+  assert.equal(checkouts.length, 2);
+  const trusted = checkouts[1];
+  const trustedAt = steps.indexOf(trusted);
+  assert.ok(rmAt >= 0, 'clear step');
+  assert.ok(trustedAt > rmAt);
+  assert.equal(trusted.with.ref, '${{ github.event.pull_request.base.sha }}');
+  assert.equal(trusted.with.path, 'trusted-base');
+  assert.equal(trusted.with['persist-credentials'], false);
+  assert.equal(trusted.with['sparse-checkout-cone-mode'], false);
+  assert.match(String(trusted.with['sparse-checkout']), /^\.github\/scripts\/migration-flag\.js$/);
+
+  const script = steps.map((step) => (step.with && step.with.script) || '').join('\n');
+  assert.match(script, /trusted-base\/\.github\/scripts\/migration-flag\.js/);
+  assert.equal(script.includes("GITHUB_WORKSPACE + '/.github/scripts/migration-flag.js'"), false);
+  assert.match(script, /skipping the migration label step/);
+  assert.match(script, /if \(!migrationFlag\) return/);
+  assert.match(script, /fs\.existsSync\(flagPath\)/);
+});
+
 test('deleted workflows are absent', () => {
   for (const rel of deletedWorkflows()) {
     assert.equal(fs.existsSync(path.join(REPO, rel)), false, rel);

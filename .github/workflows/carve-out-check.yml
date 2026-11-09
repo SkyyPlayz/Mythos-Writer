@@ -33,23 +33,51 @@ jobs:
           ref: "refs/pull/${{ github.event.pull_request.number }}/head"
           persist-credentials: false
 
+      # Drop anything the PR head planted at this path, then load the classifier
+      # from the base SHA. The PR copy is untrusted and is missing on branches
+      # that predate the file. A missing file must not fail this job.
+      - name: Clear trusted classifier directory
+        run: rm -rf trusted-base
+
+      - name: Checkout trusted migration classifier from the base ref
+        uses: actions/checkout@v7
+        with:
+          ref: "${{ github.event.pull_request.base.sha }}"
+          persist-credentials: false
+          path: trusted-base
+          sparse-checkout: .github/scripts/migration-flag.js
+          sparse-checkout-cone-mode: false
+
       - name: Flag carve-out paths for human/Ivy review
         uses: actions/github-script@v9
         with:
           script: |
+            const fs = require('fs');
             const pr = context.payload.pull_request;
-            const migrationFlag = require(process.env.GITHUB_WORKSPACE + '/.github/scripts/migration-flag.js');
+            const flagPath = process.env.GITHUB_WORKSPACE + '/trusted-base/.github/scripts/migration-flag.js';
+            let migrationFlag = null;
+            if (!fs.existsSync(flagPath)) {
+              core.info('migration-flag.js is absent on the base ref; skipping the migration label step.');
+            } else {
+              try {
+                migrationFlag = require(flagPath);
+              } catch (e) {
+                core.info(`migration-flag.js on the base ref could not be loaded (${e && e.message}); skipping the migration label step.`);
+              }
+            }
 
             const files = await github.paginate(
               github.rest.pulls.listFiles,
               { owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number }
             );
             const paths = files.map((f) => f.filename);
-            const migrationHits = migrationFlag.classify(files.map((f) => ({
-              filename: f.filename,
-              status: f.status,
-              patch: f.patch,
-            })));
+            const migrationHits = migrationFlag
+              ? migrationFlag.classify(files.map((f) => ({
+                filename: f.filename,
+                status: f.status,
+                patch: f.patch,
+              })))
+              : [];
 
             // Carve-out paths per .github/copilot-instructions.md "Your lane" §4:
             // .github/workflows, db/vault migrations, auth, secrets, release config.
@@ -75,6 +103,7 @@ jobs:
             const migrationList = migrationHits.map((h) => `- \`${h.filename}\` (${h.rule})`).join('\n');
 
             async function syncMigrationLabel() {
+              if (!migrationFlag) return;
               if (migrationHits.length === 0) {
                 try {
                   await github.rest.issues.removeLabel({
