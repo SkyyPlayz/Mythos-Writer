@@ -478,9 +478,11 @@ function recoverFromBackup(
   copyNoFollowAtomic(storePath, corruptPath, { durable: false, rel: corruptRel, mkdir: false });
   writeVaultFileAtomic(vaultRoot, TIMELINES_FILENAME, backupRaw);
 
+  // Log vault-relative names only: absolute paths embed the user's home folder.
+  // (`onRecovered` below still receives the absolute paths — callers need them.)
   console.error(
-    `[timelines] ${storePath} was unreadable (${error.message}); ` +
-      `restored from ${backupPath} — corrupt file preserved at ${corruptPath}`,
+    `[timelines] ${TIMELINES_FILENAME} was unreadable (${error.message}); ` +
+      `restored from ${path.basename(backupPath)} — corrupt file preserved at ${corruptRel}`,
   );
   options?.onRecovered?.({ corruptPath, backupPath, error });
   return backupStore;

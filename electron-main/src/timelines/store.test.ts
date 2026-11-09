@@ -348,7 +348,7 @@ describe('writeTimelinesStore / readTimelinesStore — durability', () => {
   });
 
   it('recovers from a corrupt timelines.json via the backup, preserving the corrupt bytes', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const v1 = createSeedTimelinesStore('2026-01-01T00:00:00Z');
     writeTimelinesStore(tmpDir, v1);
     // After this second write, .bak holds v1 and the store holds v2.
@@ -364,6 +364,20 @@ describe('writeTimelinesStore / readTimelinesStore — durability', () => {
     const corruptCopies = fs.readdirSync(tmpDir).filter((f) => f.startsWith(`${TIMELINES_FILENAME}.corrupt-`));
     expect(corruptCopies).toHaveLength(1);
     expect(fs.readFileSync(path.join(tmpDir, corruptCopies[0]), 'utf-8')).toBe('{ truncated');
+
+    // The recovery callback keeps its absolute-path payload (no API shape change)…
+    expect(onRecovered).toHaveBeenCalledWith(
+      expect.objectContaining({ corruptPath: path.join(tmpDir, corruptCopies[0]), backupPath: backupPath() }),
+    );
+    // …but the console log must stay vault-relative: absolute paths embed the
+    // user's home folder, which must not end up in logs.
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const logged = errorSpy.mock.calls[0].map(String).join(' ');
+    expect(logged).not.toContain(tmpDir);
+    expect(logged).toContain(corruptCopies[0]);
+    expect(logged).toContain(TIMELINES_FILENAME);
+    expect(logged).toContain(path.basename(backupPath()));
+
     // The store file was healed in place — the next read is clean.
     expect(readTimelinesStore(tmpDir)).toEqual(v1);
   });
