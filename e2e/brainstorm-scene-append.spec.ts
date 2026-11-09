@@ -29,7 +29,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -39,7 +38,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -159,8 +159,8 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-append-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-append-vault-'));
+  userData = makeTestTmp('bst-append');
+  vaultDir = makeTestTmp('bst-append-vault');
   seedUserData(userData, vaultDir);
   seedVault(vaultDir);
 
@@ -197,7 +197,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await closeElectronApp(app);
-  removeTempDirs(userData, vaultDir);
+  cleanupTestTmp();
 });
 
 test('SKY-8007: Open in writing panel appends real content to the real scene note on disk', async () => {

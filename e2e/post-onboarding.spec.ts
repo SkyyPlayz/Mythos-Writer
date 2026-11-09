@@ -16,7 +16,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -25,6 +24,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -207,8 +207,8 @@ test.describe('TC-PO-01: Getting Started panel', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po01-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po01-vault-'));
+    userData = makeTestTmp('po01');
+    vaultDir = makeTestTmp('po01-vault');
     seedMinimalVault(vaultDir);
     seedUserData(userData, vaultDir, { onboardingStartMode: 'default-mythos-vault' });
     app = await launchApp(userData);
@@ -218,8 +218,8 @@ test.describe('TC-PO-01: Getting Started panel', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
   });
 
   test('panel renders in the right sidebar after first launch', async () => {
@@ -242,8 +242,8 @@ test.describe('TC-PO-01b: Getting Started panel already dismissed', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po01b-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po01b-vault-'));
+    userData = makeTestTmp('po01b');
+    vaultDir = makeTestTmp('po01b-vault');
     seedMinimalVault(vaultDir);
     seedUserData(userData, vaultDir, {
       onboardingStartMode: 'default-mythos-vault',
@@ -256,8 +256,8 @@ test.describe('TC-PO-01b: Getting Started panel already dismissed', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
   });
 
   test('panel is not shown when dismissed flag is persisted', async () => {
@@ -274,8 +274,8 @@ test.describe('TC-PO-01c: Getting Started panel hidden for skip mode', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po01c-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po01c-vault-'));
+    userData = makeTestTmp('po01c');
+    vaultDir = makeTestTmp('po01c-vault');
     seedMinimalVault(vaultDir);
     seedUserData(userData, vaultDir, { onboardingStartMode: 'skip' });
     app = await launchApp(userData);
@@ -285,8 +285,8 @@ test.describe('TC-PO-01c: Getting Started panel hidden for skip mode', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
   });
 
   test('panel is not shown when startMode is skip', async () => {
@@ -304,8 +304,8 @@ test.describe('TC-PO-02: Scene editor hint', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po02-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po02-vault-'));
+    userData = makeTestTmp('po02');
+    vaultDir = makeTestTmp('po02-vault');
     seedMinimalVault(vaultDir);
     seedUserData(userData, vaultDir, { onboardingStartMode: 'default-mythos-vault' });
     app = await launchApp(userData);
@@ -315,8 +315,8 @@ test.describe('TC-PO-02: Scene editor hint', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
   });
 
   test('hint CSS class is applied to editor wrapper for an empty scene', async () => {
@@ -343,8 +343,8 @@ test.describe('TC-PO-03: Template CTA shown for blank mode', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po03-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po03-vault-'));
+    userData = makeTestTmp('po03');
+    vaultDir = makeTestTmp('po03-vault');
     seedMinimalVault(vaultDir);
     seedUserData(userData, vaultDir, { onboardingStartMode: 'blank' });
     app = await launchApp(userData);
@@ -354,8 +354,8 @@ test.describe('TC-PO-03: Template CTA shown for blank mode', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
   });
 
   test('template CTA button is visible in StoryNavigator for blank-mode users', async () => {
@@ -370,8 +370,8 @@ test.describe('TC-PO-03b: Template CTA hidden for non-blank mode', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po03b-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-po03b-vault-'));
+    userData = makeTestTmp('po03b');
+    vaultDir = makeTestTmp('po03b-vault');
     seedMinimalVault(vaultDir);
     seedUserData(userData, vaultDir, { onboardingStartMode: 'default-mythos-vault' });
     app = await launchApp(userData);
@@ -381,12 +381,16 @@ test.describe('TC-PO-03b: Template CTA hidden for non-blank mode', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    if (userData) removeRecorded(userData);
+    if (vaultDir) removeRecorded(vaultDir);
   });
 
   test('template CTA is hidden for non-blank startMode', async () => {
     await page.waitForTimeout(1_500);
     await expect(page.locator('[data-testid="vs-template-cta"]')).not.toBeVisible();
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

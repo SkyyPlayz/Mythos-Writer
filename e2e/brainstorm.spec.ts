@@ -24,7 +24,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -33,7 +32,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 import {
   clickBrainstormMode,
   clickChatBoardToggle,
@@ -191,8 +191,8 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-vault-'));
+  userData = makeTestTmp('bst');
+  vaultDir = makeTestTmp('bst-vault');
   seedUserData(userData, vaultDir);
 
   // SKY-9203: seed one pre-existing Notes Vault note. The mock fact's
@@ -257,7 +257,7 @@ test.afterAll(async () => {
   // resolved (e.g. the 60 s launch timeout fired). Without this guard, accessing
   // app.process() throws TypeError and masks the original launch failure.
   await closeElectronApp(app);
-  removeTempDirs(userData, vaultDir);
+  cleanupTestTmp();
 });
 
 // ─── TC-BST-01: Streaming tokens ─────────────────────────────────────────────
@@ -792,8 +792,8 @@ const SECOND_TURN_TOKENS = [
 ];
 
 test('TC-BST-09: a reply naming a new character queues a proposal with no API key', async () => {
-  const keylessUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-nokey-'));
-  const keylessVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-nokey-vault-'));
+  const keylessUserData = makeTestTmp('bst-nokey');
+  const keylessVault = makeTestTmp('bst-nokey-vault');
   seedUserData(keylessUserData, keylessVault, { withApiKey: false });
   let keylessApp: ElectronApplication | undefined;
   try {
@@ -860,6 +860,7 @@ test('TC-BST-09: a reply naming a new character queues a proposal with no API ke
     await expect(region.locator('.pc-title')).toHaveText([SECOND_ENTITY_NAME]);
   } finally {
     await closeElectronApp(keylessApp);
-    removeTempDirs(keylessUserData, keylessVault);
+    removeRecorded(keylessUserData);
+    removeRecorded(keylessVault);
   }
 });

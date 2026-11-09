@@ -4,7 +4,6 @@
  *   xvfb-run --auto-servernum npx playwright test e2e/plan058-l5-story-editor.spec.ts --reporter=list --workers=1
  */
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -14,6 +13,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { toggleStoryEditorSplit } from './helpers/storyEditorSplit';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -48,7 +48,7 @@ async function bootStoryEditor(app: ElectronApplication): Promise<Page> {
 
 test.describe('PLAN-058 L5 — Story editor', () => {
   test('37:22 — NFE / Story Assist / split toolbar controls removed', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l5-'));
+    const root = makeTestTmp('plan058-l5');
     const userData = path.join(root, 'ud');
     const vaultDir = path.join(root, 'story');
     const notesDir = path.join(root, 'notes');
@@ -66,7 +66,7 @@ test.describe('PLAN-058 L5 — Story editor', () => {
   });
 
   test('42:10 — New story opens modal with title field', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l5-modal-'));
+    const root = makeTestTmp('plan058-l5-modal');
     const userData = path.join(root, 'ud');
     const vaultDir = path.join(root, 'story');
     const notesDir = path.join(root, 'notes');
@@ -83,7 +83,7 @@ test.describe('PLAN-058 L5 — Story editor', () => {
   });
 
   test('84:29 — split editor still opens via Ctrl+Shift+2 with pane close buttons', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l5-split-'));
+    const root = makeTestTmp('plan058-l5-split');
     const userData = path.join(root, 'ud');
     const vaultDir = path.join(root, 'story');
     const notesDir = path.join(root, 'notes');
@@ -104,3 +104,5 @@ test.describe('PLAN-058 L5 — Story editor', () => {
     }
   });
 });
+
+test.afterAll(() => { cleanupTestTmp(); });

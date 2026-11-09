@@ -24,7 +24,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -34,6 +33,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -211,8 +211,8 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-vault-'));
+    userData = makeTestTmp('sug');
+    vaultDir = makeTestTmp('sug-vault');
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
     mainPage = await firstWindow(app);
@@ -222,8 +222,8 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   /**
@@ -486,8 +486,8 @@ test.describe('Budget cap enforcement (TC-S-04)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-budget-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-budget-vault-'));
+    userData = makeTestTmp('budget');
+    vaultDir = makeTestTmp('budget-vault');
     seedBudgetUserData(userData, vaultDir);
     app = await launchApp(userData);
     page = await firstWindow(app);
@@ -496,8 +496,8 @@ test.describe('Budget cap enforcement (TC-S-04)', () => {
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('TC-S-04: over-budget suggestion has budget_exceeded=1 and stays proposed', async () => {
@@ -608,8 +608,8 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   }
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-ui-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-ui-vault-'));
+    userData = makeTestTmp('sug-ui');
+    vaultDir = makeTestTmp('sug-ui-vault');
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
     mainPage = await firstWindow(app);
@@ -666,8 +666,8 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('TC-S-06: renders 100+ pending suggestions within the load budget', async () => {
@@ -994,8 +994,8 @@ test.describe('Typed-relation suggestion accept (TC-S-05)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-vault-'));
+    userData = makeTestTmp('rel');
+    vaultDir = makeTestTmp('rel-vault');
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
     page = await firstWindow(app);
@@ -1004,8 +1004,8 @@ test.describe('Typed-relation suggestion accept (TC-S-05)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('TC-S-05: accept typed-relation → forward + reciprocal written to both entity files', async () => {
@@ -1196,8 +1196,8 @@ test.describe('Unified inbox: continuity issues + wiki-link suggestions (AC-EPIC
   }
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-unified-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-unified-vault-'));
+    userData = makeTestTmp('sug-unified');
+    vaultDir = makeTestTmp('sug-unified-vault');
     seedUserData(userData, vaultDir);
     seedUnifiedSourceTables(vaultDir);
     app = await launchApp(userData);
@@ -1207,8 +1207,8 @@ test.describe('Unified inbox: continuity issues + wiki-link suggestions (AC-EPIC
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('AC-EPIC-3: continuity-issue rows show a severity badge instead of a confidence bar', async () => {
@@ -1229,4 +1229,8 @@ test.describe('Unified inbox: continuity issues + wiki-link suggestions (AC-EPIC
     await expect(row.locator('.sr-agent-badge')).toHaveText('Archive');
     await expect(row.locator('.sr-rationale')).toContainText(WIKI_PROPOSED_LINK);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

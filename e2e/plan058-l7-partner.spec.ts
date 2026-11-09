@@ -4,7 +4,6 @@
  *   xvfb-run --auto-servernum npx playwright test e2e/plan058-l7-partner.spec.ts --reporter=list --workers=1
  */
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -15,6 +14,7 @@ import {
 } from '@playwright/test';
 import { createStoryFromNavAdd } from './helpers/newStoryModal';
 import { openPartnerWriterTips } from './helpers/partnerHub';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -69,7 +69,7 @@ async function bootStoryWithScene(page: Page, opts?: { expectGrs?: boolean }): P
 
 test.describe('PLAN-058 L7 — Partner / AI', () => {
   test('FD-4 + 09:01 — compact partner hub shows four quick-command chips', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l7-chips-'));
+    const root = makeTestTmp('plan058-l7-chips');
     const userData = path.join(root, 'ud');
     seed(userData, path.join(root, 'story'), path.join(root, 'notes'));
     const app = await launch(userData);
@@ -92,12 +92,12 @@ test.describe('PLAN-058 L7 — Partner / AI', () => {
       }
     } finally {
       await app.close();
-      fs.rmSync(root, { recursive: true, force: true });
+      removeRecorded(root);
     }
   });
 
   test('62:53 — toolbar Continuity with GRS collapsed opens Notes & Analysis (H2)', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l7-grs-collapsed-'));
+    const root = makeTestTmp('plan058-l7-grs-collapsed');
     const userData = path.join(root, 'ud');
     const vaultDir = path.join(root, 'story');
     const notesDir = path.join(root, 'notes');
@@ -132,12 +132,12 @@ test.describe('PLAN-058 L7 — Partner / AI', () => {
       await expect(page.getByTestId('cp-scan-scene-picker')).toBeVisible({ timeout: 6_000 });
     } finally {
       await app.close();
-      fs.rmSync(root, { recursive: true, force: true });
+      removeRecorded(root);
     }
   });
 
   test('62:53 / 62:30 — editor Continuity opens Notes & Analysis with scene picker', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l7-scan-'));
+    const root = makeTestTmp('plan058-l7-scan');
     const userData = path.join(root, 'ud');
     seed(userData, path.join(root, 'story'), path.join(root, 'notes'));
     const app = await launch(userData);
@@ -149,12 +149,12 @@ test.describe('PLAN-058 L7 — Partner / AI', () => {
       await expect(page.getByTestId('cp-scan-scene-picker')).toBeVisible({ timeout: 6_000 });
     } finally {
       await app.close();
-      fs.rmSync(root, { recursive: true, force: true });
+      removeRecorded(root);
     }
   });
 
   test('60:50 — Writing partner advanced Timeline→notes prompt field', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l7-prompt-'));
+    const root = makeTestTmp('plan058-l7-prompt');
     const userData = path.join(root, 'ud');
     seed(userData, path.join(root, 'story'), path.join(root, 'notes'));
     const app = await launch(userData);
@@ -174,7 +174,11 @@ test.describe('PLAN-058 L7 — Partner / AI', () => {
       await page.locator('.settings-close').click();
     } finally {
       await app.close();
-      fs.rmSync(root, { recursive: true, force: true });
+      removeRecorded(root);
     }
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

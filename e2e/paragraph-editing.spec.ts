@@ -37,7 +37,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -46,6 +45,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const NOW = '2026-07-01T00:00:00.000Z';
@@ -238,7 +238,7 @@ function sceneBody(fileContent: string): string {
 
 test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → disk', () => {
   test('TC-PE-01: Enter mid-paragraph splits into two blocks and persists to disk', async () => {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-para-split-'));
+    const tmpRoot = makeTestTmp('para-split');
     const userData = path.join(tmpRoot, 'user-data');
     const bundle = path.join(tmpRoot, 'Paragraph Vault');
     const seedProse = 'The lantern flickered once. Then the room went dark.';
@@ -271,12 +271,12 @@ test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → 
         .toBe('The lantern flickered once.\n\nThen the room went dark.\n');
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
+      removeRecorded(tmpRoot);
     }
   });
 
   test('TC-PE-02: Backspace at paragraph start merges into the previous paragraph and persists to disk', async () => {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-para-merge-'));
+    const tmpRoot = makeTestTmp('para-merge');
     const userData = path.join(tmpRoot, 'user-data');
     const bundle = path.join(tmpRoot, 'Paragraph Vault');
     // Pre-split via a `\n\n`-separated seed body would collapse into one
@@ -319,12 +319,12 @@ test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → 
         .toBe('The lantern flickered once. Then the room went dark.\n');
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
+      removeRecorded(tmpRoot);
     }
   });
 
   test('TC-PE-03: grip-drag reorders a paragraph across a sibling and persists the new order to disk', async () => {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-para-drag-'));
+    const tmpRoot = makeTestTmp('para-drag');
     const userData = path.join(tmpRoot, 'user-data');
     const bundle = path.join(tmpRoot, 'Paragraph Vault');
     const seedProse = 'Seed paragraph.';
@@ -396,13 +396,13 @@ test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → 
       await expect(rows.nth(2)).toHaveText('Gamma paragraph.');
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
+      removeRecorded(tmpRoot);
     }
   });
 
   test('TC-PE-04 (SKY-11239): drop cap setting gates rendering, applies live, and persists across restart', async () => {
     test.setTimeout(120_000);
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-para-dropcap-'));
+    const tmpRoot = makeTestTmp('para-dropcap');
     const userData = path.join(tmpRoot, 'user-data');
     const bundle = path.join(tmpRoot, 'Paragraph Vault');
     const seedProse = 'The lantern flickered once.';
@@ -487,7 +487,11 @@ test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → 
       await expect(row).toHaveText('The lantern flickered once. Then the room went dark. More prose after the cap.');
     } finally {
       await app.close().catch(() => {});
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
+      removeRecorded(tmpRoot);
     }
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

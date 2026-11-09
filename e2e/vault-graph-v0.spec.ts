@@ -17,7 +17,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -27,6 +26,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { notesPanel } from './helpers/notesPanel';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -231,9 +231,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0a-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0a-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0a-notes-'));
+    userData = makeTestTmp('gv0a');
+    vaultDir = makeTestTmp('gv0a-vault');
+    notesVaultDir = makeTestTmp('gv0a-notes');
     seedUserData(userData, vaultDir, notesVaultDir);
     seedRichVault(notesVaultDir);
     app = await launchApp(userData);
@@ -243,9 +243,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   // ── TC-GV-01 ─────────────────────────────────────────────────────────────────
@@ -585,12 +585,12 @@ test.describe('Suite B — Empty vault (TC-GV-09)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0b-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0b-vault-'));
+    userData = makeTestTmp('gv0b');
+    vaultDir = makeTestTmp('gv0b-vault');
     // notesVaultDir is intentionally empty — 0 .md files → 0 nodes → empty state.
     // layoutMode: 'blank' skips the SKY-15/SKY-7473 default scaffold (which would
     // otherwise seed Templates.md + Personas.md into "empty" notesVaultDir).
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0b-notes-'));
+    notesVaultDir = makeTestTmp('gv0b-notes');
     seedUserData(userData, vaultDir, notesVaultDir, 'blank');
     app = await launchApp(userData);
     page = await firstWindow(app);
@@ -599,9 +599,9 @@ test.describe('Suite B — Empty vault (TC-GV-09)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   // ── TC-GV-09 ─────────────────────────────────────────────────────────────────
@@ -654,9 +654,9 @@ test.describe('Suite C — Large vault / truncation banner (TC-GV-10)', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0c-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0c-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0c-notes-'));
+    userData = makeTestTmp('gv0c');
+    vaultDir = makeTestTmp('gv0c-vault');
+    notesVaultDir = makeTestTmp('gv0c-notes');
     seedUserData(userData, vaultDir, notesVaultDir);
     seedLargeVault(notesVaultDir, 501);
     app = await launchApp(userData);
@@ -666,9 +666,9 @@ test.describe('Suite C — Large vault / truncation banner (TC-GV-10)', () => {
 
   test.afterAll(async () => {
     await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   // ── TC-GV-10 ─────────────────────────────────────────────────────────────────
@@ -715,4 +715,8 @@ test.describe('Suite C — Large vault / truncation banner (TC-GV-10)', () => {
     // "Show all" button disappears once isTruncated = false (showAll removed the gate)
     await expect(showAllBtn).not.toBeVisible({ timeout: 5_000 });
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

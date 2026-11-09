@@ -22,7 +22,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -32,6 +31,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -150,9 +150,9 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-draft-history-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-draft-vault-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-draft-notes-'));
+  userData = makeTestTmp('draft-history');
+  vaultDir = makeTestTmp('draft-vault');
+  notesVaultDir = makeTestTmp('draft-notes');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -188,9 +188,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── AC-DH-1: Snapshot on save triggers a history entry ───────────────────────

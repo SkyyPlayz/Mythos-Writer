@@ -21,7 +21,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -31,6 +30,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -127,9 +127,9 @@ let app: ElectronApplication;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-entity-e2e-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-entity-vault-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-entity-notes-'));
+  userData = makeTestTmp('entity-e2e');
+  vaultDir = makeTestTmp('entity-vault');
+  notesVaultDir = makeTestTmp('entity-notes');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -137,9 +137,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── TC-E-01: Create entity via Entity Browser ────────────────────────────────

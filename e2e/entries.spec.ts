@@ -7,7 +7,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -16,6 +15,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -45,8 +45,8 @@ test.describe('A2 Quick Entry absent', () => {
   let userData: string;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a2-qe-'));
-    const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
+    userData = makeTestTmp('a2-qe');
+    const vaultDir = makeTestTmp('mythosvault');
     seedUserData(userData, vaultDir);
     app = await electron.launch({
       args: [MAIN_JS],
@@ -73,4 +73,8 @@ test.describe('A2 Quick Entry absent', () => {
     await expect(page.getByTestId('entries-qa-root')).toHaveCount(0);
     await expect(page.getByText('Quick Entry')).toHaveCount(0);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

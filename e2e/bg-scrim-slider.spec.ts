@@ -16,7 +16,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -25,6 +24,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -87,9 +87,9 @@ let page: Page;
 let userData: string;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bg-scrim-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-vault-scrim-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-notes-scrim-'));
+  userData = makeTestTmp('bg-scrim');
+  const vaultDir = makeTestTmp('vault-scrim');
+  const notesVaultDir = makeTestTmp('notes-scrim');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await app.firstWindow();
@@ -99,6 +99,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
+  cleanupTestTmp();
 });
 
 // ─── SKY-3220: Scrim slider visibly changes --bg-scrim-alpha ────────────────────────────

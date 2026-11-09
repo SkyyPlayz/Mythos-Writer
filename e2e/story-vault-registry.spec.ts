@@ -18,7 +18,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -27,7 +26,8 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import { closeElectronApp } from './helpers/electronTeardown';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const NOW = '2026-08-01T00:00:00.000Z';
@@ -164,7 +164,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
   let secondVaultId: string;
 
   test.beforeAll(async () => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-svr-e2e-'));
+    tmpRoot = makeTestTmp('svr-e2e');
     userData = path.join(tmpRoot, 'user-data');
     bundle = path.join(tmpRoot, 'SVR Test Vault');
     seedV2Vault(bundle);
@@ -178,7 +178,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
 
   test.afterAll(async () => {
     await closeElectronApp(app);
-    removeTempDirs(tmpRoot);
+    if (tmpRoot) removeRecorded(tmpRoot);
   });
 
   test('TC-SVR-01: first open migrates registry — storyVaultRegistry:list returns one entry, story-vaults.json exists', async () => {
@@ -281,4 +281,8 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
     const reg = readStoryRegistry(bundle)!;
     expect(reg.vaults.find((v) => v.id === secondVaultId)?.pairedNotesVaultId).toBe(FAKE_NOTES_VAULT_ID);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

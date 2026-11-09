@@ -1,4 +1,11 @@
+import { createRequire } from 'node:module';
 import { defineConfig } from '@playwright/test';
+
+// Per-run temp-dir id for e2e/helpers/testTmp.ts. Set here, in the runner,
+// before any worker starts, so every worker inherits it (??= keeps it when a
+// worker reloads this config).
+const requireMjs = createRequire(__filename);
+(requireMjs('./electron-main/test-utils/tmpdir.mjs') as { ensureRunId(): string }).ensureRunId();
 
 // SKY-10405: the e2e corpus seeds v0.4 twin-root fixture vaults and asserts
 // against their on-disk paths. The boot-time silent MythosVault migration
@@ -10,6 +17,12 @@ process.env.MYTHOS_DISABLE_BOOT_MIGRATION = '1';
 
 export default defineConfig({
   testDir: 'e2e',
+  // Leak guard: fails the run if a mythos-test-<run>-* dir is left in tmpdir.
+  globalSetup: './e2e/helpers/testTmp.ts',
+  // Load the shared temp-dir helper and guard as native ESM. Without this,
+  // Playwright's transform compiles tmpdir.mjs to CommonJS on require, and the
+  // guard's own ESM import of it then finds no named exports.
+  build: { external: ['**/electron-main/test-utils/*.mjs'] },
   timeout: 60_000,
   expect: { timeout: 10_000 },
   // Electron tests run in a single worker — the app process is shared across tests

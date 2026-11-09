@@ -15,7 +15,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -25,6 +24,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { toggleStoryEditorSplit } from '../helpers/storyEditorSplit';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from '../helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const STORY_ID = 'sp-story-0001';
@@ -168,9 +168,9 @@ test.describe('SKY-8907 per-pane tab strips', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-tabs-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-tabs-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-tabs-notes-'));
+    userData = makeTestTmp('sp-tabs');
+    vaultDir = makeTestTmp('sp-tabs-vault');
+    notesVaultDir = makeTestTmp('sp-tabs-notes');
     seedBaseSettings(userData, vaultDir, notesVaultDir);
     seedVault(vaultDir);
     app = await launchApp(userData);
@@ -182,9 +182,9 @@ test.describe('SKY-8907 per-pane tab strips', () => {
 
   test.afterAll(async () => {
     await app?.close();
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   test('each split pane renders its own tab strip', async () => {
@@ -269,9 +269,9 @@ test.describe('SKY-10998 split-pane chromeless — no duplicate toolbar/header',
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-chrome-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-chrome-vault-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-chrome-notes-'));
+    userData = makeTestTmp('sp-chrome');
+    vaultDir = makeTestTmp('sp-chrome-vault');
+    notesVaultDir = makeTestTmp('sp-chrome-notes');
     seedBaseSettings(userData, vaultDir, notesVaultDir);
     seedVault(vaultDir);
     app = await launchApp(userData);
@@ -284,9 +284,9 @@ test.describe('SKY-10998 split-pane chromeless — no duplicate toolbar/header',
 
   test.afterAll(async () => {
     await app?.close();
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
+    removeRecorded(notesVaultDir);
   });
 
   test('the pane shows exactly one toolbar/header — SplitEditorPane\'s own chrome, not BlockEditor\'s', async () => {
@@ -306,4 +306,8 @@ test.describe('SKY-10998 split-pane chromeless — no duplicate toolbar/header',
     await expect(pane1.locator('.draft-state-group')).toHaveCount(0);
     await expect(pane1.locator('.fmt-toolbar')).toHaveCount(0);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

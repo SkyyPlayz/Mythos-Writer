@@ -19,7 +19,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -28,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -153,9 +153,9 @@ test.describe('SKY-9823 — scene notes: add, persist, drag-promote to vault', (
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-snp-'));
-    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-snp-'));
-    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotes-snp-'));
+    userData = makeTestTmp('snp');
+    vaultDir = makeTestTmp('mythosvault-snp');
+    notesVaultDir = makeTestTmp('mythosnotes-snp');
     seedUserData(userData, vaultDir, notesVaultDir);
     seedStoryVault(vaultDir);
     app = await launchApp(userData);
@@ -166,7 +166,7 @@ test.describe('SKY-9823 — scene notes: add, persist, drag-promote to vault', (
   test.afterAll(async () => {
     await app?.close().catch(() => {});
     for (const dir of [userData, vaultDir, notesVaultDir]) {
-      if (dir) fs.rmSync(dir, { recursive: true, force: true });
+      if (dir) removeRecorded(dir);
     }
   });
 
@@ -226,3 +226,5 @@ test.describe('SKY-9823 — scene notes: add, persist, drag-promote to vault', (
     });
   });
 });
+
+test.afterAll(() => { cleanupTestTmp(); });

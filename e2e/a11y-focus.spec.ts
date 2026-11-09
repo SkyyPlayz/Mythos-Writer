@@ -24,7 +24,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -33,6 +32,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -112,9 +112,9 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a11y-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a11y-story-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a11y-notes-'));
+  userData = makeTestTmp('a11y');
+  vaultDir = makeTestTmp('a11y-story');
+  notesVaultDir = makeTestTmp('a11y-notes');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -122,9 +122,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── TC-A11Y-01: Notes Vault toolbar tab order ────────────────────────────────

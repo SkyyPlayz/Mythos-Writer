@@ -13,7 +13,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -24,6 +23,7 @@ import {
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
 import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -100,8 +100,8 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-subview-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-subview-vault-'));
+  userData = makeTestTmp('subview');
+  vaultDir = makeTestTmp('subview-vault');
   seedUserData(userData, vaultDir);
 
   app = await launchApp(userData);
@@ -116,8 +116,7 @@ test.afterAll(async () => {
     new Promise<void>((r) => setTimeout(r, 5_000)),
   ]);
   try { if (proc && !proc.killed) proc.kill('SIGKILL'); } catch { /* already exited */ }
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── AC-SV-01: Story tab active by default ───────────────────────────────────
@@ -263,8 +262,8 @@ test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
   // race does not wipe chapters from nav or manifest.
   test.setTimeout(180_000);
   test.skip(!fs.existsSync(MAIN_JS), 'needs build');
-  const ownUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-9-'));
-  const ownVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-9-v-'));
+  const ownUserData = makeTestTmp('f1-9');
+  const ownVault = makeTestTmp('f1-9-v');
   seedUserData(ownUserData, ownVault);
 
   let titlesBefore: string[] = [];
@@ -342,7 +341,7 @@ test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
     expect(idx('Bravo')).toBeLessThan(idx('Charlie'));
   } finally {
     await ownApp2.close();
-    fs.rmSync(ownUserData, { recursive: true, force: true });
-    fs.rmSync(ownVault, { recursive: true, force: true });
+    removeRecorded(ownUserData);
+    removeRecorded(ownVault);
   }
 });

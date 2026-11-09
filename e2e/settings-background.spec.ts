@@ -17,7 +17,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -26,6 +25,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -120,9 +120,9 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bg-settings-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bg-story-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bg-notes-'));
+  userData = makeTestTmp('bg-settings');
+  vaultDir = makeTestTmp('bg-story');
+  notesVaultDir = makeTestTmp('bg-notes');
 
   // Create a real image file that loadBgImage can read.
   bgImagePath = path.join(userData, 'test-background.png');
@@ -136,9 +136,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── TC-SKY-3219-01: stored path survives Settings open → Save ────────────────
@@ -255,13 +253,13 @@ async function enableLineEditorAndClose(
 test.describe('F2 Probe fold (#13 · #15) — e2e-shard-1', () => {
   test.setTimeout(90_000);
 
-  let root: string;
+  let root: string | undefined;
   let ud: string;
   let f2App: ElectronApplication;
   let f2Page: Page;
 
   test.beforeEach(async () => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f2-sbg-'));
+    root = makeTestTmp('f2-sbg');
     ud = path.join(root, 'user-data');
     const story = path.join(root, 'story');
     const notes = path.join(root, 'notes');
@@ -273,7 +271,10 @@ test.describe('F2 Probe fold (#13 · #15) — e2e-shard-1', () => {
 
   test.afterEach(async () => {
     await f2App?.close().catch(() => {});
-    fs.rmSync(root, { recursive: true, force: true });
+    if (root) {
+      removeRecorded(root);
+      root = undefined;
+    }
   });
 
   test('F2#13 Settings overlay leaves WindowChrome visible', async () => {

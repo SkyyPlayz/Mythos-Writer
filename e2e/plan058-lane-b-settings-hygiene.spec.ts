@@ -2,7 +2,6 @@
  * PLAN-058 Lane B — settings-write hygiene (B-1 layout flag, B-2 legacy-key Settings close).
  */
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -12,6 +11,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { openSettingsDialog, closeSettingsDialog } from './helpers/aiOffSuite';
+import { makeTestTmp, removeRecorded, cleanupTestTmp } from './helpers/testTmp';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -139,8 +139,8 @@ async function waitForShell(page: Page): Promise<void> {
 
 test.describe('PLAN-058 Lane B — settings-write hygiene', () => {
   test('B-1: layoutMigrationDone persists across relaunch', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-b1-'));
-    const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-b1-vault-'));
+    const userData = makeTestTmp('plan058-b1');
+    const vaultDir = makeTestTmp('plan058-b1-vault');
     seedVault(userData, vaultDir, {
       apiKey: 'sk-ant-test-key-for-e2e',
       onboardingComplete: true,
@@ -177,13 +177,13 @@ test.describe('PLAN-058 Lane B — settings-write hygiene', () => {
 
     await page2.screenshot({ path: path.join(userData, 'plan058-b1-shell.png') });
     await app.close();
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
 
   test('B-2: Settings close on legacy-shaped profile does not write empty provider', async () => {
-    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-b2-'));
-    const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-b2-vault-'));
+    const userData = makeTestTmp('plan058-b2');
+    const vaultDir = makeTestTmp('plan058-b2-vault');
     // Legacy-shaped: no `provider` block; apiKey field empty after prior migration.
     seedVault(userData, vaultDir, {
       apiKey: '',
@@ -212,7 +212,11 @@ test.describe('PLAN-058 Lane B — settings-write hygiene', () => {
     expect(disk.provider).toBeUndefined();
 
     await app.close();
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
+    removeRecorded(userData);
+    removeRecorded(vaultDir);
   });
+});
+
+test.afterAll(() => {
+  cleanupTestTmp();
 });

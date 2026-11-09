@@ -20,7 +20,6 @@
  */
 
 import path from 'path';
-import os from 'os';
 import fs from 'fs';
 import {
   test,
@@ -29,6 +28,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { makeTestTmp, cleanupTestTmp } from './helpers/testTmp';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -267,10 +267,10 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
-  userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-export-ud-'));
-  vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-export-vault-'));
-  notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-export-notes-'));
-  exportDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-export-out-'));
+  userData = makeTestTmp('export-ud');
+  vaultDir = makeTestTmp('export-vault');
+  notesVaultDir = makeTestTmp('export-notes');
+  exportDir = makeTestTmp('export-out');
 
   seedVault(vaultDir);
   seedUserData(userData, vaultDir, notesVaultDir);
@@ -283,10 +283,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app?.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
-  fs.rmSync(exportDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── AC-EXQ-1: Dialog renders the M14 format cards ───────────────────────────
