@@ -466,6 +466,33 @@ test('a file with a NUL byte still reports an added fake key', () => {
   });
 });
 
+test('local textconv, external diff, and color.ui=always still report an added fake key', () => {
+  const key = fakes()[0][1];
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    writeFile(root, '.gitattributes', '*.txt diff=stripper\n');
+    writeFile(root, 'secret.txt', `${key}\n`);
+    commitAll(root, 'head');
+    // Untracked drivers. The commit range does not include them. Each one
+    // hides the added line unless the matching git flag is set.
+    const strip = path.join(root, 'strip-textconv.js');
+    const external = path.join(root, 'external-diff.js');
+    fs.writeFileSync(strip, "process.stdout.write('redacted\\n');\n");
+    fs.writeFileSync(
+      external,
+      "process.stdout.write('diff --git a/secret.txt b/secret.txt\\n--- a/secret.txt\\n+++ b/secret.txt\\n@@ -0,0 +1 @@\\n+clean\\n');\n",
+    );
+    git(root, ['config', 'diff.stripper.textconv', `${process.execPath} ${strip}`]);
+    git(root, ['config', 'diff.external', `${process.execPath} ${external}`]);
+    git(root, ['config', 'color.ui', 'always']);
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /^secret\.txt:1 gh-token$/m);
+    assertNoValue(result, key);
+  });
+});
+
 test('a git diff over the injected buffer limit fails closed', () => {
   withRepo((root) => {
     writeFile(root, 'README.md', 'clean\n');
@@ -477,6 +504,44 @@ test('a git diff over the injected buffer limit fails closed', () => {
     assert.match(result.stderr, /diff-guard: git error/);
     assert.equal(result.stdout.trim(), '');
   });
+});
+
+test('isTestPath is true only for an e2e path, a __fixtures__ segment, or a test or spec basename', () => {
+  const rows = [
+    ['src/app.js', false],
+    ['src/a.test.helpers/x.js', false],
+    ['e2eutils/x.js', false],
+    ['src/fixture/x.js', false],
+    ['src/app.testing.js', false],
+    ['src/testdata/x.js', false],
+    ['src/latest.js', false],
+    ['e2e/x.ts', true],
+    ['src/__fixtures__/k.json', true],
+    ['a/b.spec.ts', true],
+    ['a/b.test.js', true],
+    ['e2e/sub/y.spec.ts', true],
+    ['src/foo.test.ts', true],
+    ['lib/__fixtures__/deep/n.json', true],
+  ];
+  const misses = [];
+  for (const [file, expected] of rows) {
+    const actual = isTestPath(file);
+    if (actual !== expected) misses.push(`${file} -> ${actual}`);
+  }
+  assert.deepEqual(misses, []);
+});
+
+test('contentHits with no file never allows a marker hit', () => {
+  const line = `${fakes()[0][1]} ${allowMarker()}`;
+  const rows = [
+    ['omitted', contentHits(line)],
+    ['undefined', contentHits(line, undefined)],
+    ['null', contentHits(line, null)],
+    ['empty', contentHits(line, '')],
+  ];
+  for (const [label, hits] of rows) {
+    assert.deepEqual(hits, [{ id: 'gh-token', allowed: false }], label);
+  }
 });
 
 function disallowedContentHits(line, file) {
