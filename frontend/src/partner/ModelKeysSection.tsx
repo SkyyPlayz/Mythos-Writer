@@ -487,7 +487,9 @@ export default function ModelKeysSection({
               value={providerBaseUrl}
               placeholder={
                 providerKind
-                  ? (DEFAULT_BASE_URLS[providerKind] || 'http://localhost:11434')
+                  ? (liveBucket === 'openrouter'
+                    ? 'https://openrouter.ai/api/v1'
+                    : DEFAULT_BASE_URLS[providerKind] || 'http://localhost:11434')
                   : selected === 'ollama'
                     ? 'http://localhost:11434'
                     : selected === 'lmstudio'
