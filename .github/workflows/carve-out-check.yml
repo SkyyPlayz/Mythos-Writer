@@ -17,6 +17,8 @@ on:
 
 permissions:
   contents: read
+  # createLabel needs issues: write. pull-requests: write can add an existing label, not create one.
+  issues: write
   pull-requests: write
 
 jobs:
@@ -25,8 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # PR head, not the merge ref. A conflicted PR has no merge commit, and this job must stay green.
       - uses: actions/checkout@v7
         with:
+          ref: "refs/pull/${{ github.event.pull_request.number }}/head"
           persist-credentials: false
 
       - name: Flag carve-out paths for human/Ivy review
@@ -109,7 +113,18 @@ jobs:
 
             await syncMigrationLabel();
 
+            async function removeCarveOutLabel() {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name: 'carve-out',
+                });
+              } catch (e) {
+                // label wasn't present — fine.
+              }
+            }
+
             if (hits.length === 0) {
+              await removeCarveOutLabel();
               if (migrationHits.length === 0) {
                 core.info('No carve-out paths touched.');
                 if (existing) {
@@ -117,13 +132,6 @@ jobs:
                     owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id,
                     body: `${marker}\nNo carve-out paths touched as of the latest push — this note is stale.`,
                   });
-                }
-                try {
-                  await github.rest.issues.removeLabel({
-                    owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name: 'carve-out',
-                  });
-                } catch (e) {
-                  // label wasn't present — fine.
                 }
                 return;
               }

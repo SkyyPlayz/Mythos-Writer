@@ -90,6 +90,48 @@ test('ops health is quarterly secrets-rotation only', () => {
   assert.deepEqual(doc.permissions, { issues: 'write' });
 });
 
+test('diff-guard permissions are contents read', () => {
+  const doc = loadWorkflow('ci.yml');
+  assert.deepEqual(doc.jobs['diff-guard'].permissions, { contents: 'read' });
+});
+
+function checkoutSteps(file, jobName) {
+  return loadWorkflow(file).jobs[jobName].steps.filter((step) => String(step.uses || '').startsWith('actions/checkout'));
+}
+
+test('diff-guard and carve-out checkouts do not persist credentials', () => {
+  for (const [file, jobName] of [['ci.yml', 'diff-guard'], ['carve-out-check.yml', 'carve-out-check']]) {
+    const checkouts = checkoutSteps(file, jobName);
+    assert.ok(checkouts.length >= 1, file);
+    for (const step of checkouts) {
+      assert.equal(step.with['persist-credentials'], false, file);
+    }
+  }
+});
+
+test('diff-guard steps do not name secrets in env', () => {
+  const steps = loadWorkflow('ci.yml').jobs['diff-guard'].steps;
+  for (const step of steps) {
+    assert.equal(JSON.stringify(step.env || {}).includes('secrets.'), false);
+  }
+});
+
+test('no workflow uses pull_request_target', () => {
+  for (const name of workflowNames()) {
+    const text = fs.readFileSync(path.join(WORKFLOWS, name), 'utf8');
+    assert.equal(text.includes('pull_request_target'), false, name);
+  }
+});
+
+test('carve-out-check checks out the PR head and can create a label', () => {
+  const doc = loadWorkflow('carve-out-check.yml');
+  const checkout = checkoutSteps('carve-out-check.yml', 'carve-out-check')[0];
+  assert.equal(checkout.with.ref, 'refs/pull/${{ github.event.pull_request.number }}/head');
+  assert.equal(doc.permissions.issues, 'write');
+  assert.equal(doc.permissions['pull-requests'], 'write');
+  assert.equal(doc.permissions.contents, 'read');
+});
+
 test('deleted workflows are absent', () => {
   for (const rel of deletedWorkflows()) {
     assert.equal(fs.existsSync(path.join(REPO, rel)), false, rel);

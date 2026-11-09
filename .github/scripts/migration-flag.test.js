@@ -37,6 +37,14 @@ test('added CREATE, ALTER, and DROP lines in db.ts are hits', () => {
     rulesFor('electron-main/src/db.ts', '@@ -0,0 +1 @@\n+DROP INDEX notes_title;\n'),
     ['drop-table-or-index'],
   );
+  assert.deepEqual(
+    rulesFor('electron-main/src/db.ts', '@@ -0,0 +1 @@\n+CREATE UNIQUE INDEX notes_title ON notes (title);\n'),
+    ['create-table-or-index'],
+  );
+  assert.deepEqual(
+    rulesFor('electron-main/src/db.ts', '@@ -0,0 +1 @@\n+CREATE VIRTUAL TABLE notes_fts USING fts5(body);\n'),
+    ['create-table-or-index'],
+  );
 });
 
 test('a missing patch on db.ts is a hit', () => {

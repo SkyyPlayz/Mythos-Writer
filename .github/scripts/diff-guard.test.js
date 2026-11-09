@@ -349,6 +349,51 @@ test('an unknown event fails closed', () => {
   });
 });
 
+test('an added line that starts with two plus signs is still a secret hit', () => {
+  const key = fakes()[0][1];
+  const second = fakes()[2][1];
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    writeFile(root, 'plus.txt', `++ ${key}\n${second}\n`);
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /^plus\.txt:1 gh-token$/m);
+    assert.match(result.stdout, /^plus\.txt:2 sk-ant$/m);
+    assertNoValue(result, key);
+    assertNoValue(result, second);
+  });
+});
+
+test('a plus-plus dev-null line inside a hunk does not hide the next token', () => {
+  const key = fakes()[0][1];
+  const diff = [
+    'diff --git a/notes.txt b/notes.txt',
+    '--- a/notes.txt',
+    '+++ b/notes.txt',
+    '@@ -0,0 +1,2 @@',
+    '+++ /dev/null',
+    `+${key}`,
+  ].join('\n');
+  const hits = scanUnifiedDiff(diff);
+  assert.deepEqual(hits, [{ file: 'notes.txt', line: 2, rule: 'gh-token', allowed: false }]);
+});
+
+test('a diff larger than the default git buffer passes when it has no secret', () => {
+  withRepo((root) => {
+    writeFile(root, 'README.md', 'clean\n');
+    const base = commitAll(root, 'base');
+    const line = `${'a'.repeat(80)}\n`;
+    writeFile(root, 'lockfile.txt', line.repeat(Math.ceil((2 * 1024 * 1024) / line.length)));
+    commitAll(root, 'head');
+    const result = runGuard(root, 'push', pushEvent(base));
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), '');
+    assert.doesNotMatch(result.stderr, /git error/);
+  });
+});
+
 test('a missing pull_request sha fails closed', () => {
   withRepo((root) => {
     writeFile(root, 'README.md', 'clean\n');
@@ -361,12 +406,23 @@ test('a missing pull_request sha fails closed', () => {
   });
 });
 
+function disallowedContentHits(line) {
+  return contentHits(line).filter((hit) => !hit.allowed);
+}
+
 function isExemptPath(rel) {
   if (rel === 'e2e' || rel.startsWith('e2e/')) return true;
   if (rel.split('/').includes('__fixtures__')) return true;
   const base = rel.slice(rel.lastIndexOf('/') + 1);
   return base.includes('.test.') || base.includes('.spec.');
 }
+
+test('full-tree accounting ignores a same-line allow marker', () => {
+  const key = fakes()[0][1];
+  const line = `${key} ${allowMarker()}`;
+  assert.deepEqual(disallowedContentHits(line), []);
+  assert.ok(contentHits(line).some((hit) => hit.allowed && hit.id === 'gh-token'));
+});
 
 test('tracked tree at HEAD has 0 content hits outside test paths', () => {
   const listed = git(REPO, ['ls-files', '-z']);
@@ -384,7 +440,7 @@ test('tracked tree at HEAD has 0 content hits outside test paths', () => {
     const text = buf.toString('utf8');
     const lines = text.split('\n');
     for (let i = 0; i < lines.length; i += 1) {
-      for (const hit of contentHits(lines[i])) {
+      for (const hit of disallowedContentHits(lines[i])) {
         hits.push(`${rel}:${i + 1} ${hit.id}`);
       }
     }

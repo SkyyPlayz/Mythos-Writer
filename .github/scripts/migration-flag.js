@@ -8,7 +8,7 @@ const DB_TS = 'electron-main/src/db.ts';
 
 const ADDED_SQL = [
   { id: 'pragma-user-version', source: String.raw`PRAGMA user_version\s*=` },
-  { id: 'create-table-or-index', source: String.raw`CREATE (TABLE|INDEX)` },
+  { id: 'create-table-or-index', source: String.raw`CREATE (?:UNIQUE |VIRTUAL )?(TABLE|INDEX)` },
   { id: 'alter-table', source: String.raw`ALTER TABLE` },
   { id: 'drop-table-or-index', source: String.raw`DROP (TABLE|INDEX)` },
 ];

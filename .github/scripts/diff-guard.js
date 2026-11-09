@@ -34,18 +34,25 @@ function scanUnifiedDiff(diffText) {
   const findings = [];
   let file = null;
   let newLine = 0;
+  let inHunk = false;
   for (const line of String(diffText || '').split('\n')) {
     if (line.startsWith('diff --git ')) {
       file = null;
+      inHunk = false;
       continue;
     }
-    if (line.startsWith('+++ ')) {
-      const raw = line.slice(4).trim();
-      file = raw === '/dev/null' ? null : raw.startsWith('b/') ? raw.slice(2) : raw;
+    // '--- ' / '+++ ' are file headers only before the first hunk. Inside a
+    // hunk, '+++ …' is an added line whose text starts with '++ '.
+    if (!inHunk && (line.startsWith('--- ') || line.startsWith('+++ '))) {
+      if (line.startsWith('+++ ')) {
+        const raw = line.slice(4).trim();
+        file = raw === '/dev/null' ? null : raw.startsWith('b/') ? raw.slice(2) : raw;
+      }
       continue;
     }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
     if (hunk) {
+      inHunk = true;
       newLine = Number(hunk[1]);
       continue;
     }
@@ -87,8 +94,14 @@ function scanNameStatus(text) {
   return findings;
 }
 
+const MAX_GIT_BUFFER = 256 * 1024 * 1024;
+
 function git(args, cwd) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const result = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: MAX_GIT_BUFFER,
+  });
   if (result.error || result.status !== 0) return { ok: false };
   return { ok: true, stdout: result.stdout || '' };
 }

@@ -18,11 +18,11 @@ to mythos-ops/specs after merge.
 
 | Surface | Depends on | Notes |
 | --- | --- | --- |
-| Audit vars | `MYTHOS_TOKEN_AUDIT_ISSUE`, `MYTHOS_USAGE_SNAPSHOT`, `MYTHOS_GATE_AVG_PREV`, `MYTHOS_TOKEN_AUDIT_LAST_STATUS` | Dual-pool never invented |
+| Audit vars | `MYTHOS_TOKEN_AUDIT_ISSUE`, `MYTHOS_USAGE_SNAPSHOT`, `MYTHOS_GATE_AVG_PREV`, `MYTHOS_TOKEN_AUDIT_LAST_STATUS` | Retired with the weekly audit workflow. Nothing in this repo reads them. |
 | Tip-fix window | `MYTHOS_TIP_FIX_WINDOW_MINUTES` (default 20) | Soft cap; see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md) |
 | Circuit breaker | `MYTHOS_WAKE_CIRCUIT_BREAKER` | Grok Bot `mythos-pr-ci-watch` / Forge must stay SILENT while ISO future |
 | Shadow / autofix | `MYTHOS_AUTOFIX_MODE`, `MYTHOS_AUTOFIX_SHADOW_UNTIL` | [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md) |
-| Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE`, allow-listed tip-window / batch / circuit / retry vars | Wed audit proposes one tweak; shadow 1w; APPLY or MISS |
+| Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE` | Retired with the weekly audit. `rollback.sh` `loop-*` actions are inert. |
 | **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (logged, not rebased); draft-CI sticky; draft→ready | No `gh` update-branch (#1703). Draft-CI comment and draft→ready remain. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
