@@ -191,18 +191,25 @@ describe('timeline visibility has no runtime unhide switch (any name)', () => {
       expect(globalThis.localStorage, 'recording proxy installed').not.toBe(realLocal);
       storageReads.length = 0; // only count reads made by timelineAeon below
 
+      // Env reads are recorded from BEFORE the fresh import, so a switch read
+      // at module load is caught too. Only reads made from app source count
+      // (a non-test frame under frontend/src): the test runner's own module
+      // loader may touch process.env while importing.
+      const envReads: PropertyKey[] = [];
+      const fromAppSource = /[\\/]frontend[\\/]src[\\/](?![^\s:]*\.test\.)[^\s:?]*\.tsx?(?:\?[^\s:]*)?:\d+/;
+      process.env = new Proxy(realEnv, {
+        get(target, prop, receiver) {
+          if (fromAppSource.test(new Error().stack ?? '')) envReads.push(prop);
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+
       // Fresh module evaluation: a switch read at load time is caught too.
       vi.resetModules();
       const fresh = await import('./timelineAeon');
       expect(storageReads, 'storage read while timelineAeon loads').toEqual([]);
+      expect(envReads, 'process.env read while timelineAeon loads').toEqual([]);
 
-      const envReads: PropertyKey[] = [];
-      process.env = new Proxy(realEnv, {
-        get(target, prop, receiver) {
-          envReads.push(prop);
-          return Reflect.get(target, prop, receiver);
-        },
-      });
       const stored = [...fresh.VALID_TIMELINE_MODES, 'track', 'aeon', 'axis', 'kanban-nonsense', '', null];
       const visibility = fresh.VALID_TIMELINE_MODES.map((mode) => fresh.isTimelineModeVisible(mode));
       const resolved = stored.map((value) => fresh.resolveVisibleTimelineMode(value));
