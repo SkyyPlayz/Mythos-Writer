@@ -18,15 +18,14 @@ Fail-closed: if any condition below is missing or ambiguous, do not merge.
 
 | Path | Merger |
 | --- | --- |
-| Routine product/docs PRs | Human. The Mythos gate auto-merge workflow was removed. |
-| VR baseline refresh (`vr-baselines.yml`) | No PR. The step that opened one required the dead bot PAT and was removed. The workflow still regenerates baselines and uploads the `vr-baselines` artifact. |
+| Routine product/docs PRs | Ivy only, pinned to the frozen tip sha. The Mythos gate auto-merge workflow was removed. |
 | Dependabot (any update) | Human merge. `.github/workflows/dependabot-auto-merge.yml` was removed after PR #1696 (`abceeae7`) armed native auto-merge and landed on `main` with no reviews and no CI on `main` (owner Option A, 2026-10-16). |
 | Carve-out paths | Human **only** after owner tip-bound `CARVE-OUT APPROVE` |
 | Releases | [`release.yml`](../.github/workflows/release.yml) — draft only unless owner publishes |
 
 Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`).
 
-While the bot PAT returns 403, Critic/Shield/Probe verdicts posted in the Mythos room with the tip sha count as official gate evidence. The only trusted approver is still SkyyPlayz (by `user.login`). Merge path: Ivy MERGE GO, then Sentinel merges as the bot pinned with `--match-head-commit`; on a 403, Ivy merges with the owner token pinned to the same sha; Skyy never merges.
+While the bot PAT returns 403, Critic/Shield/Probe verdicts posted in the Mythos room with the tip sha count as official gate evidence. The only trusted approver is still SkyyPlayz (by `user.login`). Only Ivy merges, except protected-path carve-outs, which Skyy merges in the web UI. Sentinel only watches. Main requires branches to be up to date: a PR that falls behind gets GitHub's Update branch (a merge of main, no other change), then Critic, Shield and Probe re-stamp the new head (merge-only re-stamp) before it merges.
 `tip-freeze` goes on at the tip-freeze wake, before any verdict. No tip-freeze until CI has run on the current head sha.
 
 ## Required conditions (ALL)

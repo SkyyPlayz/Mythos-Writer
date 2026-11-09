@@ -7,7 +7,7 @@ name: Dependency Audit
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # nightly 02:00 UTC — avoids fuzz (08:00) and issue-finder (Mon 06:00)
+    - cron: '0 2 * * *'  # nightly 02:00 UTC — avoids fuzz (08:00)
   pull_request:
     branches: [main]
     paths:

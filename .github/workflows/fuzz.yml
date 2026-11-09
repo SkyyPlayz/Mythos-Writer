@@ -5,7 +5,7 @@ name: Fuzz (60s)
 
 on:
   schedule:
-    - cron: '0 8 * * *'   # nightly 08:00 UTC = 2am MDT, idle fleet; avoids issue-finder's Mon 06:00 slot
+    - cron: '0 8 * * *'   # nightly 08:00 UTC = 2am MDT, idle fleet
   pull_request:
     branches: [main]
     paths:

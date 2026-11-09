@@ -25,17 +25,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Flag carve-out paths for human/Ivy review
         uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
+            const migrationFlag = require(process.env.GITHUB_WORKSPACE + '/.github/scripts/migration-flag.js');
 
             const files = await github.paginate(
               github.rest.pulls.listFiles,
               { owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number }
             );
             const paths = files.map((f) => f.filename);
+            const migrationHits = migrationFlag.classify(files.map((f) => ({
+              filename: f.filename,
+              status: f.status,
+              patch: f.patch,
+            })));
 
             // Carve-out paths per .github/copilot-instructions.md "Your lane" §4:
             // .github/workflows, db/vault migrations, auth, secrets, release config.
@@ -58,21 +68,74 @@ jobs:
             });
             const existing = comments.find((c) => c.body && c.body.includes(marker));
 
-            if (hits.length === 0) {
-              core.info('No carve-out paths touched.');
-              if (existing) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id,
-                  body: `${marker}\nNo carve-out paths touched as of the latest push — this note is stale.`,
-                });
+            const migrationList = migrationHits.map((h) => `- \`${h.filename}\` (${h.rule})`).join('\n');
+
+            async function syncMigrationLabel() {
+              if (migrationHits.length === 0) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name: 'db-migration',
+                  });
+                } catch (e) {
+                  // label wasn't present — fine.
+                }
+                return;
               }
               try {
-                await github.rest.issues.removeLabel({
-                  owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name: 'carve-out',
+                await migrationFlag.createLabel(github, context.repo.owner, context.repo.repo);
+              } catch (e) {
+                if (!e || e.status !== 422) core.warning(`Could not create "db-migration" label: ${e && e.message}`);
+              }
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, labels: ['db-migration'],
                 });
               } catch (e) {
-                // label wasn't present — fine.
+                core.warning(`Could not add "db-migration" label: ${e.message}`);
               }
+            }
+
+            async function writeComment(body) {
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, body,
+                });
+              }
+            }
+
+            await syncMigrationLabel();
+
+            if (hits.length === 0) {
+              if (migrationHits.length === 0) {
+                core.info('No carve-out paths touched.');
+                if (existing) {
+                  await github.rest.issues.updateComment({
+                    owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id,
+                    body: `${marker}\nNo carve-out paths touched as of the latest push — this note is stale.`,
+                  });
+                }
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name: 'carve-out',
+                  });
+                } catch (e) {
+                  // label wasn't present — fine.
+                }
+                return;
+              }
+              await writeComment([
+                marker,
+                '## DB / data migration',
+                '',
+                migrationList,
+                '',
+                'This note does not fail the build.',
+              ].join('\n'));
+              core.info('Migration paths flagged.');
               return;
             }
 
@@ -88,17 +151,9 @@ jobs:
               '',
               'Per the merge model, this does not auto-merge on green CI + a routine',
               'merge-gate decision alone. Escalate to Ivy before merging.',
-            ].join('\n');
+            ].join('\n') + (migrationHits.length === 0 ? '' : `\n\n### DB / data migration\n\n${migrationList}`);
 
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, body,
-              });
-            }
+            await writeComment(body);
 
             try {
               await github.rest.issues.addLabels({
