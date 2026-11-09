@@ -1,10 +1,11 @@
 // SKY-11814 — materialize a parsed .docx manuscript (docxImporter.parseDocxBuffer
-// output: H1 = chapter, H2 = scene) as a v2 Story Vault folder so folder-based
-// vault import surfaces Word documents as chapters/scenes. Mirrors the exact
-// on-disk shape scanMythosStoryVault() already expects (mythosFormat/v2Manifest.ts):
-// `<Story>/book.md` + `<Story>/Part 1/Chapter NN/Scene NN.md`. Every chapter
-// lands under a single "Part 1" — parseDocxBuffer only distinguishes H1/H2,
-// so there is no source signal for a part boundary.
+// output: chapters → scenes, via the #1765 import-hub segmenter) as a v2 Story
+// Vault folder so folder-based vault import surfaces Word documents as
+// chapters/scenes. Mirrors the exact on-disk shape scanMythosStoryVault()
+// already expects (mythosFormat/v2Manifest.ts): `<Story>/book.md` +
+// `<Story>/Part 1/Chapter NN/Scene NN.md`. Every chapter lands under a single
+// "Part 1" — parseDocxBuffer folds part headings into chapter titles
+// ("Part One · The Gate"), so there is no separate part boundary to write.
 //
 // Pure Node — no Electron imports.
 

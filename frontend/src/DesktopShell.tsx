@@ -26,6 +26,7 @@ import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitche
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
 import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
+import { BookSyncNotice, failedManifestRead, isLoadedManifest, manifestSaveOutcome, STORY_LIST_READ_FAILURE, type ManifestSaveOutcome } from './components/BookSyncNotice';
 import {
   parseSceneNotes,
   serializeSceneNotes,
@@ -163,6 +164,13 @@ import LayoutPicker from './LayoutPicker';
 import NewStoryModal, { type NewStoryModalResult } from './components/NewStoryModal';
 import LayoutManagerDialog from './LayoutManagerDialog';
 import { getAllLayouts, mergeWithBuiltins, migrateV1Layout, snapshotCurrentLayout } from './WorkspaceLayoutManager';
+import {
+  settingsGet,
+  settingsGetIfPresent,
+  settingsGetOrNull,
+  settingsSet,
+  settingsSetIfPresent,
+} from './frame/storageAdapter';
 // SKY-1695: Panel content components for the unified sidebar renderer
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -656,6 +664,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return next;
   }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [bookSave, setBookSave] = useState<ManifestSaveOutcome>({ ok: true, warnings: [] });
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
   // is kept separate from WindowChrome's own local `projects` state (same
@@ -942,7 +951,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!appSettings) return;
     const updatedSettings = { ...appSettings, seenTips: { ...seenTips, [key]: true } } as AppSettings;
     setAppSettings(updatedSettings);
-    window.api.settingsSet(updatedSettings).catch(() => {});
+    settingsSet(updatedSettings).catch(() => {});
   }, [appSettings, seenTips]);
 
   const persistLeftSidebarLayout = useCallback((next: LeftSidebarLayout) => {
@@ -951,7 +960,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: next } } as AppSettings;
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -961,7 +970,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated = { ...prev, gettingStartedProgress: next } as AppSettings;
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -973,7 +982,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setAppSettings((settings) => {
         if (!settings) return settings;
         const updated = { ...settings, gettingStartedProgress: next } as AppSettings;
-        window.api.settingsSet(updated).catch(() => {});
+        settingsSet(updated).catch(() => {});
         return updated;
       });
       return next;
@@ -991,7 +1000,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             writingAssistant: { ...prev.agents.writingAssistant, autoApplyCategories: categories },
           },
         };
-        window.api.settingsSet(updated).catch(() => {});
+        settingsSet(updated).catch(() => {});
         return updated;
       });
     },
@@ -1013,7 +1022,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         [activeVaultRoot]: next,
       },
     };
-    window.api.settingsSet(updated as AppSettings).catch(() => {});
+    settingsSet(updated as AppSettings).catch(() => {});
   }, [appSettings, activeVaultRoot, pagePrefs]);
 
 
@@ -1347,7 +1356,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     let cachedSettings: AppSettings | null = null;
     try {
       const [sFromIpc, rootResult, vaultPaths] = await Promise.all([
-        (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
+        settingsGetOrNull(),
         (window.api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.vaultGetPaths?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
@@ -1389,9 +1398,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
       }
 
-      const m = storyValid
-        ? await window.api.readManifest() as Manifest
+      const rawManifest = storyValid
+        ? await window.api.readManifest()
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
+      if (storyValid && !isLoadedManifest(rawManifest)) {
+        if (superseded()) return; // SKY-11379: stale failed read must not paint shell-error.
+        setBookSave(failedManifestRead());
+        setError(STORY_LIST_READ_FAILURE);
+        return;
+      }
+      const m = rawManifest as Manifest;
       // SKY-11379: last IPC resolved — re-check the generation once more before
       // the atomic apply below. setManifest through setActiveVaultRoot run with
       // no further awaits between them, so a single check here protects the
@@ -1400,6 +1416,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (superseded()) return;
       setManifest(m);
       setStories(m.stories ?? []);
+      const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: m.bookSyncWarnings ?? [] });
+      setBookSave(read.ok ? read : { ok: true, warnings: [] });
       if (m.layout) {
         setLayout({ ...DEFAULT_LAYOUT, ...m.layout });
       }
@@ -1461,7 +1479,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           const migrated: AppSettings = { ...s, vaultWorkspaces: workspaces };
           cachedSettings = migrated;
           setAppSettings(migrated);
-          window.api.settingsSet(migrated).catch(() => {});
+          settingsSet(migrated).catch(() => {});
         }
         // Always set (empty arrays when this vault has no saved workspace) so a
         // switch unconditionally CLEARS the outgoing vault's tabs — that
@@ -1501,7 +1519,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           showUpgradeToast('Your notes are in the new Notes tab.', 'info');
           const updated = { ...s, notesTabUpgradeToastShown: true } as AppSettings;
           setAppSettings(updated);
-          window.api.settingsSet(updated).catch(() => {});
+          settingsSet(updated).catch(() => {});
         }
         // SKY-1700 (Wave 2f): restore named layouts + run v1→v2 migration.
         {
@@ -1512,7 +1530,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             cachedSettings = settingsToUse;
             setAppSettings(settingsToUse);
             // Persist migration synchronously (fire-and-forget).
-            window.api.settingsSet(settingsToUse).catch(() => {});
+            settingsSet(settingsToUse).catch(() => {});
           }
           const allLayouts = getAllLayouts(settingsToUse);
           setWorkspaceLayouts(settingsToUse.workspaceLayouts ?? []);
@@ -1571,7 +1589,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           const themed = { ...s, liquidNeonV2: vaultPatch.liquidNeonV2 } as AppSettings;
           cachedSettings = themed;
           setAppSettings(themed);
-          window.api.settingsSet(themed).catch(() => {});
+          settingsSet(themed).catch(() => {});
           // SKY-11237: per-vault appearance overrides the preset's liquidNeonV2
           // (#1774: a snapshot without accentBreathe inherits the global one).
           const switchedVaultApp = s.vaultAppearance?.[switchedVaultRoot];
@@ -1987,7 +2005,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setAppSettings((prev) => {
       if (!prev) return prev;
       const next = { ...prev, vaultDisplayNames: { ...(prev.vaultDisplayNames ?? {}), [vaultId]: trimmed } };
-      window.api?.settingsSet?.(next).catch(() => {});
+      settingsSetIfPresent(next)?.catch(() => {});
       return next;
     });
   }, [navRailVaults, requestText]);
@@ -2032,7 +2050,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     try {
       // SKY-6196: strip scene prose before it crosses the IPC boundary — the
       // in-memory `m` (and React state) keep full content untouched.
-      await window.api.writeManifest(stripManifestContentForIpc(m));
+      const saved = await window.api.writeManifest(stripManifestContentForIpc(m));
+      setBookSave(manifestSaveOutcome(saved));
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);
@@ -2112,7 +2131,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       ...(patch.panels !== undefined ? { rightSidebarPanels: patch.panels } : {}),
     };
     setAppSettings(updated);
-    window.api.settingsSet(updated).catch(() => {});
+    settingsSet(updated).catch(() => {});
   }, [appSettings]);
 
   // SKY-10926: ContinuityPanel persists archiveStoryEditConsentGiven via
@@ -2190,7 +2209,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: panels } };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2200,7 +2219,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, dockedTabs: tabs } };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2214,7 +2233,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         ...prev,
         activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, navRailCollapsed: collapsed },
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2241,7 +2260,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ? { vaultWorkspaces: writeVaultWorkspace(prev.vaultWorkspaces, vaultRoot, patch) }
           : {}),
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2258,7 +2277,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           tabShell: serializeTabbedShellState(next),
         },
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2296,7 +2315,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           workspaceSplitPane: kind ? { kind } : null,
         },
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2337,7 +2356,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           splitWindow: { splitRatio: ratio },
         },
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2357,7 +2376,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         workspaceLayouts: userLayouts,
         activeLayoutId: newActiveLayoutId,
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -2397,7 +2416,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           rightSidebar: layout.rightSidebar,
         },
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
     setLayoutHasUnsavedChanges(false);
@@ -2589,7 +2608,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (existing.some((e) => e.panelId === panelId)) return prev;
       const entry: FloatingPanelEntry = { panelId, x: 0, y: 0, width: 360, height: 600, alwaysOnTop: false, lastDockSidebar: sourceSidebar };
       const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: [...existing, entry] } };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, [grsPanels, persistLeftSidebarLayout, persistGrsSettings]);
@@ -2604,7 +2623,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         if (!prev) return prev;
         const panels = (prev.activeLayout?.floatingPanels ?? []).filter((e) => e.panelId !== panelId);
         const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: panels } };
-        window.api.settingsSet(updated).catch(() => {});
+        settingsSet(updated).catch(() => {});
         return updated;
       });
       if (docked) {
@@ -2641,7 +2660,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           e.panelId === panelId ? { ...e, x, y, width, height } : e
         );
         const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: panels } };
-        window.api.settingsSet(updated).catch(() => {});
+        settingsSet(updated).catch(() => {});
         return updated;
       });
     });
@@ -2653,11 +2672,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene]);
 
   // SKY-2966: Refresh stories when a floating navigator panel modifies the manifest.
+  // #1765: the import hub pushes this too. Adopt the WHOLE fresh manifest, not
+  // just its stories — layout saves spread `manifest`, so a stale copy would
+  // write the pre-change story list back over the new one.
   useEffect(() => {
     if (!window.api.onNavigatorManifestChanged) return;
     const unsub = window.api.onNavigatorManifestChanged(() => {
-      (window.api.readManifest() as Promise<Manifest>).then((m) => {
-        setStories(m?.stories ?? []);
+      // `{ error }` is not a loaded manifest. Leave the stories already shown.
+      (window.api.readManifest() as Promise<unknown>).then((m) => {
+        if (!isLoadedManifest(m)) {
+          setBookSave(failedManifestRead());
+          return;
+        }
+        const loaded = m as Manifest;
+        setManifest(loaded);
+        setStories(loaded.stories ?? []);
+        const read = manifestSaveOutcome({ ok: true, bookSyncWarnings: loaded.bookSyncWarnings ?? [] });
+        setBookSave(read.ok ? read : { ok: true, warnings: [] });
       }).catch(() => {});
     });
     return () => unsub?.();
@@ -3638,7 +3669,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // Sync UI only from a fresh settingsGet (after the awaited switch/flush).
       // Secure note: full merge can copy masked secrets; H10-1 overlays only onboarding*.
       try {
-        const fresh = await window.api?.settingsGet?.();
+        const fresh = await settingsGetIfPresent();
         if (fresh) {
           setAppSettings((prev) => ({ ...(prev ?? {}), ...fresh } as AppSettings));
         }
@@ -3677,7 +3708,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleContinueOnboarding = useCallback(() => {
     const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;
     setAppSettings(updated);
-    window.api.settingsSet(updated).finally(() => window.location.reload()).catch(() => window.location.reload());
+    settingsSet(updated).finally(() => window.location.reload()).catch(() => window.location.reload());
   }, [appSettings]);
 
   const handleConnectNotesVault = useCallback(async (seedMode: 'default' | 'blank') => {
@@ -5366,10 +5397,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
     navHistoryPersistDebounceRef.current = setTimeout(() => {
-      window.api.settingsGet().then((fresh) => {
+      settingsGet().then((fresh) => {
         const updated: AppSettings = { ...fresh, navHistory: navHistory.getSnapshot() };
         setAppSettings(updated);
-        window.api.settingsSet(updated).catch(() => {});
+        settingsSet(updated).catch(() => {});
       }).catch(() => {});
     }, 500);
     return () => {
@@ -6197,7 +6228,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         ...prev,
         liquidNeonV2: { ...liquidNeonV2, pageCfg: { ...liquidNeonV2.pageCfg, ...patch } },
       };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       void applyLiquidNeonV2Theme(updated.liquidNeonV2);
       return updated;
     });
@@ -6275,7 +6306,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ...patch,
         } as NonNullable<AppSettings['liquidNeonV2']>;
         const next = { ...prev, liquidNeonV2 };
-        window.api.settingsSet(next).catch(() => {});
+        settingsSet(next).catch(() => {});
         void applyLiquidNeonV2Theme(liquidNeonV2);
         return next;
       });
@@ -6312,7 +6343,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setAppSettings((prev) => {
           if (!prev) return prev;
           const updated = { ...prev, liquidNeonV2: next };
-          window.api.settingsSet(updated).catch(() => {});
+          settingsSet(updated).catch(() => {});
           return updated;
         });
       },
@@ -6361,7 +6392,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (existing.some((e) => e.panelId === panelId)) return prev;
       const entry: FloatingPanelEntry = { panelId, x: 0, y: 0, width: 360, height: 600, alwaysOnTop: false, lastDockSidebar: 'right' };
       const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: [...existing, entry] } };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
     handleWorkspaceTabClose(tabId);
@@ -6421,7 +6452,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (!prev) return prev;
       const base = prev.navConfig ?? NAV_RAIL_DEFAULTS;
       const updated: AppSettings = { ...prev, navConfig: { ...base, items } };
-      window.api.settingsSet(updated).catch(() => {});
+      settingsSet(updated).catch(() => {});
       return updated;
     });
   }, []);
@@ -6677,6 +6708,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
           §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
+      <BookSyncNotice outcome={bookSave} />
       {/* PLAN-058 L2 (06:55): the title bar is full window width. The nav
           rail starts in the row below and must not cover the top bar.
           Document tabs stay in the main column under that bar. */}
@@ -6844,7 +6876,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               onboardingStartMode: 'skip' as const,
             };
             setAppSettings(next as AppSettings);
-            void window.api?.settingsSet?.(next as AppSettings);
+            void settingsSetIfPresent(next as AppSettings);
           }}
           onPickPath={(id: WelcomePathId) => {
             markWelcomeOverlayDismissed();

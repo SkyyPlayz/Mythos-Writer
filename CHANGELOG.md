@@ -12,12 +12,16 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
 
 ### Added
+- **Book profiles stay in the book file.** A book's print profiles are saved inside the book file and kept the next time the story is saved. The panel for editing them comes later. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
 
 ### Removed
 - **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
 
 ### Fixed
+- **A title that mentions a book marker does not block the next save.** The book file stays writable, and opening a story list that cannot be read says so instead of saying a save failed. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
+- **A story-list save that cannot be written says so.** The previous story list stays in place, and the notice does not include the file path. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
+- **A story save tells you when the book file was left unchanged.** If the book file is busy, unreadable, or not one this version can safely rewrite, that story's file stays as it is, the rest of the save continues, and the notice says the next save will try again. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - Confirming a Brainstorm note proposal no longer follows a symbolic link at the destination, so a shortcut in the Notes Vault cannot make the write land outside the vault or overwrite another file. ([#1795](https://github.com/SkyyPlayz/Mythos-Writer/pull/1795))
 - Adding several chapters in a row no longer drops a later chapter in ahead of the one you just created. ([#1791](https://github.com/SkyyPlayz/Mythos-Writer/pull/1791))
 - **Read-aloud no longer ships GPL-licensed phonemizer code.** Kokoro grapheme-to-phoneme is English-only `phonemize` (MIT); the GPL `phonemizer` package is gone from the dependency tree and from packaged builds. ([#1729](https://github.com/SkyyPlayz/Mythos-Writer/pull/1729))
@@ -35,6 +39,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - Markdown import and paste no longer risk freezing the app on very large or malformed text (markdown-it security update 14.2.0 → 14.3.3). ([#1743](https://github.com/SkyyPlayz/Mythos-Writer/pull/1743))
 
 ### Changed
+- Internal prep for the upcoming movable-widget layout; no visible change ([#1755](https://github.com/SkyyPlayz/Mythos-Writer/pull/1755)).
 - **Interface text is a little larger and more consistent.** Menus, panels, settings and labels now use one shared set of text sizes. The base interface text goes from 13px to 14px, and the updated menus, panels and settings use nothing smaller than 12px (the Appearance settings section follows in a later update). Your manuscript page font and size are unchanged. ([#1783](https://github.com/SkyyPlayz/Mythos-Writer/pull/1783))
 - **Brainstorm note proposals and Test connection no longer use AI.** Proposed notes from a Brainstorm reply come from a built-in name finder that needs no API key and sends nothing anywhere. Settings → Test connection now just asks the provider for its model list instead of spending a token. ([#1780](https://github.com/SkyyPlayz/Mythos-Writer/pull/1780))
 - **README matches the current app.** Windows is the primary platform. AI is your own OpenRouter key, Paste key (OpenAI-compatible), or a model on this computer (Ollama, LM Studio, or llama.cpp). A subscription sign-in is in beta. The screenshots are the current Liquid Neon window. ([#1759](https://github.com/SkyyPlayz/Mythos-Writer/pull/1759))
@@ -48,6 +53,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 
 ### Added
+- **Import your writing** — Settings → Vault & Files has one drop zone (plus Choose a file… / Choose a folder…) for Word, Google Docs, Markdown files and folders (Obsidian, iA Writer and other Markdown apps), Scrivener, ePub, RTF and plain text. You see a preview of the chapters, scenes, notes and characters before anything is saved. Word imports keep chapters, scenes, bold, italics and breaks. Programs, scripts and macro files are refused. ([#1785](https://github.com/SkyyPlayz/Mythos-Writer/pull/1785))
 - **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
 
 ## [0.5.7] — 2026-10-03

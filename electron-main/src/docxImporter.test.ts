@@ -5,6 +5,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { splitDocxMarkdown, htmlToSplittableMarkdown, parseDocxBuffer, DOCX_MAX_BYTES } from './docxImporter.js';
+import {
+  HEADED_MANUSCRIPT_OUTLINE,
+  buildHeadedManuscriptDocx,
+  buildPatternManuscriptDocx,
+} from './importHub/testFixtures/manuscriptDocx.js';
 
 const MAMMOTH_FIXTURES = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -181,5 +186,49 @@ describe('parseDocxBuffer', () => {
     const buf = fs.readFileSync(path.join(MAMMOTH_FIXTURES, 'single-paragraph.docx'));
     const result = await parseDocxBuffer(buf, 'Test');
     expect(Array.isArray(result.warnings)).toBe(true);
+  });
+});
+
+// ── parseDocxBuffer → import hub pipeline (#1765) ──────────────────────────────
+// parseDocxBuffer used to flatten mammoth HTML with regexes: every mark was
+// stripped, a whole chapter became one line, page breaks glued words and
+// files without heading styles became one chapter. It now delegates to
+// importHub/docx.ts — same exported shape, real fidelity.
+
+describe('parseDocxBuffer — import hub fidelity (#1765)', () => {
+  it('returns the same {title, chapters, warnings} shape', async () => {
+    const result = await parseDocxBuffer(await buildHeadedManuscriptDocx(), 'manuscript');
+    expect(Object.keys(result).sort()).toEqual(['chapters', 'title', 'warnings']);
+    for (const ch of result.chapters) {
+      expect(Object.keys(ch).sort()).toEqual(['order', 'scenes', 'title']);
+      for (const sc of ch.scenes) expect(Object.keys(sc).sort()).toEqual(['order', 'prose', 'title']);
+    }
+    expect(result.title).toBe(HEADED_MANUSCRIPT_OUTLINE.title);
+    expect(result.chapters.map((c) => ({ title: c.title, scenes: c.scenes.map((s) => s.title) })))
+      .toEqual(HEADED_MANUSCRIPT_OUTLINE.chapters);
+    expect(result.chapters.map((c) => c.order)).toEqual([0, 1, 2]);
+  });
+
+  it('keeps bold / italic / underline / strike and separates paragraphs with a blank line', async () => {
+    const { chapters } = await parseDocxBuffer(await buildHeadedManuscriptDocx(), 'manuscript');
+    expect(chapters[0].scenes[0].prose).toBe(
+      'Mara reached the **iron gate** at dusk, and the *lanterns* were already lit.\n\n'
+      + 'She had <u>never</u> seen it ~~closed~~ before.',
+    );
+  });
+
+  it('never glues words across an in-run page break', async () => {
+    const { chapters } = await parseDocxBuffer(await buildHeadedManuscriptDocx(), 'manuscript');
+    const prose = chapters.flatMap((c) => c.scenes.map((s) => s.prose)).join('\n');
+    expect(prose).toContain('The fire burned low');
+    expect(prose).toContain('and morning came.');
+    expect(prose).not.toContain('lowand');
+  });
+
+  it('finds chapters in a manuscript with no heading styles', async () => {
+    const { chapters } = await parseDocxBuffer(await buildPatternManuscriptDocx(), 'Pattern');
+    expect(chapters.map((c) => c.title)).toEqual([
+      'Prologue', 'PART ONE · CHAPTER ONE', 'PART ONE · Chapter 2: The Gate', 'Part Two · Chapter 3: The Inn',
+    ]);
   });
 });

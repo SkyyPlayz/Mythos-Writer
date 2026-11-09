@@ -1,17 +1,17 @@
 // One-off generator for e2e/fixtures/story-import.epub — a minimal but REAL
 // ePub (valid ZIP with mimetype, META-INF/container.xml, OPF manifest + spine,
 // and two XHTML spine documents), used by e2e/story-import-epub.spec.ts
-// (SKY-8008). Structure mirrors the in-code fixture in
-// electron-main/src/storyImport.test.ts (makeEpub) so the e2e exercises the
-// same parser branches: container.xml → OPF full-path, dc:title extraction,
-// spine reading order, non-XHTML manifest items skipped.
+// (SKY-8008; since #1765 driven through the import hub, so it exercises
+// electron-main/src/importHub/epub.ts): container.xml → OPF full-path,
+// dc:title as the book title, spine reading order, non-XHTML manifest items
+// skipped.
 //
 // SKY-8536 / GH #1097: the OPF lives one directory deeper than its spine
 // documents (OEBPS/package/content.opf vs OEBPS/text/*.xhtml), so both spine
 // hrefs are parent-relative ("../text/chN.xhtml"). This is the exact archive
-// shape that broke ePub import before storyImport.ts's spine-path resolution
-// normalized `../` against the OPF directory — every assertion in the spec
-// below now doubles as end-to-end regression coverage for that fix.
+// shape that once broke ePub import until spine paths were normalized against
+// the OPF directory — every assertion in the spec doubles as end-to-end
+// regression coverage for that resolution in importHub/epub.ts.
 //
 // Run: node e2e/fixtures/build-story-import-epub.cjs
 const fs = require('fs');

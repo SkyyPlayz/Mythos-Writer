@@ -141,3 +141,51 @@ export function createWindowOpenHandler(
     return { action: 'deny' };
   };
 }
+
+/**
+ * #1765: may a window that holds the preload bridge navigate in place to
+ * `url`? Only to its own renderer — the dev server in development, or the
+ * bundled `index.html` itself (any hash/query). Any other `file://` page is
+ * refused: a document dropped on the window (Blink's default drop action) or
+ * a link a compromised renderer follows must never load with `window.api`.
+ */
+export function isAllowedRendererNavigation(
+  url: string,
+  opts: { devServerUrl?: string; rendererIndexPath: string; platform?: NodeJS.Platform },
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (opts.devServerUrl) {
+    // Compare parsed origins, never a string prefix: `http://localhost:5173@evil.example/`
+    // starts with the dev URL but its host is evil.example.
+    try {
+      // http(s) only: `blob:http://localhost:5173/<id>` shares the origin but
+      // is renderer-made HTML, not the dev server.
+      const dev = new URL(opts.devServerUrl);
+      if ((parsed.protocol === 'http:' || parsed.protocol === 'https:')
+        && parsed.protocol === dev.protocol && parsed.origin === dev.origin) return true;
+    } catch {
+      /* a malformed dev URL allows nothing */
+    }
+  }
+  if (parsed.protocol !== 'file:') return false;
+  let target: string;
+  try {
+    target = decodeURIComponent(parsed.pathname);
+  } catch {
+    return false;
+  }
+  const platform = opts.platform ?? process.platform;
+  const norm = (p: string) => {
+    let s = p.replace(/\\/g, '/');
+    // file:///C:/x → "/C:/x" on Windows
+    if (platform === 'win32' && /^\/[A-Za-z]:\//.test(s)) s = s.slice(1);
+    s = s.replace(/\/{2,}/g, '/');
+    return platform === 'win32' || platform === 'darwin' ? s.toLowerCase() : s;
+  };
+  return parsed.host === '' && norm(target) === norm(opts.rendererIndexPath);
+}

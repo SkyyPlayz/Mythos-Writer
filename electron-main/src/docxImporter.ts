@@ -4,13 +4,17 @@
 // Convention: H1 = chapter, H2 = scene (matching the heading-driven view spec).
 // One .docx becomes one Story in the vault.
 //
-// mammoth 1.12 exposes convertToHtml (not convertToMarkdown); we convert the HTML
-// output to a simple heading-delimited text format that splitDocxMarkdown can parse.
+// #1765: parseDocxBuffer (onboarding import, folder import in
+// createVaultFromOptions) delegates to the import hub's DOCX pipeline
+// (importHub/docx.ts) so every DOCX path keeps bold/italic/underline/strike,
+// paragraph breaks, page breaks and scene breaks, and finds chapters in files
+// without heading styles. htmlToSplittableMarkdown / splitDocxMarkdown stay
+// for the legacy story:import-run path (storyImport.ts).
 
-import mammoth from 'mammoth';
+import { DOCX_MAX_BYTES, parseDocxStory } from './importHub/docx.js';
 
 /** Absolute cap before we even attempt parsing (saves memory on huge files). */
-export const DOCX_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+export { DOCX_MAX_BYTES };
 
 export interface DocxScene {
   title: string;
@@ -149,8 +153,10 @@ export function splitDocxMarkdown(
 }
 
 /**
- * Convert a .docx buffer to a structured import result.
- * Throws on size overrun or mammoth parse failure.
+ * Convert a .docx buffer to a structured import result: scene prose is in
+ * the editor's Markdown dialect (formatting kept), chapters/scenes come from
+ * heading styles, "Chapter One" lines, page breaks or scene-break markers.
+ * Throws on size overrun or an unreadable file.
  */
 export async function parseDocxBuffer(
   buffer: Buffer,
@@ -161,27 +167,19 @@ export async function parseDocxBuffer(
     throw new Error(`File exceeds the 50 MB size limit (${mb} MB)`);
   }
 
-  let result: Awaited<ReturnType<typeof mammoth.convertToHtml>>;
+  let parsed: Awaited<ReturnType<typeof parseDocxStory>>;
   try {
-    result = await mammoth.convertToHtml({ buffer });
+    parsed = await parseDocxStory(buffer, fallbackTitle);
   } catch (err) {
     throw new Error(
       `Failed to parse .docx: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  const warnings = result.messages
-    .filter((m) => m.type === 'warning')
-    .map((m) => m.message);
-
-  const md = htmlToSplittableMarkdown(result.value);
-  const { title, chapters } = splitDocxMarkdown(md, fallbackTitle);
-
-  // Detect empty parse: mammoth returned HTML but no usable prose was extracted.
-  const hasContent = chapters.some((ch) => ch.scenes.some((sc) => sc.prose.trim().length > 0));
-  if (!hasContent && result.value.trim().length > 0) {
-    warnings.push('Document was parsed but all scenes are empty — check that the .docx contains readable text paragraphs');
-  }
-
-  return { title, chapters, warnings };
+  const chapters: DocxChapter[] = parsed.story.chapters.map((ch) => ({
+    title: ch.title,
+    order: ch.order,
+    scenes: ch.scenes.map((sc) => ({ title: sc.title, prose: sc.prose, order: sc.order })),
+  }));
+  return { title: parsed.story.title, chapters, warnings: parsed.warnings };
 }
