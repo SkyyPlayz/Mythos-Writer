@@ -2291,7 +2291,7 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
   it('HARD source soft: onCreated settingsGet after await switchToVault order', () => {
     const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
     expect(src).toMatch(
-      /await switchToVault\(vaultRoot\);[\s\S]*?const fresh = await window\.api\?\.settingsGet/,
+      /await switchToVault\(vaultRoot\);[\s\S]*?const fresh = await settingsGetIfPresent/,
     );
   });
 

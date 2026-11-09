@@ -1,4 +1,5 @@
 // SKY-1700 (Wave 2f): Built-in layouts and layout management helpers.
+import { defaultMigrateLeftPanels, defaultMigrateRightPanels } from './frame/panelRegistry';
 
 export const BUILTIN_LAYOUT_IDS = {
   WRITING_FOCUS: 'builtin-writing-focus',
@@ -154,11 +155,7 @@ export function migrateV1Layout(settings: AppSettings): Partial<AppSettings> {
     // Assistant/Scenes/Notes/References tab strip at all.
     visible: settings.rightSidebarVisible ?? true,
     width: settings.rightSidebarWidth ?? 300,
-    panels: settings.rightSidebarPanels ?? [
-      { id: 'writing-assistant' as SidebarPanelId, collapsed: false },
-      { id: 'archive-continuity' as SidebarPanelId, collapsed: false },
-      { id: 'scene-preview' as SidebarPanelId, collapsed: false },
-    ],
+    panels: settings.rightSidebarPanels ?? defaultMigrateRightPanels(),
   };
 
   const tabShell: AppTabShellState = settings.activeLayout?.tabShell ?? {
@@ -178,7 +175,7 @@ export function migrateV1Layout(settings: AppSettings): Partial<AppSettings> {
     activeLayout: {
       ...settings.activeLayout,
       leftSidebar: settings.activeLayout?.leftSidebar ?? {
-        panels: [{ id: 'stories' as SidebarPanelId, collapsed: false }],
+        panels: defaultMigrateLeftPanels(),
         sidebarCollapsed: false,
       },
       rightSidebar,
