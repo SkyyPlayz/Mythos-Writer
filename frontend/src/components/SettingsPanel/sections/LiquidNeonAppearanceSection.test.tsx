@@ -276,14 +276,30 @@ describe('Beta 4 M1 — preset export/import UI', () => {
   it('Export preset copies the {slots,setKey,wp,ambMode,frameAnim} JSON to the clipboard AND saves a file', async () => {
     const { writeText } = stubClipboard();
     // jsdom can't navigate to the blob download — intercept the anchor click.
-    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    await setup({ setKey: 'cyber', slots: [...LIQUID_NEON_PRESETS.cyber.c], wp: 'deep', ambMode: 'snow', frameAnim: 'cycle' });
-    fireEvent.click(screen.getByTestId('lnas-export'));
-    expect(writeText).toHaveBeenCalledTimes(1);
-    if (typeof URL.createObjectURL === 'function') {
-      expect(anchorClick).toHaveBeenCalledTimes(1); // the file half of "clipboard AND file"
+    // jsdom >= 30 defines URL.createObjectURL but throws on the test env's Blob,
+    // so stub the object-URL pair to make the download path deterministic.
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    const createObjectURL = vi.fn((_blob: Blob | MediaSource) => 'blob:mythos-test-preset');
+    const revokeObjectURL = vi.fn();
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+    let clicked: { download: string; href: string } | null = null;
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      clicked = { download: this.download, href: this.href };
+    });
+    try {
+      await setup({ setKey: 'cyber', slots: [...LIQUID_NEON_PRESETS.cyber.c], wp: 'deep', ambMode: 'snow', frameAnim: 'cycle' });
+      fireEvent.click(screen.getByTestId('lnas-export'));
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(1); // the file half of "clipboard AND file"
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      expect(clicked).toEqual({ download: 'mythos-theme-preset.json', href: 'blob:mythos-test-preset' });
+    } finally {
+      anchorClick.mockRestore();
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
     }
-    anchorClick.mockRestore();
     const obj = JSON.parse(writeText.mock.calls[0][0] as string);
     expect(obj).toEqual({
       slots: [...LIQUID_NEON_PRESETS.cyber.c], setKey: 'cyber', wp: 'deep', ambMode: 'snow', frameAnim: 'cycle',
