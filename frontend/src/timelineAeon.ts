@@ -42,11 +42,7 @@ export const HIDDEN_TIMELINE_MODES: ReadonlySet<TimelineMode> = new Set([
 ]);
 
 /** True when `mode` is offered in the timeline chrome. */
-const SHOW_ALL_TIMELINE_MODES =
-  typeof process !== 'undefined' && process.env?.MYTHOS_TIMELINE_SHOW_ALL === '1';
-
 export function isTimelineModeVisible(mode: TimelineMode): boolean {
-  if (SHOW_ALL_TIMELINE_MODES) return true;
   return !HIDDEN_TIMELINE_MODES.has(mode);
 }
 
