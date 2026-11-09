@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
 import type { Block, Scene, DraftState, EntityEntry } from './types';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
@@ -94,6 +95,9 @@ const DRAFT_STATE_LABELS: Record<DraftState, string> = {
   final: 'Final',
 };
 
+/** Id prefix AutoLinkerExtension gives its local (non-AI) name-match hints. */
+const AUTOLINK_ID_PREFIX = 'autolink:';
+
 /** Story-only extensions layered onto the shared RichTextEditor core. */
 const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension, HeadingFocusExtension, PrismExtension];
 
@@ -139,8 +143,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const [selectionText, setSelectionText] = useState<string>('');
   const [isEditorEmpty, setIsEditorEmpty] = useState(() => blocksToMarkdownBody(scene.blocks).trim().length === 0);
   const [betaReadBubble, setBetaReadBubble] = useState<{ top: number; left: number } | null>(null);
+  // `from` is the doc position of the hovered hint, so an auto-linker Accept
+  // links that occurrence only (null for AI hints, which never edit the doc).
   const [hintTooltip, setHintTooltip] = useState<{
-    id: string; link: string; anchor: string; top: number; left: number;
+    id: string; link: string; anchor: string; top: number; left: number; from: number | null;
   } | null>(null);
 
   const onAcceptWikiLinkRef = useRef(onAcceptWikiLink);
@@ -387,14 +393,34 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     if (!el || !editorWrapRef.current) return;
     const rect = el.getBoundingClientRect();
     const wrapRect = editorWrapRef.current.getBoundingClientRect();
+    const id = el.dataset.wlId ?? '';
+    let from: number | null = null;
+    if (editor && id.startsWith(AUTOLINK_ID_PREFIX)) {
+      try { from = editor.view.posAtDOM(el, 0); } catch { from = null; }
+    }
     setHintTooltip({
-      id: el.dataset.wlId ?? '',
+      id,
       link: el.dataset.wlLink ?? '',
       anchor: el.dataset.wlAnchor ?? '',
       top: rect.bottom - wrapRect.top + 6,
       left: rect.left - wrapRect.left,
+      from,
     });
-  }, []);
+  }, [editor]);
+
+  // Auto-linker hints are local name matches, not suggestion rows: Accept
+  // turns the hovered occurrence into a wikiLink in one undoable transaction,
+  // and the normal scene save persists it. No IPC.
+  const acceptAutoLinkHint = (link: string, from: number | null) => {
+    if (!editor || from === null) return;
+    const linkerState = getAutoLinkerState(editor.state);
+    if (!linkerState) return;
+    const range = collectAutoLinkerRanges(editor.state.doc, linkerState.entities)
+      .find((r) => r.from <= from && from < r.to && `[[${r.target}]]` === link);
+    const wikiNode = range && editor.schema.nodes['wikiLink']?.create({ target: range.target });
+    if (!range || !wikiNode) return;
+    editor.view.dispatch(closeHistory(editor.state.tr.replaceWith(range.from, range.to, wikiNode)));
+  };
 
   const handleHintMouseLeave = useCallback((e: React.MouseEvent) => {
     const related = e.relatedTarget;
@@ -585,7 +611,11 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
               className="wl-hint-btn wl-hint-accept"
               onMouseDown={(e) => {
                 e.preventDefault();
-                onAcceptWikiLinkRef.current?.(hintTooltip.id, hintTooltip.link, hintTooltip.anchor);
+                if (hintTooltip.id.startsWith(AUTOLINK_ID_PREFIX)) {
+                  acceptAutoLinkHint(hintTooltip.link, hintTooltip.from);
+                } else {
+                  onAcceptWikiLinkRef.current?.(hintTooltip.id, hintTooltip.link, hintTooltip.anchor);
+                }
                 setHintTooltip(null);
               }}
               aria-label={`Accept wiki-link ${hintTooltip.link}`}
