@@ -184,23 +184,41 @@ function applyContent(
   } catch {
     // new file — empty original
   }
-  fs.writeFileSync(
-    fullSnapshotPath,
-    JSON.stringify({ originalContent, path: suggestion.target_path }),
-    'utf8',
-  );
+  // A snapshot already at this path belongs to an earlier attempt; keep its bytes.
+  let priorSnapshot: string | null = null;
+  try {
+    priorSnapshot = fs.readFileSync(fullSnapshotPath, 'utf8');
+  } catch {
+    // no earlier snapshot
+  }
+  try {
+    fs.writeFileSync(
+      fullSnapshotPath,
+      JSON.stringify({ originalContent, path: suggestion.target_path }),
+      'utf8',
+    );
 
-  const newContent = payload.content ?? payload.prose ?? originalContent;
-  const { prose: newProse } = parseFrontmatter(newContent);
-  const written = composeProvenanceContent(vaultRoot, suggestion.target_path, {
-    source_agent: suggestion.source_agent,
-    confidence: suggestion.confidence,
-    rationale: suggestion.rationale,
-    timestamp: now,
-    run_id: suggestion.applied_run_id ?? undefined,
-    suggestion_id: suggestion.id,
-  }, newProse, guard.abs);
-  aiGuard.writeAiCanonical(guard.abs, written);
+    const newContent = payload.content ?? payload.prose ?? originalContent;
+    const { prose: newProse } = parseFrontmatter(newContent);
+    const written = composeProvenanceContent(vaultRoot, suggestion.target_path, {
+      source_agent: suggestion.source_agent,
+      confidence: suggestion.confidence,
+      rationale: suggestion.rationale,
+      timestamp: now,
+      run_id: suggestion.applied_run_id ?? undefined,
+      suggestion_id: suggestion.id,
+    }, newProse, guard.abs);
+    aiGuard.writeAiCanonical(guard.abs, written);
+  } catch (err) {
+    // Leave no trace: undo this attempt's snapshot, then surface the original failure.
+    try {
+      if (priorSnapshot === null) fs.rmSync(fullSnapshotPath, { force: true });
+      else fs.writeFileSync(fullSnapshotPath, priorSnapshot, 'utf8');
+    } catch {
+      // cleanup is best-effort; never mask the original error
+    }
+    throw err;
+  }
   return { ok: true, finalStatus: 'applied', snapshotPath: relSnapshotPath };
 }
 
