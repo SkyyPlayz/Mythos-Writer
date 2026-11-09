@@ -5,13 +5,14 @@
 // shot proving the M11b gate hides the surface.
 // Harness rules: see lib.mjs header.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { chromium, _electron as electron } from 'playwright';
 import { serveProto, outDir, chromiumLaunchOptions, mainJs as MAIN_JS, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('m9d-continuity');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -54,11 +55,12 @@ const NOW = new Date().toISOString();
 const STORY_ID = 'story-m9d';
 const CHAPTER_ID = 'ch-m9d';
 const SCENE_ID = 'scene-m9d';
+let app;
 
 function seedFixture({ aiOff = false } = {}) {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m9d-ud-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-m9d-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotes-m9d-'));
+  const userData = makeTestTmp(`m9d${aiOff ? '-aioff' : ''}-user`);
+  const vaultDir = makeTestTmp(`m9d${aiOff ? '-aioff' : ''}-vault`);
+  const notesVaultDir = makeTestTmp(`m9d${aiOff ? '-aioff' : ''}-notes`);
   const agentDefaults = {
     enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
     maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000,
@@ -131,7 +133,7 @@ function seedFixture({ aiOff = false } = {}) {
 }
 
 async function launchAndShoot(fixture, name, expectPanel) {
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
+  app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
   const page = await app.firstWindow();
   page.on('dialog', (x) => void x.accept().catch(() => {}));
   await page.waitForLoadState('domcontentloaded');
@@ -150,13 +152,13 @@ async function launchAndShoot(fixture, name, expectPanel) {
   await app.close().catch(() => {});
 }
 
-const fx = seedFixture();
-await launchAndShoot(fx, 'app-continuity-cards', true);
-const fxOff = seedFixture({ aiOff: true });
-await launchAndShoot(fxOff, 'app-continuity-ai-off', false);
-for (const f of [fx, fxOff]) {
-  fs.rmSync(f.userData, { recursive: true, force: true });
-  fs.rmSync(f.vaultDir, { recursive: true, force: true });
-  fs.rmSync(f.notesVaultDir, { recursive: true, force: true });
+try {
+  const fx = seedFixture();
+  await launchAndShoot(fx, 'app-continuity-cards', true);
+  const fxOff = seedFixture({ aiOff: true });
+  await launchAndShoot(fxOff, 'app-continuity-ai-off', false);
+  console.log('done → ' + OUT);
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
 }
-console.log('done → ' + OUT);

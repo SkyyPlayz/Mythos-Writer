@@ -6,13 +6,14 @@
 // mean-luminance sample confirms it numerically. With wp:'none' the view
 // looks as dark/flat as before the fix (no regression).
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { PNG } from 'pngjs';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky11209-liquid-neon-views');
 const VIEWPORT = { width: 1600, height: 1000 };
 const now = '2026-06-17T00:00:00.000Z';
@@ -107,13 +108,15 @@ function meanLuma(pngBuffer, box) {
   return n ? sum / n : NaN;
 }
 
+let app;
+
 async function run(wp, label) {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), `mythos-sky11209-${wp}-`));
-  const storyVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11209-story-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11209-notes-'));
+  const userData = makeTestTmp(`sky11209-${wp}`);
+  const storyVaultDir = makeTestTmp('sky11209-story');
+  const notesVaultDir = makeTestTmp('sky11209-notes');
   seedProject(userData, storyVaultDir, notesVaultDir, wp);
 
-  const app = await launchApp(userData);
+  app = await launchApp(userData);
   const page = await app.firstWindow();
   await page.setViewportSize(VIEWPORT);
   await page.waitForLoadState('domcontentloaded');
@@ -162,9 +165,9 @@ async function run(wp, label) {
   }
 
   await app.close();
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(storyVaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  removeRecorded(userData);
+  removeRecorded(storyVaultDir);
+  removeRecorded(notesVaultDir);
   return results;
 }
 
@@ -183,13 +186,18 @@ async function expect_(locator, name) {
   });
 }
 
-const bright = await run('custom', 'bright-wallpaper');
-console.log('bright-wallpaper results:', JSON.stringify(bright, null, 2));
+try {
+  const bright = await run('custom', 'bright-wallpaper');
+  console.log('bright-wallpaper results:', JSON.stringify(bright, null, 2));
 
-const none = await run('none', 'no-wallpaper');
-console.log('no-wallpaper results:', JSON.stringify(none, null, 2));
+  const none = await run('none', 'no-wallpaper');
+  console.log('no-wallpaper results:', JSON.stringify(none, null, 2));
 
-console.log('\n=== SUMMARY ===');
-console.log('Vault Graph  — bright wallpaper mean luma:', bright.vaultGraph?.meanLuma?.toFixed(1), '  none mean luma:', none.vaultGraph?.meanLuma?.toFixed(1));
-console.log('Manuscript   — bright wallpaper mean luma:', bright.manuscriptStructure?.meanLuma?.toFixed(1), '  none mean luma:', none.manuscriptStructure?.meanLuma?.toFixed(1));
-console.log('DONE', OUT);
+  console.log('\n=== SUMMARY ===');
+  console.log('Vault Graph  — bright wallpaper mean luma:', bright.vaultGraph?.meanLuma?.toFixed(1), '  none mean luma:', none.vaultGraph?.meanLuma?.toFixed(1));
+  console.log('Manuscript   — bright wallpaper mean luma:', bright.manuscriptStructure?.meanLuma?.toFixed(1), '  none mean luma:', none.manuscriptStructure?.meanLuma?.toFixed(1));
+  console.log('DONE', OUT);
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
+}

@@ -1,12 +1,13 @@
 // A1 app shell pairs at 1440×900 + 1280×720 (Neon Nebula int 50 / glass 20).
 // Mirrors capture-app2 launch/seed shape; shell-only shots.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('a1-pairs');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORTS = [
@@ -17,9 +18,9 @@ const now = new Date().toISOString();
 const storyId = 'a1-story-001';
 
 function seed() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a1-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-'));
+  const userData = makeTestTmp('a1-user');
+  const vaultDir = makeTestTmp('a1-vault');
+  const notesVaultDir = makeTestTmp('a1-notes');
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '', onboardingComplete: true, notesTabUpgradeToastShown: true,
     gettingStartedDismissed: true, vaultUpgradePromptShown: true,
@@ -61,38 +62,44 @@ function seed() {
   return { userData, vaultDir, notesVaultDir };
 }
 
-for (const { w, h } of VIEWPORTS) {
-  const fixture = seed();
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
-    timeout: 90000,
-  });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize({ width: w, height: h });
-  try { await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }); } catch { /* boot */ }
-  await page.waitForTimeout(2500);
-  for (const label of ['Not now', 'Dismiss', 'Later', 'Skip', 'Got it']) {
-    const b = page.locator(`button:has-text("${label}")`).first();
-    if (await b.isVisible({ timeout: 400 }).catch(() => false)) {
-      await b.click().catch(() => {});
-      await page.waitForTimeout(400);
+let app;
+try {
+  for (const { w, h } of VIEWPORTS) {
+    const fixture = seed();
+    app = await electron.launch({
+      args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
+      timeout: 90000,
+    });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize({ width: w, height: h });
+    try { await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }); } catch { /* boot */ }
+    await page.waitForTimeout(2500);
+    for (const label of ['Not now', 'Dismiss', 'Later', 'Skip', 'Got it']) {
+      const b = page.locator(`button:has-text("${label}")`).first();
+      if (await b.isVisible({ timeout: 400 }).catch(() => false)) {
+        await b.click().catch(() => {});
+        await page.waitForTimeout(400);
+      }
+    }
+    await page.waitForTimeout(600);
+    const tag = `${w}x${h}`;
+    await page.screenshot({ path: path.join(OUT, `app-shell-${tag}.png`) });
+    console.log(`  shot app-shell-${tag}`);
+
+    // Demo toggle removed from app (A1 residual Owner clarify) — shell shot only.
+    const demoGone = await page.locator('[data-testid="wc-demo-btn"]').count();
+    console.log(`  demo-btn count @ ${tag}: ${demoGone} (expect 0)`);
+
+    await app.close();
+    for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
+      removeRecorded(p);
     }
   }
-  await page.waitForTimeout(600);
-  const tag = `${w}x${h}`;
-  await page.screenshot({ path: path.join(OUT, `app-shell-${tag}.png`) });
-  console.log(`  shot app-shell-${tag}`);
 
-  // Demo toggle removed from app (A1 residual Owner clarify) — shell shot only.
-  const demoGone = await page.locator('[data-testid="wc-demo-btn"]').count();
-  console.log(`  demo-btn count @ ${tag}: ${demoGone} (expect 0)`);
-
-  await app.close();
-  for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
-    fs.rmSync(p, { recursive: true, force: true });
-  }
+  console.log('A1 app pairs DONE →', OUT);
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
 }
-
-console.log('A1 app pairs DONE →', OUT);
