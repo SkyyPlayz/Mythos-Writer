@@ -25,24 +25,33 @@ function refusal(fn: () => unknown, rel: string): void {
 }
 
 /**
- * null when this OS lets the test create a file symlink, else why it refused.
- * Only win32 may refuse (EPERM without Developer Mode or the create-symlink
- * privilege). Any other failure, and any refusal on POSIX, throws so the
- * file goes red instead of skipping.
+ * True only for the one refusal that means "this Windows host may not create
+ * symlinks": libuv maps ERROR_PRIVILEGE_NOT_HELD (1314, no Developer Mode and
+ * no SeCreateSymbolicLinkPrivilege) to EPERM on the symlink syscall. EACCES is
+ * an access-denied on the path (an ACL or a locked tmp dir), not a missing
+ * privilege, so it fails the file instead of skipping it. So does any error
+ * from another syscall (mkdtemp, write) and any error on POSIX.
  */
+function isSymlinkPrivilegeRefusal(err: unknown, platform: NodeJS.Platform): boolean {
+  const e = err as NodeJS.ErrnoException;
+  return platform === 'win32' && e?.code === 'EPERM' && e?.syscall === 'symlink';
+}
+
+/** null when this OS lets the test create a file symlink, else why it refused. */
 function fileSymlinkRefusal(): string | null {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'probe-1748-cap-'));
   try {
     const target = path.join(dir, 'target.md');
     fs.writeFileSync(target, 'x');
-    fs.symlinkSync(target, path.join(dir, 'link.md'), 'file');
-    return null;
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (process.platform === 'win32' && (code === 'EPERM' || code === 'EACCES')) {
-      return `${code}: Windows refused to create a file symlink (needs Developer Mode or SeCreateSymbolicLinkPrivilege)`;
+    try {
+      fs.symlinkSync(target, path.join(dir, 'link.md'), 'file');
+    } catch (err) {
+      if (isSymlinkPrivilegeRefusal(err, process.platform)) {
+        return 'EPERM: Windows refused to create a file symlink (needs Developer Mode or SeCreateSymbolicLinkPrivilege)';
+      }
+      throw err;
     }
-    throw err;
+    return null;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -72,7 +81,21 @@ afterEach(() => {
 describe('probe: regular save on every platform', () => {
   it('file symlinks are only skipped where win32 refuses to create them', () => {
     if (process.platform !== 'win32') expect(symlinkRefused).toBeNull();
-    if (symlinkRefused) expect(symlinkRefused).toMatch(/^(EPERM|EACCES): Windows refused/);
+    if (symlinkRefused) expect(symlinkRefused).toMatch(/^EPERM: Windows refused/);
+  });
+
+  it('skips only for EPERM from the symlink syscall on win32', () => {
+    const err = (code: string, syscall: string) => Object.assign(new Error(code), { code, syscall });
+    expect(isSymlinkPrivilegeRefusal(err('EPERM', 'symlink'), 'win32')).toBe(true);
+    // Access denied on the path is not a missing privilege: fail, do not skip.
+    expect(isSymlinkPrivilegeRefusal(err('EACCES', 'symlink'), 'win32')).toBe(false);
+    // A refusal from another step of the probe is not a symlink refusal.
+    expect(isSymlinkPrivilegeRefusal(err('EPERM', 'open'), 'win32')).toBe(false);
+    expect(isSymlinkPrivilegeRefusal(err('EACCES', 'open'), 'win32')).toBe(false);
+    // POSIX never skips.
+    expect(isSymlinkPrivilegeRefusal(err('EPERM', 'symlink'), 'linux')).toBe(false);
+    expect(isSymlinkPrivilegeRefusal(err('EPERM', 'symlink'), 'darwin')).toBe(false);
+    expect(isSymlinkPrivilegeRefusal(undefined, 'win32')).toBe(false);
   });
 
   it('normal save creates then overwrites a regular file', () => {
