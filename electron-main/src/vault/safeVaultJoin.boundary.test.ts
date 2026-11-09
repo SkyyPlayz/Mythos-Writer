@@ -8,7 +8,8 @@
 //   - isResolvedPathInsideRoot's `startsWith(r + sep)` weakened to `startsWith(r)`
 //   - the final lexical containment re-check removed
 // A control copy built from the unmutated source must pass every case, so the
-// harness itself cannot fake a kill.
+// harness itself cannot fake a kill. A kill is only a probe the mutant let
+// through: a non-denial throw (fixture or harness error) fails the test.
 // Never touches: safeVaultJoin.ts (tests only).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -44,75 +45,104 @@ afterEach(() => {
   fs.rmSync(base, { recursive: true, force: true });
 });
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Re-create an empty fixture: `root` inside a fresh `base`, no siblings. */
+function resetFixture(): void {
+  fs.rmSync(base, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
 }
 
-/** The call must throw exactly `message` — full `Path traversal denied:` prefix, nothing looser. */
-function expectDenied(call: () => unknown, message: string): void {
-  expect(call).toThrow(new RegExp(`^${escapeRe(message)}$`));
+/**
+ * What a probe saw. `denied` only for a genuine safeVaultJoin refusal: any
+ * other throw (fixture, harness, TypeError) is rethrown by `attempt`, so it
+ * fails the test and can never be counted as a mutant kill.
+ */
+type Outcome = { denied: true; message: string } | { denied: false; value: unknown };
+
+const DENIAL_PREFIX = 'Path traversal denied: ';
+
+function attempt(call: () => unknown): Outcome {
+  try {
+    return { denied: false, value: call() };
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith(DENIAL_PREFIX)) {
+      return { denied: true, message: err.message };
+    }
+    throw err;
+  }
 }
 
 const SIBLING = 'vault-evil';
 
 interface KillCase {
   name: string;
-  run: (impl: Impl) => void;
+  /** Builds this case's fixture. A throw here is a harness error, never a kill. */
+  setup?: () => void;
+  /** The one guarded call. The real module must deny it with `expected`. */
+  probe: (impl: Impl) => Outcome;
+  /** Full refusal message, `Path traversal denied:` prefix included. */
+  expected: () => string;
+  /** Extra real-module checks (side effects, the allowed half of a helper). */
+  after?: (impl: Impl) => void;
 }
 
 const CASES: Record<string, KillCase> = {
   siblingMissingRead: {
     name: 'read of a not-yet-existing path in sibling <root>-evil is denied by the lexical check',
-    run: ({ safeVaultJoin: join }) => {
-      const rel = `../${SIBLING}/x/y.md`;
-      expect(fs.existsSync(path.join(base, SIBLING))).toBe(false);
-      expectDenied(() => join(root, rel), `Path traversal denied: ${rel}`);
-    },
+    setup: () => expect(fs.existsSync(path.join(base, SIBLING))).toBe(false),
+    probe: ({ safeVaultJoin: join }) => attempt(() => join(root, `../${SIBLING}/x/y.md`)),
+    expected: () => `${DENIAL_PREFIX}../${SIBLING}/x/y.md`,
   },
   outsideMissingRead: {
     name: 'read of a not-yet-existing path outside the root is denied by the final re-check',
-    run: ({ safeVaultJoin: join }) => {
-      const rel = '../outside/deep/y.md';
-      expect(fs.existsSync(path.join(base, 'outside'))).toBe(false);
-      expectDenied(() => join(root, rel), `Path traversal denied: ${rel}`);
-    },
+    setup: () => expect(fs.existsSync(path.join(base, 'outside'))).toBe(false),
+    probe: ({ safeVaultJoin: join }) => attempt(() => join(root, '../outside/deep/y.md')),
+    expected: () => `${DENIAL_PREFIX}../outside/deep/y.md`,
   },
   siblingExistingWrite: {
     name: 'write into an existing sibling <root>-evil directory is denied',
-    run: ({ safeVaultJoin: join }) => {
-      fs.mkdirSync(path.join(base, SIBLING), { recursive: true });
-      const rel = `../${SIBLING}/new.md`;
-      expectDenied(
-        () => join(root, rel, { writeMode: true }),
-        `Path traversal denied: ${rel} (parent symlink escapes vault)`,
-      );
-      expect(fs.existsSync(path.join(base, SIBLING, 'new.md'))).toBe(false);
-    },
+    setup: () => fs.mkdirSync(path.join(base, SIBLING), { recursive: true }),
+    probe: ({ safeVaultJoin: join }) => attempt(() => join(root, `../${SIBLING}/new.md`, { writeMode: true })),
+    expected: () => `${DENIAL_PREFIX}../${SIBLING}/new.md (parent symlink escapes vault)`,
+    after: () => expect(fs.existsSync(path.join(base, SIBLING, 'new.md'))).toBe(false),
   },
   siblingExistingRead: {
     name: 'read of an existing file in sibling <root>-evil is denied',
-    run: ({ safeVaultJoin: join }) => {
+    setup: () => {
       fs.mkdirSync(path.join(base, SIBLING), { recursive: true });
       fs.writeFileSync(path.join(base, SIBLING, 'secret.md'), 'secret');
-      const rel = `../${SIBLING}/secret.md`;
-      expectDenied(() => join(root, rel), `Path traversal denied: ${rel} (symlink escape detected)`);
     },
+    probe: ({ safeVaultJoin: join }) => attempt(() => join(root, `../${SIBLING}/secret.md`)),
+    expected: () => `${DENIAL_PREFIX}../${SIBLING}/secret.md (symlink escape detected)`,
   },
   insideRootHelper: {
     name: 'isResolvedPathInsideRoot rejects the <root>-evil prefix sibling',
-    run: ({ isResolvedPathInsideRoot: inside }) => {
+    // The helper returns a boolean: `false` for the sibling is its refusal.
+    probe: ({ isResolvedPathInsideRoot: inside }) => {
+      const sibling = path.join(base, SIBLING, 'a.md');
+      return inside(root, sibling)
+        ? { denied: false, value: true }
+        : { denied: true, message: `outside root: ${sibling}` };
+    },
+    expected: () => `outside root: ${path.join(base, SIBLING, 'a.md')}`,
+    after: ({ isResolvedPathInsideRoot: inside }) => {
       expect(inside(root, path.join(base, SIBLING))).toBe(false);
-      expect(inside(root, path.join(base, `${SIBLING}`, 'a.md'))).toBe(false);
       expect(inside(root, root)).toBe(true);
       expect(inside(root, path.join(root, 'a.md'))).toBe(true);
     },
   },
 };
 
+/** Real and control runs: the probe must be the expected denial, in full. */
+function expectCaseDenied(c: KillCase, impl: Impl): void {
+  c.setup?.();
+  expect(c.probe(impl), c.name).toEqual({ denied: true, message: c.expected() });
+  c.after?.(impl);
+}
+
 describe('safeVaultJoin — <root>-evil sibling boundary (real module)', () => {
   const real: Impl = { safeVaultJoin, isResolvedPathInsideRoot };
   for (const c of Object.values(CASES)) {
-    it(c.name, () => c.run(real));
+    it(c.name, () => expectCaseDenied(c, real));
   }
 
   it('still allows nested reads and writes inside the root (no over-blocking)', () => {
@@ -185,23 +215,27 @@ const MUTANTS: Array<{ name: string; mutate: (src: string) => string; killedBy: 
 describe('safeVaultJoin — boundary mutants go red', () => {
   it('control: the unmutated source built by the harness passes every case', () => {
     const control = buildImpl((s) => s);
-    for (const c of Object.values(CASES)) c.run(control);
+    for (const c of Object.values(CASES)) {
+      // Fresh fixture per case, so the control does not depend on CASES order.
+      resetFixture();
+      expectCaseDenied(c, control);
+    }
   });
 
   for (const m of MUTANTS) {
     it(`mutant "${m.name}" is killed`, () => {
       const impl = buildImpl(m.mutate);
       for (const key of m.killedBy) {
-        let survived = true;
-        try {
-          CASES[key].run(impl);
-        } catch {
-          survived = false;
-        }
-        // Re-create the fixture between cases so one case's dirs do not leak into the next.
-        fs.rmSync(base, { recursive: true, force: true });
-        fs.mkdirSync(root, { recursive: true });
-        expect(survived, `mutant "${m.name}" survives case "${CASES[key].name}"`).toBe(false);
+        const c = CASES[key];
+        resetFixture();
+        // Setup and probe errors propagate (attempt rethrows non-denials), so
+        // only a mutant that let the guarded path through counts as a kill.
+        c.setup?.();
+        const outcome = c.probe(impl);
+        expect(
+          outcome.denied,
+          `mutant "${m.name}" survives case "${c.name}": ${JSON.stringify(outcome)}`,
+        ).toBe(false);
       }
     });
   }
