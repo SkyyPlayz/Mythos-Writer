@@ -9,7 +9,7 @@ Tools: a TypeScript import-graph scan (knip / ts-prune role), `depcheck` 1.x on 
 | Check | Found | Removed | Flagged |
 | --- | ---: | ---: | ---: |
 | 1. Unused functions | 5 | 4 | 1 |
-| 2. Unused files | 16 | 10 | 6 |
+| 2. Unused files | 16 | 11 (10 in the sweep, 1 in a follow-up) | 5 |
 | 3. Unused exports and imports | 1,397 exports with no cross-file named import (897 plain, 500 on a namespace, star, or dynamic import); 2 now-unused imports in `DesktopShell.tsx` | 2 imports (they only served the removed views). Exports were not stripped | 1,397 |
 | 4. Leftover flags and orphaned styles | 0 `ENABLE_` / `FEATURE_` / `FLAG_` constants. 6 stylesheets unreachable from any importer. Orphaned selectors under `.chapter-continuous-*` and `.book-outline-*` in `DesktopShell.css` | 5 stylesheets. Child selectors of the two legacy views. The two container classes stay, because the manuscript wrap still uses them | 1 stylesheet |
 | 5. Commented-out code blocks | 2 comment ranges that look like code | 0 | 2 (format examples, not disabled code) |
@@ -30,6 +30,7 @@ Each item names the replacement, or the proof that nothing references it.
 | `frontend/src/components/RefinementButtonGroup/index.tsx` and `index.css` | No importer outside the file. |
 | `frontend/src/PresetLibrary.ts` | Only imported by the four files above. Live preset data is `BUNDLED_PRESETS` in `frontend/src/presets.ts`. |
 | `frontend/src/components/BrainstormCard/IdeaContextMenu.css` | Not imported. `IdeaContextMenu.tsx` renders `components/ui/Menu` and does not use `.idea-context-menu`. |
+| `frontend/src/ChapterInterlude.tsx`, with `ChapterInterlude.css` and `ChapterInterlude.test.tsx` (follow-up) | No importer outside these three files (`rg -n ChapterInterlude frontend/src electron-main/src shared e2e`). The shell stopped mounting it when the legacy chapter views below were removed. The unit test only rendered this component, so it went with it. |
 
 ### Functions
 
@@ -38,7 +39,7 @@ Each item names the replacement, or the proof that nothing references it.
 | `scanStory` in `electron-main/src/mythosFormat/v2Manifest.ts` | Only the declaration existed. Vault scans go through `scanMythosStoryVault` in the same file. |
 | `ChapterContinuousView`, `BookOutlineView`, and `SceneEditorBand` in `frontend/src/DesktopShell.tsx` | No JSX call site and no import. `DesktopShell` renders `story/ManuscriptView.tsx` for book, part, chapter, and scene depth (SKY-9404). The `scrollBehavior` and `ChapterInterlude` imports that only those views used were removed with them. |
 
-`ChapterInterlude.tsx` stays. Its unit tests still render it. It is no longer mounted from the shell; that is flagged below, not deleted.
+The sweep first kept `ChapterInterlude.tsx` as flagged, because its unit tests still rendered it. A follow-up removed it (Files table above).
 
 ### Styles kept on purpose
 
@@ -92,7 +93,6 @@ The first eight match the architecture notes. The last two are the same upward i
 | `electron-main/src/mythosFormat/index.ts` | Barrel marked "public surface". Nothing imports the barrel; callers import the modules directly. Uncertain API facade. |
 | `electron-main/src/vault/manifest/index.ts` | Same. `vault/manifest/types.ts` says new code should import via the module. |
 | `electron-main/src/main.ts` `buildTE` | Declared and never called. Main entry points are flag-only. |
-| `frontend/src/ChapterInterlude.tsx` | Production shell no longer renders it. `ChapterInterlude.test.tsx` does. Tests are not removed. |
 
 ### IPC, preload, timeline views, installer
 
@@ -165,7 +165,8 @@ Same-name modules that are both still imported (not clones large enough for the 
 
 - `frontend/src/ContinuityPanel.tsx` and `frontend/src/components/ContinuityPanel/ContinuityPanel.tsx` (the latter is imported as `ContinuityPeekPanel`).
 - `frontend/src/SettingsPanel.tsx` and `frontend/src/components/SettingsPanel/index.tsx` (the index re-exports the flat module).
-- `shared/types/suggestion.ts` and `electron-main/src/shared/types/suggestion.ts` (both imported: the root package from `ipc.ts`, the main-process copy from `db.ts`, `budget.ts`, and `suggestionApply.ts`).
+
+The `shared/types/suggestion.ts` pair is gone: #1733 deleted the root copy. `electron-main/src/shared/types/suggestion.ts` is the only one left, imported by `db.ts`, `budget.ts`, and `ipc.ts`.
 
 One clone pair disappeared with this sweep: `GenrePresetPicker/index.tsx` <-> `PresetSelector/index.tsx`.
 
