@@ -117,7 +117,12 @@
     ],
     "artifactName": "${productName}-${version}.${ext}",
     "icon": "build/icon.png",
-    "category": "Office"
+    "category": "Office",
+    "desktop": {
+      "entry": {
+        "Name": "Mythos Writer"
+      }
+    }
   },
   "publish": {
     "provider": "github",
