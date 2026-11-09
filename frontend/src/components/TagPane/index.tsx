@@ -263,10 +263,9 @@ export default function TagPane({ onTagFilter, activeTag }: TagPaneProps) {
     const newTag = parts.join('/');
     try {
       const result = await window.api.notesTagRename(renamingFullName, newTag);
-      if (result.skipped && result.skipped.length > 0) {
-        setRenameError(result.skipped.join('\n'));
-        return;
-      }
+      // Some notes can be skipped while the rest are renamed. Show the skipped
+      // list as the pane notice (the reload keeps it) and still reload the tags.
+      setSkipNotice(result.skipped && result.skipped.length > 0 ? result.skipped.join('\n') : null);
       if (activeTag === renamingFullName) onTagFilter(newTag);
       setRenamingFullName(null);
       await load();
