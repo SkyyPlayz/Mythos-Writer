@@ -3,21 +3,22 @@
 // capture (Characters/Locations/Items & Systems) so it's directly comparable.
 // Harness rules: see lib.mjs header.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky11049-suggested-card-selection');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORT = { width: 1200, height: 900 };
 const STORY_TITLE = 'The Last City of Veynn';
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11049-cap-user-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11049-cap-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11049-cap-notes-'));
+  const userData = makeTestTmp('11049-cap-user');
+  const vaultDir = makeTestTmp('11049-cap-vault');
+  const notesVaultDir = makeTestTmp('11049-cap-notes');
 
   const agentCfg = (extra = {}) => ({
     enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
@@ -47,50 +48,56 @@ function seedFixture() {
 }
 
 function cleanup(fixture) {
-  fs.rmSync(fixture.userData, { recursive: true, force: true });
-  fs.rmSync(fixture.vaultDir, { recursive: true, force: true });
-  fs.rmSync(fixture.notesVaultDir, { recursive: true, force: true });
+  removeRecorded(fixture.userData);
+  removeRecorded(fixture.vaultDir);
+  removeRecorded(fixture.notesVaultDir);
 }
 
 async function run() {
-  const fixture = seedFixture();
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize(VIEWPORT);
-  await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(1500);
+  let app;
+  try {
+    const fixture = seedFixture();
+    app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize(VIEWPORT);
+    await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(1500);
 
-  // Instant-create (SKY-9021/9896): File → New story, no prompt.
-  const before = await page.locator('.nav-story-row').count();
-  await page.locator('.wc-menu', { hasText: 'File' }).click();
-  await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
-  await page.locator('.nav-story-row').nth(before).waitFor({ state: 'visible', timeout: 8000 });
-  await page.locator('.nav-story-title').nth(before).click();
-  await page.waitForTimeout(500);
+    // Instant-create (SKY-9021/9896): File → New story, no prompt.
+    const before = await page.locator('.nav-story-row').count();
+    await page.locator('.wc-menu', { hasText: 'File' }).click();
+    await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await page.locator('.nav-story-row').nth(before).waitFor({ state: 'visible', timeout: 8000 });
+    await page.locator('.nav-story-title').nth(before).click();
+    await page.waitForTimeout(500);
 
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
-  await page.locator('.sc-columns').waitFor({ state: 'visible', timeout: 10000 });
-  await page.waitForTimeout(700);
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+    await page.locator('.sc-columns').waitFor({ state: 'visible', timeout: 10000 });
+    await page.waitForTimeout(700);
 
-  const card = page.locator('.sc-suggest').getByRole('button', { name: /Liora Ashen/i });
-  await card.waitFor({ state: 'visible', timeout: 8000 });
+    const card = page.locator('.sc-suggest').getByRole('button', { name: /Liora Ashen/i });
+    await card.waitFor({ state: 'visible', timeout: 8000 });
 
-  await page.screenshot({ path: `${OUT}/1-before-click-unselected.png` });
-  console.log('  shot 1-before-click-unselected');
+    await page.screenshot({ path: `${OUT}/1-before-click-unselected.png` });
+    console.log('  shot 1-before-click-unselected');
 
-  await card.click();
-  // Move the mouse off the card so the shot shows the resting selected state,
-  // not the hover+selected combo (both are now visually identical, SKY-11049).
-  await page.mouse.move(600, 500);
-  await page.waitForTimeout(300);
+    await card.click();
+    // Move the mouse off the card so the shot shows the resting selected state,
+    // not the hover+selected combo (both are now visually identical, SKY-11049).
+    await page.mouse.move(600, 500);
+    await page.waitForTimeout(300);
 
-  await page.screenshot({ path: `${OUT}/2-after-click-selected.png` });
-  console.log('  shot 2-after-click-selected');
+    await page.screenshot({ path: `${OUT}/2-after-click-selected.png` });
+    console.log('  shot 2-after-click-selected');
 
-  await app.close().catch(() => {});
-  cleanup(fixture);
+    await app.close().catch(() => {});
+    cleanup(fixture);
+  } finally {
+    await app?.close().catch(() => {});
+    cleanupTestTmp();
+  }
 }
 
 await run();

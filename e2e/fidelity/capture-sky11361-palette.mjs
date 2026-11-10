@@ -5,12 +5,13 @@
 // (Story Writer), Notes. Run once against baseline tokens.css (LABEL=before)
 // and once against the fixed tokens.css (LABEL=after) — see run-both.sh.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const LABEL = process.env.CAPTURE_LABEL || 'run';
 const OUT = outDir('capture-sky11361-palette');
 const VIEWPORT = { width: 1440, height: 900 };
@@ -82,42 +83,45 @@ async function shot(page, name) {
   console.log('  shot', name);
 }
 
-const userData = fs.mkdtempSync(path.join(os.tmpdir(), `mythos-sky11361-${LABEL}-`));
-const storyVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11361-story-'));
-const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11361-notes-'));
-seedProject(userData, storyVaultDir, notesVaultDir);
+let app;
+try {
+  const userData = makeTestTmp(`sky11361-${String(LABEL).toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 26)}-user`);
+  const storyVaultDir = makeTestTmp('sky11361-story');
+  const notesVaultDir = makeTestTmp('sky11361-notes');
+  seedProject(userData, storyVaultDir, notesVaultDir);
 
-const app = await launchApp(userData);
-const page = await app.firstWindow();
-await page.setViewportSize(VIEWPORT);
-await page.waitForLoadState('domcontentloaded');
-await page.locator('nav[aria-label="Main navigation"]').waitFor({ state: 'visible', timeout: 12000 });
-await page.waitForTimeout(1500);
+  app = await launchApp(userData);
+  const page = await app.firstWindow();
+  await page.setViewportSize(VIEWPORT);
+  await page.waitForLoadState('domcontentloaded');
+  await page.locator('nav[aria-label="Main navigation"]').waitFor({ state: 'visible', timeout: 12000 });
+  await page.waitForTimeout(1500);
 
-// Vault Graph
-await clickRail(page, 'Vault Graph');
-await page.waitForSelector('#app-tabpanel-vault-graph', { timeout: 8000 });
-await shot(page, '01-vault-graph');
+  // Vault Graph
+  await clickRail(page, 'Vault Graph');
+  await page.waitForSelector('#app-tabpanel-vault-graph', { timeout: 8000 });
+  await shot(page, '01-vault-graph');
 
-// Notes Editor
-await clickRail(page, 'Notes Editor');
-await page.waitForTimeout(600);
-await shot(page, '02-notes');
+  // Notes Editor
+  await clickRail(page, 'Notes Editor');
+  await page.waitForTimeout(600);
+  await shot(page, '02-notes');
 
-// Brainstorm
-await clickRail(page, 'Brainstorm');
-await page.waitForTimeout(600);
-await shot(page, '03-brainstorm');
+  // Brainstorm
+  await clickRail(page, 'Brainstorm');
+  await page.waitForTimeout(600);
+  await shot(page, '03-brainstorm');
 
-// Story Writer (Editor)
-await clickRail(page, 'Story Writer');
-const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');
-if (await storyPick.count()) await storyPick.click();
-await page.waitForSelector('#app-tabpanel-story', { timeout: 8000 });
-await shot(page, '04-editor');
+  // Story Writer (Editor)
+  await clickRail(page, 'Story Writer');
+  const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');
+  if (await storyPick.count()) await storyPick.click();
+  await page.waitForSelector('#app-tabpanel-story', { timeout: 8000 });
+  await shot(page, '04-editor');
 
-await app.close();
-fs.rmSync(userData, { recursive: true, force: true });
-fs.rmSync(storyVaultDir, { recursive: true, force: true });
-fs.rmSync(notesVaultDir, { recursive: true, force: true });
-console.log('DONE', OUT);
+  await app.close();
+  console.log('DONE', OUT);
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
+}
