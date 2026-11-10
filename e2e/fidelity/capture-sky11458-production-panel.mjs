@@ -8,14 +8,15 @@
 // capture-sky11221-beta-reader-consolidation.mjs; the Production Team path is
 // the one e2e/sky-11412-production-roles-e2e.spec.ts drives.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp } from '../../electron-main/test-utils/tmpdir.mjs';
 
 process.env.MYTHOS_DISABLE_BOOT_MIGRATION = '1';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky11458-production-panel');
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -39,8 +40,8 @@ const MOCK_REVIEW = [
 ].join('\n');
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11458-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11458-vault-'));
+  const userData = makeTestTmp('sky11458-user');
+  const vaultDir = makeTestTmp('sky11458-vault');
   const now = new Date().toISOString();
 
   const manifest = {
@@ -132,63 +133,68 @@ async function installIpcMocks(app) {
 }
 
 async function main() {
-  const { userData, vaultDir } = seedFixture();
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize(VIEWPORT);
-  await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-  await installIpcMocks(app);
+  let app;
+  try {
+    const { userData, vaultDir } = seedFixture();
+    app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize(VIEWPORT);
+    await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    await installIpcMocks(app);
 
-  // ── Navigate: rail → Story Writer → editor subview → scene row ──────────
-  const nav = page.locator('nav[aria-label="Main navigation"]');
-  const storyBtn = nav.locator('button[aria-label="Story Writer"]');
-  if ((await storyBtn.getAttribute('aria-current')) !== 'page') await storyBtn.click();
-  const backdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
-  if (await backdrop.count()) {
-    await backdrop.click({ position: { x: 5, y: 5 }, force: true });
-    await backdrop.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    // ── Navigate: rail → Story Writer → editor subview → scene row ──────────
+    const nav = page.locator('nav[aria-label="Main navigation"]');
+    const storyBtn = nav.locator('button[aria-label="Story Writer"]');
+    if ((await storyBtn.getAttribute('aria-current')) !== 'page') await storyBtn.click();
+    const backdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
+    if (await backdrop.count()) {
+      await backdrop.click({ position: { x: 5, y: 5 }, force: true });
+      await backdrop.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    }
+    await page.locator('[data-testid="story-subview-editor"]').click().catch(() => {});
+    await page.locator('.nav-story-row').first().waitFor({ state: 'visible', timeout: 20000 });
+    const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
+    await sceneRow.waitFor({ state: 'visible', timeout: 8000 });
+    await sceneRow.click();
+
+    // ── Agent hub → Beta Reader → Production Team tab ────────────────────────
+    await page.locator('[data-testid="agent-hub-panel"]').waitFor({ state: 'visible', timeout: 8000 });
+    await page.locator('[data-testid="ahp-agent-row-beta-reader"]').click();
+    const overlay = page.locator('.beta-reader-overlay');
+    await overlay.waitFor({ state: 'visible', timeout: 8000 });
+    await overlay.getByRole('tab', { name: 'Production Team' }).click();
+    const panel = page.locator('[data-testid="production-review-panel"]');
+    await panel.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Proof the wrapper left the Reports grid: the panel spans the page, not 220px.
+    const panelWidth = await panel.evaluate((el) => el.getBoundingClientRect().width);
+    if (panelWidth < 600) throw new Error(`Production panel is only ${panelWidth}px wide — still in the Reports grid column?`);
+
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(OUT, '01-idle-alpha-reader.png') });
+
+    // ── Run (mocked) → result card ───────────────────────────────────────────
+    await overlay.locator('[data-testid="production-review-run"]').click();
+    await overlay.locator('[data-testid="production-review-result"]').waitFor({ state: 'visible', timeout: 8000 });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(OUT, '02-after-run-result.png') });
+
+    // ── OFF role selected ────────────────────────────────────────────────────
+    await overlay.getByLabel('Production role').selectOption('lineEditor');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(OUT, '03-off-role-line-editor.png') });
+
+    console.log(`Captured 3 shots to ${OUT} (panel width ${Math.round(panelWidth)}px)`);
+
+    await app.close().catch(() => {});
+    cleanupTestTmp();
+  } finally {
+    await app?.close().catch(() => {});
+    cleanupTestTmp();
   }
-  await page.locator('[data-testid="story-subview-editor"]').click().catch(() => {});
-  await page.locator('.nav-story-row').first().waitFor({ state: 'visible', timeout: 20000 });
-  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
-  await sceneRow.waitFor({ state: 'visible', timeout: 8000 });
-  await sceneRow.click();
-
-  // ── Agent hub → Beta Reader → Production Team tab ────────────────────────
-  await page.locator('[data-testid="agent-hub-panel"]').waitFor({ state: 'visible', timeout: 8000 });
-  await page.locator('[data-testid="ahp-agent-row-beta-reader"]').click();
-  const overlay = page.locator('.beta-reader-overlay');
-  await overlay.waitFor({ state: 'visible', timeout: 8000 });
-  await overlay.getByRole('tab', { name: 'Production Team' }).click();
-  const panel = page.locator('[data-testid="production-review-panel"]');
-  await panel.waitFor({ state: 'visible', timeout: 5000 });
-
-  // Proof the wrapper left the Reports grid: the panel spans the page, not 220px.
-  const panelWidth = await panel.evaluate((el) => el.getBoundingClientRect().width);
-  if (panelWidth < 600) throw new Error(`Production panel is only ${panelWidth}px wide — still in the Reports grid column?`);
-
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: path.join(OUT, '01-idle-alpha-reader.png') });
-
-  // ── Run (mocked) → result card ───────────────────────────────────────────
-  await overlay.locator('[data-testid="production-review-run"]').click();
-  await overlay.locator('[data-testid="production-review-result"]').waitFor({ state: 'visible', timeout: 8000 });
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: path.join(OUT, '02-after-run-result.png') });
-
-  // ── OFF role selected ────────────────────────────────────────────────────
-  await overlay.getByLabel('Production role').selectOption('lineEditor');
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: path.join(OUT, '03-off-role-line-editor.png') });
-
-  console.log(`Captured 3 shots to ${OUT} (panel width ${Math.round(panelWidth)}px)`);
-
-  await app.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

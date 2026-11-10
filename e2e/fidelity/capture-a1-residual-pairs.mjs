@@ -1,12 +1,13 @@
 // A1 residual VERIFY pairs @ 1440×900 + 1280×720 (Neon Nebula 50 / glass 20).
 // Shots: Welcome overlay · rail without brand · shell with Demo gone.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 
 const OUT_ARG = process.argv.find((a) => a.startsWith('--out='));
 const OUT = OUT_ARG
@@ -22,9 +23,9 @@ const now = new Date().toISOString();
 const storyId = 'a1r-story-001';
 
 function seed() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a1r-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-'));
+  const userData = makeTestTmp('a1r-user');
+  const vaultDir = makeTestTmp('a1r-vault');
+  const notesVaultDir = makeTestTmp('a1r-notes');
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '', onboardingComplete: true, notesTabUpgradeToastShown: true,
     gettingStartedDismissed: true, vaultUpgradePromptShown: true,
@@ -76,62 +77,68 @@ async function dismissToasts(page) {
   }
 }
 
-for (const { w, h } of VIEWPORTS) {
-  const fixture = seed();
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
-    timeout: 90000,
-  });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize({ width: w, height: h });
-  try { await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }); } catch { /* boot */ }
-  await page.waitForTimeout(2200);
-  await dismissToasts(page);
-  await page.waitForTimeout(400);
+let app;
+try {
+  for (const { w, h } of VIEWPORTS) {
+    const fixture = seed();
+    app = await electron.launch({
+      args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
+      timeout: 90000,
+    });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize({ width: w, height: h });
+    try { await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }); } catch { /* boot */ }
+    await page.waitForTimeout(2200);
+    await dismissToasts(page);
+    await page.waitForTimeout(400);
 
-  const tag = `${w}x${h}`;
+    const tag = `${w}x${h}`;
 
-  // VERIFY: Demo toggle gone
-  const demoCount = await page.locator('[data-testid="wc-demo-btn"]').count();
-  const tourCount = await page.locator('[data-testid="tour-modal"]').count();
-  console.log(`  demo-btn count @ ${tag}: ${demoCount}; tour-modal: ${tourCount}`);
-  if (demoCount !== 0 || tourCount !== 0) {
-    throw new Error(`Demo not removed: demo=${demoCount} tour=${tourCount}`);
-  }
-
-  // 1) Welcome overlay
-  const welcomeBtn = page.locator('[data-testid="wc-project-trigger"]').first();
-  if (await welcomeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await welcomeBtn.click().catch(() => {});
-    await page.waitForTimeout(600);
-    await page.locator('[data-testid="welcome-overlay"]').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-    await page.screenshot({ path: path.join(OUT, `welcome-overlay-${tag}.png`) });
-    console.log(`  shot welcome-overlay-${tag}`);
-    const skip = page.locator('[data-testid="welcome-skip"]').first();
-    if (await skip.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await skip.click().catch(() => {});
-      await page.waitForTimeout(500);
+    // VERIFY: Demo toggle gone
+    const demoCount = await page.locator('[data-testid="wc-demo-btn"]').count();
+    const tourCount = await page.locator('[data-testid="tour-modal"]').count();
+    console.log(`  demo-btn count @ ${tag}: ${demoCount}; tour-modal: ${tourCount}`);
+    if (demoCount !== 0 || tourCount !== 0) {
+      throw new Error(`Demo not removed: demo=${demoCount} tour=${tourCount}`);
     }
-  } else {
-    console.log(`  MISS welcome trigger @ ${tag}`);
+
+    // 1) Welcome overlay
+    const welcomeBtn = page.locator('[data-testid="wc-project-trigger"]').first();
+    if (await welcomeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await welcomeBtn.click().catch(() => {});
+      await page.waitForTimeout(600);
+      await page.locator('[data-testid="welcome-overlay"]').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+      await page.screenshot({ path: path.join(OUT, `welcome-overlay-${tag}.png`) });
+      console.log(`  shot welcome-overlay-${tag}`);
+      const skip = page.locator('[data-testid="welcome-skip"]').first();
+      if (await skip.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await skip.click().catch(() => {});
+        await page.waitForTimeout(500);
+      }
+    } else {
+      console.log(`  MISS welcome trigger @ ${tag}`);
+    }
+
+    // 2) Rail without brand + shell with Demo gone
+    await page.screenshot({ path: path.join(OUT, `rail-no-brand-${tag}.png`) });
+    console.log(`  shot rail-no-brand-${tag}`);
+    const brandCount = await page.locator('.nav-rail__brand').count();
+    console.log(`  rail brand count @ ${tag}: ${brandCount}`);
+    if (brandCount !== 0) throw new Error(`Rail brand still present: ${brandCount}`);
+
+    await page.screenshot({ path: path.join(OUT, `shell-demo-gone-${tag}.png`) });
+    console.log(`  shot shell-demo-gone-${tag}`);
+
+    await app.close();
+    for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
+      removeRecorded(p);
+    }
   }
 
-  // 2) Rail without brand + shell with Demo gone
-  await page.screenshot({ path: path.join(OUT, `rail-no-brand-${tag}.png`) });
-  console.log(`  shot rail-no-brand-${tag}`);
-  const brandCount = await page.locator('.nav-rail__brand').count();
-  console.log(`  rail brand count @ ${tag}: ${brandCount}`);
-  if (brandCount !== 0) throw new Error(`Rail brand still present: ${brandCount}`);
-
-  await page.screenshot({ path: path.join(OUT, `shell-demo-gone-${tag}.png`) });
-  console.log(`  shot shell-demo-gone-${tag}`);
-
-  await app.close();
-  for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
-    fs.rmSync(p, { recursive: true, force: true });
-  }
+  console.log('A1 residual VERIFY pairs DONE →', OUT);
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
 }
-
-console.log('A1 residual VERIFY pairs DONE →', OUT);

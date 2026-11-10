@@ -9,12 +9,13 @@
 // AI-off pass below is kept as the regression baseline; the added AI-on pass
 // is what actually exercises the AI-on rails (R11's mandated side-by-side).
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-app2');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORT = { width: 1920, height: 1080 };
@@ -44,14 +45,14 @@ const chapters = [
 ];
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a2-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
+  const userData = makeTestTmp('a2-user');
+  const vaultDir = makeTestTmp('a2-vault');
   // SKY-9028: the notes fixture needs its own root, declared in vault-settings.
   // Without `notesVaultRoot` the app falls back to a default under userData and
   // seeds it fresh — the Notes captures then show the SKY-15 seed layout instead
   // of the fixture below (the "audit's own test vault never appeared" failure
   // in PLAN.md GAP P0 #1).
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-'));
+  const notesVaultDir = makeTestTmp('a2-notes');
   return { userData, vaultDir, notesVaultDir };
 }
 
@@ -146,16 +147,18 @@ function writeFixture({ userData, vaultDir, notesVaultDir }, aiEnabled) {
 }
 
 function cleanupFixture({ userData, vaultDir, notesVaultDir }) {
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  removeRecorded(userData);
+  removeRecorded(vaultDir);
+  removeRecorded(notesVaultDir);
 }
+
+let app;
 
 async function run(aiEnabled, prefix) {
   const fixture = seedFixture();
   writeFixture(fixture, aiEnabled);
 
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
+  app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
   const page = await app.firstWindow();
   page.on('dialog', d => void d.accept().catch(() => {}));
   await page.waitForLoadState('domcontentloaded');
@@ -321,6 +324,11 @@ async function run(aiEnabled, prefix) {
 // Keep the existing AI-off captures (unprefixed filenames — the regression
 // baseline everything else compares against), and add the AI-on pass R11
 // requires for the side-by-side (SKY-10353). Add, don't replace.
-await run(false, '');
-await run(true, 'ai-on-');
-console.log('DONE');
+try {
+  await run(false, '');
+  await run(true, 'ai-on-');
+  console.log('DONE');
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
+}
