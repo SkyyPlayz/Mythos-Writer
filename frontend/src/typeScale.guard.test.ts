@@ -1292,6 +1292,7 @@ describe('#1773 type-scale guard — scanner', () => {
   });
 
   it('follows a style object or canvas context through aliases and assignments, but not plain data', () => {
+    // Font-target names are file-wide, so every case binds its own name and can only pass through its own path.
     expect(tsx(`
       class Ruler {
         #measure!: CanvasRenderingContext2D;
@@ -1306,9 +1307,9 @@ describe('#1773 type-scale guard — scanner', () => {
         constructor(c: HTMLCanvasElement) { this.#m = c.getContext('2d')!; }
       }
       function late(canvas: HTMLCanvasElement, doc: Doc) {
-        let m;
-        m = canvas.getContext('2d');
-        m.font = '8px serif';
+        let r;
+        r = canvas.getContext('2d');
+        r.font = '8px serif';
         let d;
         d = doc.settings;
         d.font = y;
