@@ -149,14 +149,22 @@ describe('resolveVisibleTimelineMode', () => {
 //
 // The e2e bundle guard (timelineHiddenModesPatch.ts) only looks for two exact
 // names, and the storage test above only tries one key. This pins the
-// stronger property instead: computing visibility reads no storage, URL or
-// env state at all — so a switch under any new name fails here, and nothing
-// depends on the minified bundle text `HIDDEN_TIMELINE_MODES.has(`.
+// stronger property instead: computing visibility touches no storage, URL,
+// cookie, window.name or env state at all — reads, `in` presence checks and
+// key enumeration — so a switch under any key name on those channels fails
+// here, and nothing depends on the minified bundle text
+// `HIDDEN_TIMELINE_MODES.has(`.
+//
+// Not covered (no generic trap exists for them): an ad-hoc flag on the global
+// object (`globalThis.__x`), and `in` / enumeration on `import.meta.env`
+// (vitest forwards only property reads on it to process.env, which are caught).
 
-describe('timeline visibility has no runtime unhide switch (any name)', () => {
-  it('loading timelineAeon and resolving every mode reads no storage, URL params or env', async () => {
+describe('timeline visibility has no runtime unhide switch in storage, URL, cookie, window.name or env (any key name)', () => {
+  it('loading timelineAeon and resolving every mode reads, probes and enumerates no storage, URL, cookie, window.name or env', async () => {
     // Record ANY access on whatever storage objects are installed (setupTests
-    // swaps localStorage for a plain mock, so prototype spies alone miss it).
+    // swaps localStorage for a plain mock, so prototype spies alone miss it):
+    // reads (`get`), presence checks (`'k' in localStorage` → `has`) and key
+    // enumeration (`Object.keys` / `for…in` → `ownKeys` + descriptors).
     const storageReads: string[] = [];
     const recording = (label: string, target: Storage): Storage =>
       new Proxy(target, {
@@ -164,6 +172,18 @@ describe('timeline visibility has no runtime unhide switch (any name)', () => {
           storageReads.push(`${label}.${String(prop)}`);
           const value = Reflect.get(t, prop, t) as unknown;
           return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(t) : value;
+        },
+        has(t, prop) {
+          storageReads.push(`${String(prop)} in ${label}`);
+          return Reflect.has(t, prop);
+        },
+        ownKeys(t) {
+          storageReads.push(`ownKeys(${label})`);
+          return Reflect.ownKeys(t);
+        },
+        getOwnPropertyDescriptor(t, prop) {
+          storageReads.push(`descriptor(${label}.${String(prop)})`);
+          return Reflect.getOwnPropertyDescriptor(t, prop);
         },
       });
     const realLocal = window.localStorage;
@@ -183,24 +203,70 @@ describe('timeline visibility has no runtime unhide switch (any name)', () => {
       vi.spyOn(URLSearchParams.prototype, 'get'),
       vi.spyOn(URLSearchParams.prototype, 'has'),
       vi.spyOn(URLSearchParams.prototype, 'getAll'),
+      // Param iteration (`Object.fromEntries(params)`, `for…of`, `forEach`).
+      vi.spyOn(URLSearchParams.prototype, 'entries'),
+      vi.spyOn(URLSearchParams.prototype, 'keys'),
+      vi.spyOn(URLSearchParams.prototype, 'values'),
+      vi.spyOn(URLSearchParams.prototype, 'forEach'),
+      vi.spyOn(URLSearchParams.prototype, Symbol.iterator),
     ];
+    // Direct page-state reads that bypass URLSearchParams. jsdom's Location
+    // accessors are unforgeable (non-configurable) on the instance, but each
+    // one forwards to its impl object's prototype getter, so spy there: that
+    // catches `location.search.includes(…)`, `location.hash`, `String(location)`
+    // and every other location read. document.cookie and window.name are
+    // plain configurable accessors.
+    const readSpies: { label: string; spy: { mock: { calls: unknown[] }; mockClear(): void; mockRestore(): void } }[] = [];
     const realEnv = process.env;
     try {
+      const implKey = Object.getOwnPropertySymbols(window.location).find((sym) => sym.description === 'impl');
+      expect(implKey, 'jsdom Location impl symbol found').toBeDefined();
+      const locationImplProto = Object.getPrototypeOf(
+        (window.location as unknown as Record<symbol, object>)[implKey as symbol],
+      ) as object;
+      for (const prop of ['href', 'origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'] as const) {
+        readSpies.push({ label: `location.${prop}`, spy: vi.spyOn(locationImplProto as Record<typeof prop, string>, prop, 'get') });
+      }
+      readSpies.push({ label: 'document.cookie', spy: vi.spyOn(Document.prototype, 'cookie', 'get') });
+      readSpies.push({ label: 'window.name', spy: vi.spyOn(window, 'name', 'get') });
+      // Self-check: each spy really sees a read through the public API.
+      void [window.location.search, window.location.hash, String(window.location), document.cookie, window.name];
+      for (const label of ['location.search', 'location.hash', 'location.href', 'document.cookie', 'window.name']) {
+        expect(readSpies.find((entry) => entry.label === label)?.spy.mock.calls.length, `${label} spy wired`).toBeGreaterThan(0);
+      }
+      for (const { spy } of readSpies) spy.mockClear();
+
       swap('localStorage', recording('localStorage', realLocal));
       swap('sessionStorage', recording('sessionStorage', realSession));
       expect(globalThis.localStorage, 'recording proxy installed').not.toBe(realLocal);
       storageReads.length = 0; // only count reads made by timelineAeon below
 
-      // Env reads are recorded from BEFORE the fresh import, so a switch read
-      // at module load is caught too. Only reads made from app source count
+      // Env access is recorded from BEFORE the fresh import, so a switch read
+      // at module load is caught too. Only access from app source counts
       // (a non-test frame under frontend/src): the test runner's own module
-      // loader may touch process.env while importing.
-      const envReads: PropertyKey[] = [];
+      // loader may touch process.env while importing. vitest's import.meta.env
+      // forwards property reads to process.env, so those land here as well.
+      const envReads: string[] = [];
       const fromAppSource = /[\\/]frontend[\\/]src[\\/](?![^\s:]*\.test\.)[^\s:?]*\.tsx?(?:\?[^\s:]*)?:\d+/;
+      const recordEnv = (access: string): void => {
+        if (fromAppSource.test(new Error().stack ?? '')) envReads.push(access);
+      };
       process.env = new Proxy(realEnv, {
         get(target, prop, receiver) {
-          if (fromAppSource.test(new Error().stack ?? '')) envReads.push(prop);
+          recordEnv(String(prop));
           return Reflect.get(target, prop, receiver);
+        },
+        has(target, prop) {
+          recordEnv(`${String(prop)} in process.env`);
+          return Reflect.has(target, prop);
+        },
+        ownKeys(target) {
+          recordEnv('ownKeys(process.env)');
+          return Reflect.ownKeys(target);
+        },
+        getOwnPropertyDescriptor(target, prop) {
+          recordEnv(`descriptor(process.env.${String(prop)})`);
+          return Reflect.getOwnPropertyDescriptor(target, prop);
         },
       });
 
@@ -218,6 +284,10 @@ describe('timeline visibility has no runtime unhide switch (any name)', () => {
       expect(storageReads, 'storage read while resolving visibility').toEqual([]);
       expect(envReads, 'process.env read while resolving visibility').toEqual([]);
       for (const spy of urlSpies) expect(spy).not.toHaveBeenCalled();
+      const pageReads = Object.fromEntries(
+        readSpies.filter(({ spy }) => spy.mock.calls.length > 0).map(({ label, spy }) => [label, spy.mock.calls.length]),
+      );
+      expect(pageReads, 'location / document.cookie / window.name read (label → count)').toEqual({});
       // The answers are the shipped constant's, not a runtime override's.
       expect(visibility).toEqual(fresh.VALID_TIMELINE_MODES.map((mode) => !fresh.HIDDEN_TIMELINE_MODES.has(mode)));
       for (const value of resolved) expect(fresh.HIDDEN_TIMELINE_MODES.has(value)).toBe(false);
@@ -226,6 +296,7 @@ describe('timeline visibility has no runtime unhide switch (any name)', () => {
       swap('localStorage', realLocal);
       swap('sessionStorage', realSession);
       for (const spy of urlSpies) spy.mockRestore();
+      for (const { spy } of readSpies) spy.mockRestore();
       vi.resetModules();
     }
   });
