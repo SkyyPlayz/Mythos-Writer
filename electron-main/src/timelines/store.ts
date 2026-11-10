@@ -448,6 +448,21 @@ function writeMigrationSnapshot(vaultRoot: string, legacy: LegacyTimelineData, n
 
 // ─── Corrupt-file recovery ────────────────────────────────────────────────────
 
+/**
+ * Replace the vault root in an error message with `<vault>`. fs errors
+ * (EACCES/EPERM/…) embed the ABSOLUTE path, which includes the user's home
+ * folder, and a Windows message may spell the root with either separator, so
+ * every spelling is masked.
+ */
+function maskVaultRoot(message: string, vaultRoot: string): string {
+  const root = vaultRoot.replace(/[\\/]+$/, '');
+  if (root === '') return message;
+  const spellings = new Set([root, root.replace(/[\\/]/g, '/'), root.replace(/[\\/]/g, '\\')]);
+  let masked = message;
+  for (const spelling of spellings) masked = masked.split(spelling).join('<vault>');
+  return masked;
+}
+
 function recoverFromBackup(
   vaultRoot: string,
   error: Error,
@@ -478,10 +493,11 @@ function recoverFromBackup(
   copyNoFollowAtomic(storePath, corruptPath, { durable: false, rel: corruptRel, mkdir: false });
   writeVaultFileAtomic(vaultRoot, TIMELINES_FILENAME, backupRaw);
 
-  // Log vault-relative names only: absolute paths embed the user's home folder.
+  // Log vault-relative names only: absolute paths embed the user's home folder,
+  // and so can `error.message` (fs read errors), hence the masking.
   // (`onRecovered` below still receives the absolute paths — callers need them.)
   console.error(
-    `[timelines] ${TIMELINES_FILENAME} was unreadable (${error.message}); ` +
+    `[timelines] ${TIMELINES_FILENAME} was unreadable (${maskVaultRoot(error.message, vaultRoot)}); ` +
       `restored from ${path.basename(backupPath)} — corrupt file preserved at ${corruptRel}`,
   );
   options?.onRecovered?.({ corruptPath, backupPath, error });

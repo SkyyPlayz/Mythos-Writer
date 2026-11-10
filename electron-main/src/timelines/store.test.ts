@@ -382,6 +382,58 @@ describe('writeTimelinesStore / readTimelinesStore — durability', () => {
     expect(readTimelinesStore(tmpDir)).toEqual(v1);
   });
 
+  // An fs read failure (EACCES/EPERM…) carries the ABSOLUTE path in error.message.
+  // The recovery log must mask the vault root in that text, whichever separator
+  // the message uses, while onRecovered still gets the untouched error.
+  const posixSeparators = (p: string) => p.replace(/[\\/]/g, '/');
+  const backslashSeparators = (p: string) => p.replace(/[\\/]/g, '\\');
+  it.each([
+    ['forward-slash root', posixSeparators],
+    ['backslash root', backslashSeparators],
+  ])('masks the vault root as <vault> when the read error message carries it (%s)', (_label, restyle) => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const v1 = createSeedTimelinesStore('2026-01-01T00:00:00Z');
+    writeTimelinesStore(tmpDir, v1);
+    writeTimelinesStore(tmpDir, { ...v1, activeTimelineId: 'world' });
+
+    const root = restyle(tmpDir);
+    const readError = Object.assign(
+      new Error(`EACCES: permission denied, open '${root}${root.includes('\\') ? '\\' : '/'}${TIMELINES_FILENAME}'`),
+      { code: 'EACCES' },
+    );
+    // Fail only the first read of timelines.json (the primary read); the backup
+    // read and the rest of the recovery run for real.
+    const realRead = fs.readFileSync;
+    let failed = false;
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((file: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+      if (!failed && file === storePath()) {
+        failed = true;
+        throw readError;
+      }
+      return (realRead as (...a: unknown[]) => unknown)(file, ...rest);
+    }) as typeof fs.readFileSync);
+
+    const onRecovered = vi.fn();
+    expect(readTimelinesStore(tmpDir, { onRecovered })).toEqual(v1);
+    expect(failed).toBe(true);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const logged = errorSpy.mock.calls[0].map(String).join(' ');
+    expect(logged).not.toContain(posixSeparators(tmpDir));
+    expect(logged).not.toContain(backslashSeparators(tmpDir));
+    expect(logged).toContain('<vault>');
+    expect(logged).toContain('EACCES: permission denied');
+    expect(logged).toContain(TIMELINES_FILENAME);
+
+    // onRecovered keeps the original error and absolute paths — no API change.
+    expect(onRecovered).toHaveBeenCalledTimes(1);
+    const info = onRecovered.mock.calls[0][0] as { error: Error; corruptPath: string; backupPath: string };
+    expect(info.error).toBe(readError);
+    expect(info.error.message).toContain(root);
+    expect(info.backupPath).toBe(backupPath());
+    expect(path.isAbsolute(info.corruptPath)).toBe(true);
+  });
+
   it('a corrupt file can never clobber the last good backup on the next write', () => {
     const v1 = createSeedTimelinesStore('2026-01-01T00:00:00Z');
     writeTimelinesStore(tmpDir, v1);
