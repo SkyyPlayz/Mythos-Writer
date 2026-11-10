@@ -77,13 +77,34 @@ function findFreezeReferences(sources: readonly ScannedSource[]): string[] {
 
 type BuilderConfig = Record<string, unknown>;
 
-/** Representative paths: the freeze file plus source files at several depths. */
-const SOURCE_PROBES: readonly string[] = [
-  FREEZE_REPO_PATH,
-  'electron-main/src/main.ts',
+/**
+ * Synthetic paths for shapes the tree may not contain today: nested sources
+ * and non-code files. The real tree is enumerated on top of these.
+ */
+const SYNTHETIC_PROBES: readonly string[] = [
   'electron-main/src/data.json',
   'electron-main/src/vault/nested/deep.ts',
 ];
+
+/** Every file under electron-main/src as a posix repo path. Names only, never contents. */
+function listSourceTreePaths(dir: string, relDir: string, out: string[] = []): string[] {
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = `${relDir}/${ent.name}`;
+    if (ent.isDirectory()) listSourceTreePaths(path.join(dir, ent.name), rel, out);
+    else if (ent.isFile()) out.push(rel);
+  }
+  return out;
+}
+
+let sourceProbes: readonly string[] | undefined;
+
+/** The freeze file, every real source file, and the synthetic shapes. Built once. */
+function getSourceProbes(): readonly string[] {
+  sourceProbes ??= [
+    ...new Set([FREEZE_REPO_PATH, ...listSourceTreePaths(SRC_DIR, 'electron-main/src'), ...SYNTHETIC_PROBES]),
+  ];
+  return sourceProbes;
+}
 
 const BUILDER_LIST_KEYS = ['files', 'extraResources', 'extraFiles', 'asarUnpack'] as const;
 const BUILDER_PLATFORM_KEYS = ['mac', 'win', 'linux'] as const;
@@ -92,7 +113,17 @@ function cleanPattern(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 }
 
+const globRegExpCache = new Map<string, RegExp>();
+
 function globToRegExp(glob: string): RegExp {
+  const cached = globRegExpCache.get(glob);
+  if (cached) return cached;
+  const compiled = compileGlob(glob);
+  globRegExpCache.set(glob, compiled);
+  return compiled;
+}
+
+function compileGlob(glob: string): RegExp {
   let re = '';
   let braceDepth = 0;
   for (let i = 0; i < glob.length; i++) {
@@ -173,9 +204,13 @@ function fileSetIncludes(set: FileSet, rel: string): boolean {
   return filter.length === 0 ? true : listIncludes(filter, sub);
 }
 
-/** Whether one electron-builder list (`files`, `extraResources`, …) includes `rel`. */
-function entriesInclude(entries: unknown, rel: string): boolean {
-  if (!Array.isArray(entries)) return false;
+/**
+ * Whether one electron-builder list (`files`, `extraResources`, …) includes
+ * `rel`. electron-builder accepts a single string or FileSet as well as an array.
+ */
+function entriesInclude(value: unknown, rel: string): boolean {
+  if (value === undefined || value === null) return false;
+  const entries: unknown[] = Array.isArray(value) ? value : [value];
   const patterns = entries.filter((e): e is string => typeof e === 'string');
   const sets = entries.filter(
     (e): e is FileSet => typeof e === 'object' && e !== null && !Array.isArray(e),
@@ -203,7 +238,7 @@ function shippedBy(config: BuilderConfig, rel: string): string[] {
 /** `<location>: <path>` for every source probe the config would ship. */
 function findPackagedSources(config: BuilderConfig): string[] {
   const hits: string[] = [];
-  for (const probe of SOURCE_PROBES) {
+  for (const probe of getSourceProbes()) {
     for (const where of shippedBy(config, probe)) hits.push(`${where}: ${probe}`);
   }
   return hits;
@@ -297,6 +332,20 @@ describe('ipcSurface.contract.freeze.json is test-only and never packaged', () =
         (c: BuilderConfig) => (c.extraResources as unknown[]).push({ from: '.', to: 'root' }),
       ],
       ['extraFiles: electron-main/src/**', (c: BuilderConfig) => { c.extraFiles = ['electron-main/src/**']; }],
+      // electron-builder accepts a single string or FileSet, not only an array.
+      ['extraFiles: singleton string, the freeze file', (c: BuilderConfig) => { c.extraFiles = FREEZE_REPO_PATH; }],
+      ['extraFiles: singleton FileSet from electron-main/src', (c: BuilderConfig) => { c.extraFiles = { from: 'electron-main/src', to: 'src' }; }],
+      ['extraResources: singleton string electron-main/src/**', (c: BuilderConfig) => { c.extraResources = 'electron-main/src/**'; }],
+      ['extraResources: singleton FileSet from electron-main/src', (c: BuilderConfig) => { c.extraResources = { from: 'electron-main/src', to: 'src' }; }],
+      ['files: singleton string electron-main/src/**', (c: BuilderConfig) => { c.files = 'electron-main/src/**'; }],
+      ['win.extraFiles: singleton string, the freeze file', (c: BuilderConfig) => { (c.win as BuilderConfig).extraFiles = FREEZE_REPO_PATH; }],
+      // File-specific and narrow patterns must hit real source files, not only four probes.
+      ['files: one source file, electron-main/src/preload.ts', (c: BuilderConfig) => (c.files as unknown[]).push('electron-main/src/preload.ts')],
+      ['files: narrow directory glob, electron-main/src/vault/*.ts', (c: BuilderConfig) => (c.files as unknown[]).push('electron-main/src/vault/*.ts')],
+      [
+        'extraResources: FileSet from one source file',
+        (c: BuilderConfig) => (c.extraResources as unknown[]).push({ from: 'electron-main/src/preload.ts', to: 'p.ts' }),
+      ],
       ['win.files: electron-main/src/**', (c: BuilderConfig) => { (c.win as BuilderConfig).files = ['electron-main/src/**']; }],
     ])('detector flags a planted pattern (%s)', (_label, plant) => {
       const config = cleanConfig();
