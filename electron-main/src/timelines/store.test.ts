@@ -434,6 +434,98 @@ describe('writeTimelinesStore / readTimelinesStore — durability', () => {
     expect(path.isAbsolute(info.corruptPath)).toBe(true);
   });
 
+  // Shared setup for the masking cases below: a recoverable store (valid .bak),
+  // with only the FIRST read of timelines.json failing with `err`. The backup
+  // read and the rest of recovery run for real. `wasHit()` proves the injection fired.
+  function failFirstStoreRead(err: Error): () => boolean {
+    const realRead = fs.readFileSync;
+    let failed = false;
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((file: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+      if (!failed && file === storePath()) {
+        failed = true;
+        throw err;
+      }
+      return (realRead as (...a: unknown[]) => unknown)(file, ...rest);
+    }) as typeof fs.readFileSync);
+    return () => failed;
+  }
+  function seedRecoverableStore() {
+    const v1 = createSeedTimelinesStore('2026-01-01T00:00:00Z');
+    writeTimelinesStore(tmpDir, v1);
+    writeTimelinesStore(tmpDir, { ...v1, activeTimelineId: 'world' });
+    return v1;
+  }
+
+  it('masks every occurrence of the vault root when one message holds it twice', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const v1 = seedRecoverableStore();
+    // A rename-style fs error names two paths under the vault.
+    const wasHit = failFirstStoreRead(
+      new Error(`EXDEV: cross-device link not permitted, rename '${storePath()}' -> '${backupPath()}'`),
+    );
+
+    expect(readTimelinesStore(tmpDir)).toEqual(v1);
+    expect(wasHit()).toBe(true);
+
+    const logged = errorSpy.mock.calls[0].map(String).join(' ');
+    expect(logged).not.toContain(tmpDir);
+    expect(logged.split('<vault>').length - 1).toBeGreaterThanOrEqual(2);
+  });
+
+  it('masks a vault root passed with a trailing separator when the message ends at the root', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const v1 = seedRecoverableStore();
+    // No file name after the root, so only the trailing-separator trim lets the
+    // root (given WITH its trailing separator below) match the message.
+    const wasHit = failFirstStoreRead(new Error(`ENOTDIR: not a directory, scandir '${tmpDir}'`));
+
+    expect(readTimelinesStore(`${tmpDir}${path.sep}`)).toEqual(v1);
+    expect(wasHit()).toBe(true);
+
+    const logged = errorSpy.mock.calls[0].map(String).join(' ');
+    expect(logged).not.toContain(tmpDir);
+    expect(logged).toContain("scandir '<vault>'");
+  });
+
+  it('keeps the separator after <vault> when the root was passed with a trailing separator', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const v1 = seedRecoverableStore();
+    const wasHit = failFirstStoreRead(new Error(`EACCES: permission denied, open '${storePath()}'`));
+
+    expect(readTimelinesStore(`${tmpDir}${path.sep}`)).toEqual(v1);
+    expect(wasHit()).toBe(true);
+
+    // The trailing separator is trimmed off the root before matching, so the
+    // masked text still reads `<vault>/timelines.json`, not `<vault>timelines.json`.
+    const logged = errorSpy.mock.calls[0].map(String).join(' ');
+    expect(logged).not.toContain(tmpDir);
+    expect(logged).toContain(`open '<vault>${path.sep}${TIMELINES_FILENAME}'`);
+  });
+
+  // Node reports path.join(vaultRoot, name), which is NORMALIZED, so a root that
+  // was saved unnormalized must still be masked.
+  it.each([
+    ['a .. segment', () => `${tmpDir}${path.sep}sub${path.sep}..`],
+    ['a trailing /.', () => `${tmpDir}${path.sep}.`],
+    ['a doubled separator', () => `${path.dirname(tmpDir)}${path.sep}${path.sep}${path.basename(tmpDir)}`],
+  ])('masks the vault root when it is not normalized (%s)', (_label, makeRoot) => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fs.mkdirSync(path.join(tmpDir, 'sub'));
+    const v1 = seedRecoverableStore();
+    const unnormalizedRoot = makeRoot();
+    expect(unnormalizedRoot).not.toBe(path.normalize(unnormalizedRoot));
+    const wasHit = failFirstStoreRead(
+      new Error(`EACCES: permission denied, open '${path.join(unnormalizedRoot, TIMELINES_FILENAME)}'`),
+    );
+
+    expect(readTimelinesStore(unnormalizedRoot)).toEqual(v1);
+    expect(wasHit()).toBe(true);
+
+    const logged = errorSpy.mock.calls[0].map(String).join(' ');
+    expect(logged).not.toContain(tmpDir);
+    expect(logged).toContain('<vault>');
+  });
+
   it('a corrupt file can never clobber the last good backup on the next write', () => {
     const v1 = createSeedTimelinesStore('2026-01-01T00:00:00Z');
     writeTimelinesStore(tmpDir, v1);

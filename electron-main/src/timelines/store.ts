@@ -451,15 +451,26 @@ function writeMigrationSnapshot(vaultRoot: string, legacy: LegacyTimelineData, n
 /**
  * Replace the vault root in an error message with `<vault>`. fs errors
  * (EACCES/EPERM/…) embed the ABSOLUTE path, which includes the user's home
- * folder, and a Windows message may spell the root with either separator, so
- * every spelling is masked.
+ * folder. Node reports the path as passed to the fs call, i.e. the NORMALIZED
+ * `path.join(vaultRoot, name)`, so a root saved with `.`/`..`/`//` segments
+ * must be masked in its normalized and resolved forms too. A Windows message
+ * may also spell the root with either separator, so every spelling is masked.
  */
 function maskVaultRoot(message: string, vaultRoot: string): string {
-  const root = vaultRoot.replace(/[\\/]+$/, '');
-  if (root === '') return message;
-  const spellings = new Set([root, root.replace(/[\\/]/g, '/'), root.replace(/[\\/]/g, '\\')]);
+  if (vaultRoot === '') return message;
+  const spellings = new Set<string>();
+  for (const base of [vaultRoot, path.normalize(vaultRoot), path.resolve(vaultRoot)]) {
+    const root = base.replace(/[\\/]+$/, '');
+    if (root === '' || root === '.' || root === '..') continue;
+    spellings.add(root);
+    spellings.add(root.replace(/[\\/]/g, '/'));
+    spellings.add(root.replace(/[\\/]/g, '\\'));
+  }
+  // Longest first, so a spelling that contains another is masked whole.
   let masked = message;
-  for (const spelling of spellings) masked = masked.split(spelling).join('<vault>');
+  for (const spelling of [...spellings].sort((a, b) => b.length - a.length)) {
+    masked = masked.split(spelling).join('<vault>');
+  }
   return masked;
 }
 
