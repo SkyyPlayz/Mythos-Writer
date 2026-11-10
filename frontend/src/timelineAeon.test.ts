@@ -155,9 +155,8 @@ describe('resolveVisibleTimelineMode', () => {
 // here, and nothing depends on the minified bundle text
 // `HIDDEN_TIMELINE_MODES.has(`.
 //
-// Not covered (no generic trap exists for them): an ad-hoc flag on the global
-// object (`globalThis.__x`), and `in` / enumeration on `import.meta.env`
-// (vitest forwards only property reads on it to process.env, which are caught).
+// "env" means both process.env and import.meta.env. Not covered (no generic
+// trap exists for it): an ad-hoc flag on the global object (`globalThis.__x`).
 
 describe('timeline visibility has no runtime unhide switch in storage, URL, cookie, window.name or env (any key name)', () => {
   it('loading timelineAeon and resolving every mode reads, probes and enumerates no storage, URL, cookie, window.name or env', async () => {
@@ -218,6 +217,14 @@ describe('timeline visibility has no runtime unhide switch in storage, URL, cook
     // plain configurable accessors.
     const readSpies: { label: string; spy: { mock: { calls: unknown[] }; mockClear(): void; mockRestore(): void } }[] = [];
     const realEnv = process.env;
+    // vitest rewrites every `import.meta.env` in source to the worker's
+    // `metaEnv` (a proxy that forwards property reads to process.env, but
+    // answers `in` and enumeration from its own target). Swapping that for a
+    // recording proxy before the fresh import records timelineAeon's
+    // import.meta.env access too. The identity check below fails loudly if
+    // vitest ever stops wiring import.meta.env this way.
+    const worker = (globalThis as unknown as { __vitest_worker__?: { metaEnv?: object } }).__vitest_worker__;
+    const realMetaEnv = worker?.metaEnv;
     try {
       const implKey = Object.getOwnPropertySymbols(window.location).find((sym) => sym.description === 'impl');
       expect(implKey, 'jsdom Location impl symbol found').toBeDefined();
@@ -251,30 +258,34 @@ describe('timeline visibility has no runtime unhide switch in storage, URL, cook
       const recordEnv = (access: string): void => {
         if (fromAppSource.test(new Error().stack ?? '')) envReads.push(access);
       };
-      process.env = new Proxy(realEnv, {
-        get(target, prop, receiver) {
-          recordEnv(String(prop));
-          return Reflect.get(target, prop, receiver);
-        },
-        has(target, prop) {
-          recordEnv(`${String(prop)} in process.env`);
-          return Reflect.has(target, prop);
-        },
-        ownKeys(target) {
-          recordEnv('ownKeys(process.env)');
-          return Reflect.ownKeys(target);
-        },
-        getOwnPropertyDescriptor(target, prop) {
-          recordEnv(`descriptor(process.env.${String(prop)})`);
-          return Reflect.getOwnPropertyDescriptor(target, prop);
-        },
-      });
+      const recordingEnv = <T extends object>(label: string, target: T): T =>
+        new Proxy(target, {
+          get(t, prop, receiver) {
+            recordEnv(label === 'process.env' ? String(prop) : `${label}.${String(prop)}`);
+            return Reflect.get(t, prop, receiver) as unknown;
+          },
+          has(t, prop) {
+            recordEnv(`${String(prop)} in ${label}`);
+            return Reflect.has(t, prop);
+          },
+          ownKeys(t) {
+            recordEnv(`ownKeys(${label})`);
+            return Reflect.ownKeys(t);
+          },
+          getOwnPropertyDescriptor(t, prop) {
+            recordEnv(`descriptor(${label}.${String(prop)})`);
+            return Reflect.getOwnPropertyDescriptor(t, prop);
+          },
+        });
+      process.env = recordingEnv('process.env', realEnv);
+      expect(realMetaEnv, 'vitest worker metaEnv is what import.meta.env resolves to').toBe(import.meta.env);
+      (worker as { metaEnv: object }).metaEnv = recordingEnv('import.meta.env', realMetaEnv as object);
 
       // Fresh module evaluation: a switch read at load time is caught too.
       vi.resetModules();
       const fresh = await import('./timelineAeon');
       expect(storageReads, 'storage read while timelineAeon loads').toEqual([]);
-      expect(envReads, 'process.env read while timelineAeon loads').toEqual([]);
+      expect(envReads, 'process.env / import.meta.env read while timelineAeon loads').toEqual([]);
 
       const stored = [...fresh.VALID_TIMELINE_MODES, 'track', 'aeon', 'axis', 'kanban-nonsense', '', null];
       const visibility = fresh.VALID_TIMELINE_MODES.map((mode) => fresh.isTimelineModeVisible(mode));
@@ -282,7 +293,7 @@ describe('timeline visibility has no runtime unhide switch in storage, URL, cook
       process.env = realEnv;
 
       expect(storageReads, 'storage read while resolving visibility').toEqual([]);
-      expect(envReads, 'process.env read while resolving visibility').toEqual([]);
+      expect(envReads, 'process.env / import.meta.env read while resolving visibility').toEqual([]);
       for (const spy of urlSpies) expect(spy).not.toHaveBeenCalled();
       const pageReads = Object.fromEntries(
         readSpies.filter(({ spy }) => spy.mock.calls.length > 0).map(({ label, spy }) => [label, spy.mock.calls.length]),
@@ -293,6 +304,7 @@ describe('timeline visibility has no runtime unhide switch in storage, URL, cook
       for (const value of resolved) expect(fresh.HIDDEN_TIMELINE_MODES.has(value)).toBe(false);
     } finally {
       process.env = realEnv;
+      if (worker && realMetaEnv) worker.metaEnv = realMetaEnv;
       swap('localStorage', realLocal);
       swap('sessionStorage', realSession);
       for (const spy of urlSpies) spy.mockRestore();
