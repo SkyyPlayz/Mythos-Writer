@@ -470,15 +470,22 @@ function scanTs(file: string, source: string): CssDecl[] {
 
   // `font` and `fontSize` are also plain data names (`preferences.font`, `documentModel.fontSize`). Assigned, they
   // count only on a style object or a canvas 2D context: one named like one, built from `.style` / `getContext()`,
-  // or declared in this file with a style or canvas type.
+  // or declared in this file with a style or canvas type, or given one (`const m = this.#measure`,
+  // `this.#m = c.getContext('2d')!`).
   const fontTargets = new Set<string>();
+  /** `name` ← `value` from declarations and plain assignments: `name` is a font target once `value` is one. */
+  const bindings: [name: string, value: ts.Node][] = [];
   const isFontTargetExpr = (e: ts.Node) => accessName(e) === 'style' || (ts.isCallExpression(e) && accessName(e.expression) === 'getContext');
   const collectFontTargets = (node: ts.Node): void => {
     // A `#private` field's name keeps its `#`, as does the `this.#field` access that reads it.
     if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isPropertyDeclaration(node)) &&
-      (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name)) &&
-      ((node.type && FONT_TARGET_TYPE.test(node.type.getText(sf))) || (node.initializer && isFontTargetExpr(unwrap(node.initializer))))) {
-      fontTargets.add(node.name.text);
+      (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))) {
+      if (node.type && FONT_TARGET_TYPE.test(node.type.getText(sf))) fontTargets.add(node.name.text);
+      else if (node.initializer) bindings.push([node.name.text, node.initializer]);
+    } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = unwrap(node.left);
+      const name = ts.isIdentifier(left) ? left.text : accessName(left);
+      if (name !== undefined) bindings.push([name, node.right]);
     }
     ts.forEachChild(node, collectFontTargets);
   };
@@ -488,6 +495,15 @@ function scanTs(file: string, source: string): CssDecl[] {
     const name = ts.isIdentifier(e) ? e.text : accessName(e);
     return isFontTargetExpr(e) || (name !== undefined && (FONT_TARGET_NAME.test(name) || fontTargets.has(name)));
   };
+  // Aliases chain and may come before what they alias (a method above the constructor that assigns the field), so
+  // follow bindings to a fixed point. A pass that changes nothing ends it, and every other pass adds a name, so it
+  // runs at most bindings.length + 1 times.
+  for (let pass = 0, grew = true; grew && pass <= bindings.length; pass++) {
+    grew = false;
+    for (const [name, value] of bindings) {
+      if (!fontTargets.has(name) && isFontTarget(value)) { fontTargets.add(name); grew = true; }
+    }
+  }
 
   const visit = (node: ts.Node): void => {
     // { fontSize: … } / { 'font-size': … } / { ['fontSize']: … } / { fontSize } / { font: '…' } / { '--text-sm': … }
@@ -1272,6 +1288,45 @@ describe('#1773 type-scale guard — scanner', () => {
       ['apply', '8', 'off'],
       ['apply', 'spec', 'off'],
       ['apply', '7', 'off'],
+    ]);
+  });
+
+  it('follows a style object or canvas context through aliases and assignments, but not plain data', () => {
+    expect(tsx(`
+      class Ruler {
+        #measure!: CanvasRenderingContext2D;
+        #prefs: Prefs;
+        draw() { const m = this.#measure; m.font = '10px serif'; }
+        save() { const p = this.#prefs; p.font = x; p.fontSize = 12; }
+      }
+      class Painter { private measure: CanvasRenderingContext2D; draw() { const pen = this.measure; pen.font = '11px serif'; } }
+      class Gauge {
+        #m;
+        draw() { const g = this.#m; g.fontSize = 6; this.#m.font = '9px serif'; }
+        constructor(c: HTMLCanvasElement) { this.#m = c.getContext('2d')!; }
+      }
+      function late(canvas: HTMLCanvasElement, doc: Doc) {
+        let m;
+        m = canvas.getContext('2d');
+        m.font = '8px serif';
+        let d;
+        d = doc.settings;
+        d.font = y;
+      }
+    `)).toEqual([
+      ['Ruler >> draw', '10px serif', 'off'],
+      ['Painter >> draw', '11px serif', 'off'],
+      ['Gauge >> draw', '6', 'off'],
+      ['Gauge >> draw', '9px serif', 'off'],
+      ['late', '8px serif', 'off'],
+    ]);
+  });
+
+  it('counts a CSSProperties-typed receiver by its type, whatever it is called', () => {
+    expect(tsx(`
+      function tune(look: React.CSSProperties) { look.fontSize = 11; }
+    `)).toEqual([
+      ['tune', '11', 'off'],
     ]);
   });
 });
