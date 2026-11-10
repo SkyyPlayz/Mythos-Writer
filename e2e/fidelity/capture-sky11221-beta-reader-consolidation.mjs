@@ -3,14 +3,15 @@
 // normal assistant turn instead of silently switching to the old inline
 // BetaReadPanel. Modeled on e2e/writing-assistant.spec.ts's TC-WA-17 setup.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp } from '../../electron-main/test-utils/tmpdir.mjs';
 
 process.env.MYTHOS_DISABLE_BOOT_MIGRATION = '1';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky11221-beta-reader-consolidation');
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -28,8 +29,8 @@ const MOCK_CHAT_TOKENS = ['Sure — ', 'here is a read on pacing ', 'for this sc
 const MOCK_CHAT_RESPONSE = MOCK_CHAT_TOKENS.join('');
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11221-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11221-vault-'));
+  const userData = makeTestTmp('sky11221-user');
+  const vaultDir = makeTestTmp('sky11221-vault');
   const now = new Date().toISOString();
 
   const manifest = {
@@ -133,60 +134,64 @@ async function installIpcMocks(app) {
 }
 
 async function main() {
-  const { userData, vaultDir } = seedFixture();
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize(VIEWPORT);
-  await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-  await installIpcMocks(app);
+  let app;
+  try {
+    const { userData } = seedFixture();
+    app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize(VIEWPORT);
+    await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    await installIpcMocks(app);
 
-  // ── Navigate: rail → Story Writer → editor subview → scene row ──────────
-  const nav = page.locator('nav[aria-label="Main navigation"]');
-  const storyBtn = nav.locator('button[aria-label="Story Writer"]');
-  if ((await storyBtn.getAttribute('aria-current')) !== 'page') await storyBtn.click();
-  const backdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
-  if (await backdrop.count()) {
-    await backdrop.click({ position: { x: 5, y: 5 }, force: true });
-    await backdrop.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    // ── Navigate: rail → Story Writer → editor subview → scene row ──────────
+    const nav = page.locator('nav[aria-label="Main navigation"]');
+    const storyBtn = nav.locator('button[aria-label="Story Writer"]');
+    if ((await storyBtn.getAttribute('aria-current')) !== 'page') await storyBtn.click();
+    const backdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
+    if (await backdrop.count()) {
+      await backdrop.click({ position: { x: 5, y: 5 }, force: true });
+      await backdrop.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+    }
+    await page.locator('[data-testid="story-subview-editor"]').click().catch(() => {});
+    await page.locator('.nav-story-row').first().waitFor({ state: 'visible', timeout: 20000 });
+    const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
+    await sceneRow.waitFor({ state: 'visible', timeout: 8000 });
+    await sceneRow.click();
+
+    // ── Open the Writing Coach agent row in the hub ──────────────────────────
+    const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
+    if (await hubPanel.isVisible({ timeout: 4000 }).catch(() => false)) {
+      const agentRow = page.locator('[aria-label^="Open Writing Coach chat"]');
+      if (await agentRow.isVisible({ timeout: 1000 }).catch(() => false)) await agentRow.click();
+    }
+    await page.locator('.writing-assistant-panel').waitFor({ state: 'attached', timeout: 8000 });
+
+    // ── Type "beta read this scene" and submit ───────────────────────────────
+    const input = page.getByRole('textbox', { name: 'Writing coach prompt' });
+    await input.waitFor({ state: 'visible', timeout: 5000 });
+    await input.fill('beta read this scene');
+    await input.press('Enter');
+
+    // Proof: a normal user/assistant chat bubble pair appears...
+    await page.locator('.wa-user-bubble', { hasText: 'beta read this scene' }).last().waitFor({ state: 'visible', timeout: 8000 });
+    await page.locator('.wa-assistant-bubble', { hasText: MOCK_CHAT_RESPONSE }).last().waitFor({ state: 'visible', timeout: 8000 });
+    // ...and the old inline beta-read panel never mounts.
+    const brPanelCount = await page.locator('.br-panel').count();
+    if (brPanelCount !== 0) throw new Error(`Expected 0 .br-panel elements post-consolidation, found ${brPanelCount}`);
+
+    await page.waitForTimeout(500);
+    const shotPath = path.join(OUT, 'writing-assistant-post-consolidation.png');
+    await page.screenshot({ path: shotPath });
+    console.log(`Captured ${shotPath} (br-panel count: ${brPanelCount})`);
+
+    await app.close().catch(() => {});
+  } finally {
+    await app?.close().catch(() => {});
+    cleanupTestTmp();
   }
-  await page.locator('[data-testid="story-subview-editor"]').click().catch(() => {});
-  await page.locator('.nav-story-row').first().waitFor({ state: 'visible', timeout: 20000 });
-  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
-  await sceneRow.waitFor({ state: 'visible', timeout: 8000 });
-  await sceneRow.click();
-
-  // ── Open the Writing Coach agent row in the hub ──────────────────────────
-  const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
-  if (await hubPanel.isVisible({ timeout: 4000 }).catch(() => false)) {
-    const agentRow = page.locator('[aria-label^="Open Writing Coach chat"]');
-    if (await agentRow.isVisible({ timeout: 1000 }).catch(() => false)) await agentRow.click();
-  }
-  await page.locator('.writing-assistant-panel').waitFor({ state: 'attached', timeout: 8000 });
-
-  // ── Type "beta read this scene" and submit ───────────────────────────────
-  const input = page.getByRole('textbox', { name: 'Writing coach prompt' });
-  await input.waitFor({ state: 'visible', timeout: 5000 });
-  await input.fill('beta read this scene');
-  await input.press('Enter');
-
-  // Proof: a normal user/assistant chat bubble pair appears...
-  await page.locator('.wa-user-bubble', { hasText: 'beta read this scene' }).last().waitFor({ state: 'visible', timeout: 8000 });
-  await page.locator('.wa-assistant-bubble', { hasText: MOCK_CHAT_RESPONSE }).last().waitFor({ state: 'visible', timeout: 8000 });
-  // ...and the old inline beta-read panel never mounts.
-  const brPanelCount = await page.locator('.br-panel').count();
-  if (brPanelCount !== 0) throw new Error(`Expected 0 .br-panel elements post-consolidation, found ${brPanelCount}`);
-
-  await page.waitForTimeout(500);
-  const shotPath = path.join(OUT, 'writing-assistant-post-consolidation.png');
-  await page.screenshot({ path: shotPath });
-  console.log(`Captured ${shotPath} (br-panel count: ${brPanelCount})`);
-
-  await app.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
 }
 
 main().catch((err) => { console.error(err); process.exit(1); });

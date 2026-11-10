@@ -10,16 +10,20 @@
 //                                             must hold its assets/ + support.js)
 // Harness rules: see lib.mjs header.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { chromium, _electron as electron } from 'playwright';
 import { mainJs, outDir, repoRoot, requireBuild, serveProto, chromiumLaunchOptions } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 const MAIN_JS = process.env.MW_MAIN_JS || mainJs;
 const TAG = process.env.MW_MAIN_JS ? 'before' : 'after';
 if (!process.env.MW_MAIN_JS) requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky11448-scene-crafter-glass');
 const VIEWPORT = { width: 1600, height: 1000 };
+let app;
+let browser;
+let proto;
 
 // The prototype's crafterVaultCols sample notes (stocks CHARACTERS / LOCATIONS /
 // ITEMS & SYSTEMS so the reference cards render beside the mockup's).
@@ -34,9 +38,9 @@ const NOTES = [
 ];
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11448-cap-user-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11448-cap-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11448-cap-notes-'));
+  const userData = makeTestTmp('11448-cap-user');
+  const vaultDir = makeTestTmp('11448-cap-vault');
+  const notesVaultDir = makeTestTmp('11448-cap-notes');
   const agentCfg = (extra = {}) => ({
     enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
     maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5,
@@ -62,7 +66,7 @@ function seedFixture() {
 }
 
 function cleanup(fixture) {
-  for (const dir of Object.values(fixture)) fs.rmSync(dir, { recursive: true, force: true });
+  for (const dir of Object.values(fixture)) removeRecorded(dir);
 }
 
 async function clipOf(page, selector, pad = 12) {
@@ -77,7 +81,7 @@ async function clipOf(page, selector, pad = 12) {
 
 async function captureApp() {
   const fixture = seedFixture();
-  const app = await electron.launch({
+  app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
     env: { ...process.env, MYTHOS_DISABLE_BOOT_MIGRATION: '1' },
     timeout: 90000,
@@ -148,17 +152,17 @@ async function captureApp() {
  *  html alone, and the dc runtime resolves those files relative to it. */
 function stageExternalProto(htmlPath) {
   const protoDir = path.join(repoRoot, 'plans', 'design-handoff', 'v2', 'prototype');
-  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11448-proto-'));
+  const stage = makeTestTmp('11448-proto');
   for (const entry of fs.readdirSync(protoDir)) {
     if (!entry.endsWith('.html')) fs.symlinkSync(path.join(protoDir, entry), path.join(stage, entry));
   }
   fs.copyFileSync(path.resolve(htmlPath), path.join(stage, 'mockup.dc.html'));
-  return { url: 'file://' + path.join(stage, 'mockup.dc.html'), close: () => fs.rmSync(stage, { recursive: true, force: true }) };
+  return { url: 'file://' + path.join(stage, 'mockup.dc.html'), close: () => removeRecorded(stage) };
 }
 
 async function captureProto() {
-  const proto = process.env.MW_PROTO_HTML ? stageExternalProto(process.env.MW_PROTO_HTML) : await serveProto();
-  const browser = await chromium.launch(chromiumLaunchOptions(['--force-device-scale-factor=1', '--allow-file-access-from-files']));
+  proto = process.env.MW_PROTO_HTML ? stageExternalProto(process.env.MW_PROTO_HTML) : await serveProto();
+  browser = await chromium.launch(chromiumLaunchOptions(['--force-device-scale-factor=1', '--allow-file-access-from-files']));
   const page = await browser.newPage({ viewport: VIEWPORT });
   await page.goto(proto.url, { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForTimeout(4500);
@@ -192,6 +196,13 @@ async function captureProto() {
   proto.close();
 }
 
-if (!process.env.MW_SKIP_APP) await captureApp();
-if (process.env.MW_PROTO) await captureProto();
-console.log('DONE');
+try {
+  if (!process.env.MW_SKIP_APP) await captureApp();
+  if (process.env.MW_PROTO) await captureProto();
+  console.log('DONE');
+} finally {
+  await app?.close().catch(() => {});
+  await browser?.close().catch(() => {});
+  try { await proto?.close(); } catch {}
+  cleanupTestTmp();
+}
