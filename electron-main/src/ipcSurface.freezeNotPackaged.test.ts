@@ -96,14 +96,9 @@ function listSourceTreePaths(dir: string, relDir: string, out: string[] = []): s
   return out;
 }
 
-let sourceProbes: readonly string[] | undefined;
-
-/** The freeze file, every real source file, and the synthetic shapes. Built once. */
-function getSourceProbes(): readonly string[] {
-  sourceProbes ??= [
-    ...new Set([FREEZE_REPO_PATH, ...listSourceTreePaths(SRC_DIR, 'electron-main/src'), ...SYNTHETIC_PROBES]),
-  ];
-  return sourceProbes;
+/** The real tree, listed fresh on every call so a file added later is still probed. */
+function listRealSourceTree(): readonly string[] {
+  return listSourceTreePaths(SRC_DIR, 'electron-main/src');
 }
 
 const BUILDER_LIST_KEYS = ['files', 'extraResources', 'extraFiles', 'asarUnpack'] as const;
@@ -235,10 +230,17 @@ function shippedBy(config: BuilderConfig, rel: string): string[] {
   return hits;
 }
 
-/** `<location>: <path>` for every source probe the config would ship. */
-function findPackagedSources(config: BuilderConfig): string[] {
+/**
+ * `<location>: <path>` for every source probe the config would ship: the
+ * freeze file, each file `listTree` returns, and the synthetic shapes.
+ */
+function findPackagedSources(
+  config: BuilderConfig,
+  listTree: () => readonly string[] = listRealSourceTree,
+): string[] {
+  const probes = new Set([FREEZE_REPO_PATH, ...listTree(), ...SYNTHETIC_PROBES]);
   const hits: string[] = [];
-  for (const probe of getSourceProbes()) {
+  for (const probe of probes) {
     for (const where of shippedBy(config, probe)) hits.push(`${where}: ${probe}`);
   }
   return hits;
@@ -346,12 +348,37 @@ describe('ipcSurface.contract.freeze.json is test-only and never packaged', () =
         'extraResources: FileSet from one source file',
         (c: BuilderConfig) => (c.extraResources as unknown[]).push({ from: 'electron-main/src/preload.ts', to: 'p.ts' }),
       ],
+      // Other list keys, platform sections, directory spellings and negation order.
+      ['asarUnpack: singleton string electron-main/src/**', (c: BuilderConfig) => { c.asarUnpack = 'electron-main/src/**'; }],
+      ['mac.extraResources: singleton FileSet from electron-main/src', (c: BuilderConfig) => { (c.mac as BuilderConfig).extraResources = { from: 'electron-main/src', to: 'src' }; }],
+      ['linux.files: singleton string electron-main/src/**', (c: BuilderConfig) => { (c.linux as BuilderConfig).files = 'electron-main/src/**'; }],
+      ['files: ./ prefix and trailing slash, ./electron-main/src/', (c: BuilderConfig) => (c.files as unknown[]).push('./electron-main/src/')],
+      ['files: FileSet entry from electron-main/src', (c: BuilderConfig) => (c.files as unknown[]).push({ from: 'electron-main/src' })],
+      ['extraResources: singleton FileSet with a string filter', (c: BuilderConfig) => { c.extraResources = { from: 'electron-main', to: 'x', filter: '**/*.json' }; }],
+      ['extraFiles: array mixing a string and a FileSet', (c: BuilderConfig) => { c.extraFiles = ['unrelated.txt', { from: 'electron-main/src/vault', to: 'v' }]; }],
+      ['files: only negations (everything else ships)', (c: BuilderConfig) => { c.files = ['!**/*.map']; }],
+      ['files: negation first, positive later (later wins)', (c: BuilderConfig) => { c.files = ['!electron-main/src/**', 'electron-main/src/**']; }],
+      [
+        'files: negation excludes only one file, the rest ships',
+        (c: BuilderConfig) => (c.files as unknown[]).push('electron-main/src/**', '!electron-main/src/preload.ts'),
+      ],
       ['win.files: electron-main/src/**', (c: BuilderConfig) => { (c.win as BuilderConfig).files = ['electron-main/src/**']; }],
     ])('detector flags a planted pattern (%s)', (_label, plant) => {
       const config = cleanConfig();
       expect(findPackagedSources(config)).toEqual([]);
       plant(config);
       expect(findPackagedSources(config).length).toBeGreaterThan(0);
+    });
+
+    it('detector sees a source file added after an earlier listing', () => {
+      // The tree is listed on every call, not once per process: a file added
+      // between two checks (watch mode, a long-lived worker) must still be probed.
+      const config = cleanConfig();
+      (config.files as unknown[]).push('electron-main/src/addedLater.ts');
+      const tree = ['electron-main/src/main.ts'];
+      expect(findPackagedSources(config, () => tree)).toEqual([]);
+      tree.push('electron-main/src/addedLater.ts');
+      expect(findPackagedSources(config, () => tree)).toEqual(['files: electron-main/src/addedLater.ts']);
     });
 
     it('detector respects negations and unrelated resource folders', () => {
