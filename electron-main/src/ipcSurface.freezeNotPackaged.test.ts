@@ -12,10 +12,23 @@
 //
 // Path-only: it never opens the freeze file and never edits any config.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// A static import of ../test-utils would pull it under tsconfig rootDir (src)
+// and break `tsc`; require() keeps the helper outside the program.
+const nodeRequire = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = nodeRequire('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
+
+afterEach(() => {
+  cleanupTestTmp();
+});
 
 const SRC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const REPO_ROOT = path.resolve(SRC_DIR, '..', '..');
@@ -96,9 +109,12 @@ function listSourceTreePaths(dir: string, relDir: string, out: string[] = []): s
   return out;
 }
 
-/** The real tree, listed fresh on every call so a file added later is still probed. */
-function listRealSourceTree(): readonly string[] {
-  return listSourceTreePaths(SRC_DIR, 'electron-main/src');
+/**
+ * The tree under `srcDir` (the real electron-main/src by default), listed fresh
+ * on every call so a file added later is still probed.
+ */
+function listRealSourceTree(srcDir: string = SRC_DIR): readonly string[] {
+  return listSourceTreePaths(srcDir, 'electron-main/src');
 }
 
 const BUILDER_LIST_KEYS = ['files', 'extraResources', 'extraFiles', 'asarUnpack'] as const;
@@ -368,6 +384,43 @@ describe('ipcSurface.contract.freeze.json is test-only and never packaged', () =
       expect(findPackagedSources(config)).toEqual([]);
       plant(config);
       expect(findPackagedSources(config).length).toBeGreaterThan(0);
+    });
+
+    describe('real source tree lister, run against a temp directory', () => {
+      function makeTree(): string {
+        const dir = makeTestTmp('freeze-tree-');
+        fs.mkdirSync(path.join(dir, 'nested', 'deep'), { recursive: true });
+        for (const rel of ['a.ts', 'data.json', 'addon.node', 'nested/deep/x.ts']) {
+          fs.writeFileSync(path.join(dir, ...rel.split('/')), '');
+        }
+        return dir;
+      }
+
+      it('lists every file at any depth and of any extension, as posix repo paths', () => {
+        expect([...listRealSourceTree(makeTree())].sort()).toEqual([
+          'electron-main/src/a.ts',
+          'electron-main/src/addon.node',
+          'electron-main/src/data.json',
+          'electron-main/src/nested/deep/x.ts',
+        ]);
+      });
+
+      it('lists the directory again on every call, so a file added later is returned', () => {
+        const dir = makeTree();
+        expect(listRealSourceTree(dir)).not.toContain('electron-main/src/late.node');
+        fs.writeFileSync(path.join(dir, 'late.node'), '');
+        expect(listRealSourceTree(dir)).toContain('electron-main/src/late.node');
+      });
+
+      it('packaging check built on the real lister catches a file added after its first run', () => {
+        const dir = makeTree();
+        const config = cleanConfig();
+        (config.files as unknown[]).push('electron-main/src/late.node');
+        const check = (): string[] => findPackagedSources(config, () => listRealSourceTree(dir));
+        expect(check()).toEqual([]);
+        fs.writeFileSync(path.join(dir, 'late.node'), '');
+        expect(check()).toEqual(['files: electron-main/src/late.node']);
+      });
     });
 
     it('detector sees a source file added after an earlier listing', () => {
