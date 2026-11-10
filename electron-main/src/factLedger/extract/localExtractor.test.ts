@@ -1,3 +1,5 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProviderConfig, StreamRequest } from '../../provider.js';
 import { LOCAL_MAX_REPLY_UNITS, createLocalExtractor } from './localExtractor.js';
@@ -63,6 +65,7 @@ describe('localExtractor', () => {
     const [cfg, req] = stream.mock.calls[0];
     expect(cfg).toBe(LOOPBACK);
     expect(req.system).toBe(EXTRACT_SYSTEM_PROMPT);
+    expect(req.redirect).toBe('error');
     expect(req.messages).toHaveLength(1);
     const user = JSON.parse(req.messages[0].content);
     expect(user.prose).toBe('Delphine tied back her copper braid and stepped onto the ferry.');
@@ -184,6 +187,62 @@ describe('localExtractor', () => {
     const stream = streamOf(GOOD);
     expect(await extractor(stream).extract(buildExtractorInput(PROSE, NAMES), controller.signal)).toBeNull();
     expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the stream errors after a complete, valid reply (G4)', async () => {
+    const stream = vi.fn<StreamFn>(async function* () {
+      yield GOOD;
+      throw new Error('connection reset after the last token');
+    });
+    expect(await extractor(stream).extract(buildExtractorInput(PROSE, NAMES), signal())).toBeNull();
+  });
+});
+
+describe('localExtractor on the default provider stream: redirects (S1)', () => {
+  // Real loopback servers, no injected stream: `origin` is the configured
+  // loopback baseUrl and answers with a redirect; `elsewhere` stands in for the
+  // host a redirect would carry the POST (prose + names) to.
+  let origin: Server;
+  let elsewhere: Server;
+  let originUrl = '';
+  let elsewhereHits: Array<{ method?: string; body: string }> = [];
+  let status = 307;
+
+  function listen(server: Server): Promise<number> {
+    return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port)));
+  }
+
+  beforeEach(async () => {
+    vi.unstubAllGlobals(); // the default path uses the real fetch, to loopback only
+    elsewhereHits = [];
+    elsewhere = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c: Buffer) => (body += c.toString('utf8')));
+      req.on('end', () => {
+        elsewhereHits.push({ method: req.method, body });
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: GOOD } }] })}\n\ndata: [DONE]\n\n`);
+      });
+    });
+    const elsewherePort = await listen(elsewhere);
+    origin = createServer((req, res) => {
+      req.resume();
+      res.writeHead(status, { location: `http://127.0.0.1:${elsewherePort}${req.url ?? '/'}` });
+      res.end();
+    });
+    originUrl = `http://127.0.0.1:${await listen(origin)}/v1`;
+  });
+
+  afterEach(async () => {
+    await Promise.all([origin, elsewhere].map((s) => new Promise((resolve) => s.close(resolve))));
+  });
+
+  it.each([[307], [308]])('a %i from the loopback baseUrl is refused: no second request, result null', async (code) => {
+    status = code;
+    config = { kind: 'custom', baseUrl: originUrl, model: 'm' };
+    const ex = createLocalExtractor({ getConfig: () => config, getMode: () => mode });
+    expect(await ex.extract(buildExtractorInput(PROSE, NAMES), signal())).toBeNull();
+    expect(elsewhereHits).toEqual([]);
   });
 });
 

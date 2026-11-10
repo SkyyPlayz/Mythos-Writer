@@ -65,7 +65,51 @@ describe('scriptExtractor fixtures', () => {
   });
 });
 
+describe('scriptExtractor on long scenes (S2)', () => {
+  // About 800 KB of prose. The owner lookup and the sentence-start lookup must
+  // stay near-linear: a per-hit scan of every mention, or a backwards walk to
+  // the sentence start, makes these take tens of seconds on the main thread.
+  const BUDGET_MS = 4000;
+  const TARGET_UNITS = 800 * 1024;
+
+  function timed(prose: string): { ms: number; facts: number } {
+    const input = buildExtractorInput(prose, [{ name: 'Mara', aliases: ['Vell'] }]);
+    const t0 = performance.now();
+    const out = extractByScript(input);
+    return { ms: performance.now() - t0, facts: out.facts.length };
+  }
+
+  it('one endless sentence: every phrase is found, within budget', () => {
+    const unit = 'Mara had dark hair and ';
+    const reps = Math.ceil(TARGET_UNITS / unit.length);
+    const { ms, facts } = timed(unit.repeat(reps));
+    expect(facts).toBe(reps);
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
+  it('many short sentences: every phrase is found, within budget', () => {
+    const unit = 'Vell had blue eyes. ';
+    const reps = Math.ceil(TARGET_UNITS / unit.length);
+    const { ms, facts } = timed(unit.repeat(reps));
+    expect(facts).toBe(reps);
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+});
+
 describe('scriptExtractor rules', () => {
+  it('a sentence ends at . ! ? followed by whitespace, or at a line break', () => {
+    const names = [{ name: 'Ines', aliases: [] }];
+    const hits = (prose: string) => extractByScript(buildExtractorInput(prose, names)).facts.length;
+    expect(hits('Ines waved! He had red hair.')).toBe(0);
+    expect(hits('Ines waved? He had red hair.')).toBe(0);
+    expect(hits('Ines waved. He had red hair.')).toBe(0);
+    expect(hits('Ines waved\nHe had red hair.')).toBe(0);
+    expect(hits('Ines waved\rHe had red hair.')).toBe(0);
+    expect(hits('Ines waved!He had red hair.')).toBe(1);
+    expect(hits('Ines, 5.5 ft, had red hair.')).toBe(1);
+    expect(hits('Ines had red hair.')).toBe(1);
+  });
+
   it('keeps the prose casing in the quote and works with CRLF and astral characters', () => {
     const prose = 'Wren 🌙 smiled.\r\nWren had Red Hair tied with string.\r\nThe stranger had green eyes.\r\n';
     const input = buildExtractorInput(prose, [{ name: 'Wren', aliases: [] }]);

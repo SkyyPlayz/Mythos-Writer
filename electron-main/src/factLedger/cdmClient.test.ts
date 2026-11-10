@@ -5,6 +5,7 @@ import {
   CDM_CLASSIFY_MODEL,
   CDM_EXTRACT_MODEL,
   CDM_MAX_REQUEST_BYTES,
+  CDM_MAX_RESPONSE_BYTES,
   CDM_MODEL_ALLOWLIST,
   CDM_ORIGIN,
   CDM_RETRY_DELAY_MS,
@@ -259,6 +260,82 @@ describe('gate checked right before every send', () => {
     const client = makeClient(fetchImpl);
     expect(await client.complete(req(), undefined, accept)).toEqual({ ok: false, reason: 'gate_closed' });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('a gateState that throws counts as closed: no fetch, gate_closed (G1)', async () => {
+    const fetchImpl = fetchMock(async () => ok('x'));
+    const client = createCdmClient({
+      apiKey: KEY,
+      gateState: () => {
+        throw new Error('settings unreadable');
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      log: (line) => lines.push(line),
+    });
+    expect(await client.complete(req(), undefined, accept)).toEqual({ ok: false, reason: 'gate_closed' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('response size cap (G2)', () => {
+  /** A real streamed Response whose body is produced chunk by chunk on demand. */
+  function streamed(status: number, chunks: () => Iterator<string>): { res: Response; pulls: () => number } {
+    let pulled = 0;
+    const it = chunks();
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const next = it.next();
+        if (next.done) controller.close();
+        else {
+          pulled += 1;
+          controller.enqueue(encoder.encode(next.value));
+        }
+      },
+    });
+    return { res: new Response(body, { status }), pulls: () => pulled };
+  }
+
+  function* chunked(text: string, size = 64 * 1024): Iterator<string> {
+    for (let i = 0; i < text.length; i += size) yield text.slice(i, i + size);
+  }
+
+  it('a 200 reply over 1 MiB of valid JSON is unsure (bad_json), not accepted', async () => {
+    const big = JSON.stringify({ choices: [{ message: { content: 'x'.repeat(CDM_MAX_RESPONSE_BYTES + 1024) } }] });
+    const fetchImpl = fetchMock(async () => streamed(200, () => chunked(big)).res);
+    const client = makeClient(fetchImpl);
+    expect(await client.complete(req(), undefined, accept)).toEqual({ ok: false, reason: 'bad_json' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops reading as soon as the cap is passed, on any status', async () => {
+    for (const status of [200, 500, 404]) {
+      const chunk = 'y'.repeat(64 * 1024);
+      const endless = streamed(status, function* () {
+        for (;;) yield chunk;
+      });
+      const fetchImpl = fetchMock(async () => endless.res);
+      const client = makeClient(fetchImpl);
+      expect(await client.complete(req(), undefined, accept)).toEqual({ ok: false, reason: 'bad_json' });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      // 1 MiB / 64 KiB = 16 chunks reach the cap; a stream may be read a few chunks ahead.
+      expect(endless.pulls()).toBeLessThanOrEqual(CDM_MAX_RESPONSE_BYTES / chunk.length + 4);
+    }
+  });
+
+  it('a body-less reply object over the cap is unsure too', async () => {
+    const big = JSON.stringify({ choices: [{ message: { content: 'z'.repeat(CDM_MAX_RESPONSE_BYTES + 1) } }] });
+    const fetchImpl = fetchMock(async () => reply(200, big));
+    const client = makeClient(fetchImpl);
+    expect(await client.complete(req(), undefined, accept)).toEqual({ ok: false, reason: 'bad_json' });
+  });
+
+  it('a small streamed reply still works', async () => {
+    const small = JSON.stringify({ choices: [{ message: { content: 'fine' } }] });
+    const fetchImpl = fetchMock(async () => streamed(200, () => chunked(small, 7)).res);
+    const client = makeClient(fetchImpl);
+    expect(await client.complete(req(), undefined, accept)).toEqual({ ok: true, value: 'fine' });
+    expect(client.stats().largestResponseBytes).toBe(Buffer.byteLength(small, 'utf8'));
   });
 });
 

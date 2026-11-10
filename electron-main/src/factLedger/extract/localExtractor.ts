@@ -73,6 +73,8 @@ export function createLocalExtractor(options: LocalExtractorOptions): Extractor 
           messages: [{ role: 'user', content: extractUserContent(input) }],
           maxTokens: LOCAL_EXTRACT_MAX_TOKENS,
           signal,
+          // A 307/308 from the loopback server must not carry the prose elsewhere.
+          redirect: 'error',
         })) {
           reply += token;
           if (reply.length > LOCAL_MAX_REPLY_UNITS) return null;

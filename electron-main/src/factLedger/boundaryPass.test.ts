@@ -77,6 +77,24 @@ describe('boundaryPass, Full AI', () => {
     expect(sent).not.toContain(OTHER_SCENE);
   });
 
+  it('strips frontmatter from sceneB as well as sceneA (G3)', async () => {
+    const withFrontmatterB: BoundaryInput = {
+      ...INPUT,
+      sceneB: {
+        sceneId: 'ch1-s3',
+        prose: '---\nsecret_b: sceneB-frontmatter-value\nmood: hidden-mood-b\n---\n' + SCENE_B,
+      },
+    };
+    await runBoundaryPass(withFrontmatterB, { mode: 'full', client: client() });
+    const sent = fetchImpl.mock.calls[0][1].body as string;
+    const payload = JSON.parse(JSON.parse(sent).messages[1].content);
+    expect(payload.sceneA).toBe('At the mill, Hessa wore her hair long and dark.');
+    expect(payload.sceneB).toBe(SCENE_B);
+    for (const leaked of ['secret_b', 'sceneB-frontmatter-value', 'hidden-mood-b', 'frontmatter-pov-value']) {
+      expect(sent).not.toContain(leaked);
+    }
+  });
+
   it('drops extra keys a caller adds to the facts or scenes', async () => {
     const noisy = {
       sceneA: { ...INPUT.sceneA, neighbour: OTHER_SCENE },

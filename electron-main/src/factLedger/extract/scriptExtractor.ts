@@ -45,14 +45,37 @@ function wordRegex(text: string): RegExp {
   return new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegex(text)}(?![\\p{L}\\p{N}_])`, 'giu');
 }
 
-/** Start of the sentence that contains `at`: after the last . ! ? or line break before it. */
-function sentenceStart(prose: string, at: number): number {
-  for (let i = at - 1; i >= 0; i -= 1) {
+/**
+ * Every offset where a sentence starts after a break, ascending: just after a
+ * line break, or just after . ! ? that is followed by whitespace. One pass, so
+ * finding the sentence that holds an offset is a binary search, not a walk back.
+ */
+function sentenceStarts(prose: string): number[] {
+  const starts: number[] = [];
+  for (let i = 0; i < prose.length; i += 1) {
     const ch = prose[i];
-    if (ch === '\n' || ch === '\r') return i + 1;
-    if ((ch === '.' || ch === '!' || ch === '?') && /\s/.test(prose[i + 1] ?? '')) return i + 1;
+    if (ch === '\n' || ch === '\r') starts.push(i + 1);
+    else if ((ch === '.' || ch === '!' || ch === '?') && /\s/.test(prose[i + 1] ?? '')) starts.push(i + 1);
   }
-  return 0;
+  return starts;
+}
+
+/** Index of the last item whose position is below `limit` (or at most `limit` when `inclusive`), or -1. */
+function lastIndexBefore<T>(sorted: readonly T[], pos: (item: T) => number, limit: number, inclusive: boolean): number {
+  let lo = 0;
+  let hi = sorted.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const p = pos(sorted[mid]);
+    if (p < limit || (inclusive && p === limit)) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return found;
 }
 
 /** Synthetic index for runEntityPrePass: every vault phrase is "present", so a key comes back when the scene has a matching phrase. */
@@ -95,6 +118,7 @@ export function extractByScript(input: ExtractorInput): ExtractorOutput {
   }
   mentions.sort((x, y) => x.at - y.at);
   const wantedKeys = new Set(candidates.flatMap((c) => c.potentialMismatchKeys));
+  const starts = sentenceStarts(prose);
 
   const facts: Array<ExtractedFact & { at: number }> = [];
   for (const rule of RULES) {
@@ -102,9 +126,11 @@ export function extractByScript(input: ExtractorInput): ExtractorOutput {
     for (const m of prose.matchAll(wordRegex(rule.phrase))) {
       const start = m.index ?? 0;
       const end = start + m[0].length;
-      const from = sentenceStart(prose, start);
-      const owner = mentions.filter((x) => x.at >= from && x.at < start).pop();
-      if (!owner) continue;
+      const s = lastIndexBefore(starts, (b) => b, start, true);
+      const from = s === -1 ? 0 : starts[s];
+      const o = lastIndexBefore(mentions, (x) => x.at, start, false);
+      const owner = o === -1 ? undefined : mentions[o];
+      if (!owner || owner.at < from) continue;
       facts.push({
         at: start,
         entity: owner.entity,

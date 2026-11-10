@@ -140,6 +140,50 @@ function replyContent(text: string): string | null {
   return typeof content === 'string' ? content : null;
 }
 
+interface CappedBody {
+  text: string;
+  /** UTF-8 bytes read (when over the cap, the bytes read before stopping). */
+  bytes: number;
+  over: boolean;
+}
+
+/**
+ * Read a reply body chunk by chunk and stop (cancelling the stream) as soon as
+ * it passes `cap` bytes, so an oversized reply never sits whole in memory.
+ * A body-less response object (only `text()`) is read and then measured.
+ */
+async function readCapped(res: Response, cap: number): Promise<CappedBody> {
+  const body = (res as { body?: ReadableStream<Uint8Array> | null }).body;
+  if (!body || typeof body.getReader !== 'function') {
+    const text = typeof res.text === 'function' ? await res.text() : '';
+    const bytes = Buffer.byteLength(text, 'utf8');
+    return { text: bytes > cap ? '' : text, bytes, over: bytes > cap };
+  }
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > cap) {
+        await reader.cancel().catch(() => undefined);
+        return { text: '', bytes, over: true };
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return { text: text + decoder.decode(), bytes, over: false };
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released by cancel
+    }
+  }
+}
+
 function wait(ms: number, signal: AbortSignal | undefined): Promise<boolean> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve(false);
@@ -230,10 +274,11 @@ export function createCdmClient(options: CdmClientOptions): CdmClient {
         redirect: 'error',
         signal: controller.signal,
       });
-      const text = await res.text();
-      const bytes = Buffer.byteLength(text, 'utf8');
-      stats.largestResponseBytes = Math.max(stats.largestResponseBytes, bytes);
-      log(`[cdm] reply ${res.status}, ${bytes} bytes`);
+      const read = await readCapped(res, CDM_MAX_RESPONSE_BYTES);
+      stats.largestResponseBytes = Math.max(stats.largestResponseBytes, read.bytes);
+      log(`[cdm] reply ${res.status}, ${read.bytes} bytes${read.over ? ' (over the reply cap; stopped)' : ''}`);
+      if (read.over) return { ok: false, reason: 'bad_json', retry: false };
+      const text = read.text;
       if (res.status !== 200) {
         if (NO_ZDR_REPLY.test(text)) return { ok: false, reason: 'no_zdr', retry: false };
         if (res.status === 404) return { ok: false, reason: 'model_unavailable', retry: false };
@@ -241,7 +286,6 @@ export function createCdmClient(options: CdmClientOptions): CdmClient {
         if (res.status >= 500) return { ok: false, reason: 'server_error', retry: true };
         return { ok: false, reason: 'http_error', retry: false };
       }
-      if (bytes > CDM_MAX_RESPONSE_BYTES) return { ok: false, reason: 'bad_json', retry: false };
       const content = replyContent(text);
       if (content === null) return { ok: false, reason: 'bad_json', retry: false };
       const value = parse(content);
