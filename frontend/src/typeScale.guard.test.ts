@@ -474,7 +474,9 @@ function scanTs(file: string, source: string): CssDecl[] {
   const fontTargets = new Set<string>();
   const isFontTargetExpr = (e: ts.Node) => accessName(e) === 'style' || (ts.isCallExpression(e) && accessName(e.expression) === 'getContext');
   const collectFontTargets = (node: ts.Node): void => {
-    if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isPropertyDeclaration(node)) && ts.isIdentifier(node.name) &&
+    // A `#private` field's name keeps its `#`, as does the `this.#field` access that reads it.
+    if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isPropertyDeclaration(node)) &&
+      (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name)) &&
       ((node.type && FONT_TARGET_TYPE.test(node.type.getText(sf))) || (node.initializer && isFontTargetExpr(unwrap(node.initializer))))) {
       fontTargets.add(node.name.text);
     }
@@ -1246,6 +1248,7 @@ describe('#1773 type-scale guard — scanner', () => {
   it('counts a font / fontSize assignment only on a style object or canvas context, not on plain data', () => {
     expect(tsx(`
       class Painter { private measure: CanvasRenderingContext2D; draw() { this.measure.font = '11px serif'; } }
+      class Ruler { #measure!: CanvasRenderingContext2D; draw() { this.#measure.font = '10px serif'; } }
       function apply(el: HTMLElement, preferences: Prefs, documentModel: Doc, canvas: HTMLCanvasElement, s: CSSStyleDeclaration) {
         preferences.font = x;
         documentModel.fontSize = 12;
@@ -1261,6 +1264,7 @@ describe('#1773 type-scale guard — scanner', () => {
       }
     `)).toEqual([
       ['Painter >> draw', '11px serif', 'off'],
+      ['Ruler >> draw', '10px serif', 'off'],
       ['apply', '13px', 'off'],
       ['apply', '12px', 'off'],
       ['apply', '10px', 'off'],
