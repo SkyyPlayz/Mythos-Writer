@@ -10,7 +10,7 @@
 //   - deriveAeonTimeline: here-index, chapter cells, event sampling, eras,
 //     bands, arcs, journeys, lines, and graceful degradation on empty input
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   resolveTimelineMode,
   resolveVisibleTimelineMode,
@@ -141,6 +141,175 @@ describe('resolveVisibleTimelineMode', () => {
       );
     } finally {
       localStorage.removeItem('timeline:hiddenModesOverride');
+    }
+  });
+});
+
+// ─── B8: no runtime unhide switch, whatever it is called ───
+//
+// The e2e bundle guard (timelineHiddenModesPatch.ts) only looks for two exact
+// names, and the storage test above only tries one key. This pins the
+// stronger property instead: computing visibility touches no storage, URL,
+// cookie, window.name or env state at all — reads, `in` presence checks and
+// key enumeration — so a switch under any key name on those channels fails
+// here, and nothing depends on the minified bundle text
+// `HIDDEN_TIMELINE_MODES.has(`.
+//
+// "env" means both process.env and import.meta.env. Not covered (no generic
+// trap exists for it): an ad-hoc flag on the global object (`globalThis.__x`).
+
+describe('timeline visibility has no runtime unhide switch in storage, URL, cookie, window.name or env (any key name)', () => {
+  it('loading timelineAeon and resolving every mode reads, probes and enumerates no storage, URL, cookie, window.name or env', async () => {
+    // Record ANY access on whatever storage objects are installed (setupTests
+    // swaps localStorage for a plain mock, so prototype spies alone miss it):
+    // reads (`get`), presence checks (`'k' in localStorage` → `has`) and key
+    // enumeration (`Object.keys` / `for…in` → `ownKeys` + descriptors).
+    const storageReads: string[] = [];
+    const recording = (label: string, target: Storage): Storage =>
+      new Proxy(target, {
+        get(t, prop) {
+          storageReads.push(`${label}.${String(prop)}`);
+          const value = Reflect.get(t, prop, t) as unknown;
+          return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(t) : value;
+        },
+        has(t, prop) {
+          storageReads.push(`${String(prop)} in ${label}`);
+          return Reflect.has(t, prop);
+        },
+        ownKeys(t) {
+          storageReads.push(`ownKeys(${label})`);
+          return Reflect.ownKeys(t);
+        },
+        getOwnPropertyDescriptor(t, prop) {
+          storageReads.push(`descriptor(${label}.${String(prop)})`);
+          return Reflect.getOwnPropertyDescriptor(t, prop);
+        },
+      });
+    const realLocal = window.localStorage;
+    const realSession = window.sessionStorage;
+    // Install on both window and globalThis in case they are distinct objects.
+    const hosts = Array.from(new Set<object>([window, globalThis]));
+    const swap = (name: 'localStorage' | 'sessionStorage', value: Storage): void => {
+      for (const host of hosts) {
+        try {
+          Object.defineProperty(host, name, { value, configurable: true, writable: true });
+        } catch {
+          (host as Record<string, unknown>)[name] = value; // writable but not configurable
+        }
+      }
+    };
+    const urlSpies = [
+      vi.spyOn(URLSearchParams.prototype, 'get'),
+      vi.spyOn(URLSearchParams.prototype, 'has'),
+      vi.spyOn(URLSearchParams.prototype, 'getAll'),
+      // Param iteration (`Object.fromEntries(params)`, `for…of`, `forEach`).
+      vi.spyOn(URLSearchParams.prototype, 'entries'),
+      vi.spyOn(URLSearchParams.prototype, 'keys'),
+      vi.spyOn(URLSearchParams.prototype, 'values'),
+      vi.spyOn(URLSearchParams.prototype, 'forEach'),
+      vi.spyOn(URLSearchParams.prototype, Symbol.iterator),
+    ];
+    // Direct page-state reads that bypass URLSearchParams. jsdom's Location
+    // accessors are unforgeable (non-configurable) on the instance, but each
+    // one forwards to its impl object's prototype getter, so spy there: that
+    // catches `location.search.includes(…)`, `location.hash`, `String(location)`
+    // and every other location read. document.cookie and window.name are
+    // plain configurable accessors.
+    const readSpies: { label: string; spy: { mock: { calls: unknown[] }; mockClear(): void; mockRestore(): void } }[] = [];
+    const realEnv = process.env;
+    // vitest rewrites every `import.meta.env` in source to the worker's
+    // `metaEnv` (a proxy that forwards property reads to process.env, but
+    // answers `in` and enumeration from its own target). Swapping that for a
+    // recording proxy before the fresh import records timelineAeon's
+    // import.meta.env access too. The identity check below fails loudly if
+    // vitest ever stops wiring import.meta.env this way.
+    const worker = (globalThis as unknown as { __vitest_worker__?: { metaEnv?: object } }).__vitest_worker__;
+    const realMetaEnv = worker?.metaEnv;
+    try {
+      const implKey = Object.getOwnPropertySymbols(window.location).find((sym) => sym.description === 'impl');
+      expect(implKey, 'jsdom Location impl symbol found').toBeDefined();
+      const locationImplProto = Object.getPrototypeOf(
+        (window.location as unknown as Record<symbol, object>)[implKey as symbol],
+      ) as object;
+      for (const prop of ['href', 'origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'] as const) {
+        readSpies.push({ label: `location.${prop}`, spy: vi.spyOn(locationImplProto as Record<typeof prop, string>, prop, 'get') });
+      }
+      readSpies.push({ label: 'document.cookie', spy: vi.spyOn(Document.prototype, 'cookie', 'get') });
+      readSpies.push({ label: 'window.name', spy: vi.spyOn(window, 'name', 'get') });
+      // Self-check: each spy really sees a read through the public API.
+      void [window.location.search, window.location.hash, String(window.location), document.cookie, window.name];
+      for (const label of ['location.search', 'location.hash', 'location.href', 'document.cookie', 'window.name']) {
+        expect(readSpies.find((entry) => entry.label === label)?.spy.mock.calls.length, `${label} spy wired`).toBeGreaterThan(0);
+      }
+      for (const { spy } of readSpies) spy.mockClear();
+
+      swap('localStorage', recording('localStorage', realLocal));
+      swap('sessionStorage', recording('sessionStorage', realSession));
+      expect(globalThis.localStorage, 'recording proxy installed').not.toBe(realLocal);
+      storageReads.length = 0; // only count reads made by timelineAeon below
+
+      // Env access is recorded from BEFORE the fresh import, so a switch read
+      // at module load is caught too. Only access from app source counts
+      // (a non-test frame under frontend/src): the test runner's own module
+      // loader may touch process.env while importing. vitest's import.meta.env
+      // forwards property reads to process.env, so those land here as well.
+      const envReads: string[] = [];
+      const fromAppSource = /[\\/]frontend[\\/]src[\\/](?![^\s:]*\.test\.)[^\s:?]*\.tsx?(?:\?[^\s:]*)?:\d+/;
+      const recordEnv = (access: string): void => {
+        if (fromAppSource.test(new Error().stack ?? '')) envReads.push(access);
+      };
+      const recordingEnv = <T extends object>(label: string, target: T): T =>
+        new Proxy(target, {
+          get(t, prop, receiver) {
+            recordEnv(label === 'process.env' ? String(prop) : `${label}.${String(prop)}`);
+            return Reflect.get(t, prop, receiver) as unknown;
+          },
+          has(t, prop) {
+            recordEnv(`${String(prop)} in ${label}`);
+            return Reflect.has(t, prop);
+          },
+          ownKeys(t) {
+            recordEnv(`ownKeys(${label})`);
+            return Reflect.ownKeys(t);
+          },
+          getOwnPropertyDescriptor(t, prop) {
+            recordEnv(`descriptor(${label}.${String(prop)})`);
+            return Reflect.getOwnPropertyDescriptor(t, prop);
+          },
+        });
+      process.env = recordingEnv('process.env', realEnv);
+      expect(realMetaEnv, 'vitest worker metaEnv is what import.meta.env resolves to').toBe(import.meta.env);
+      (worker as { metaEnv: object }).metaEnv = recordingEnv('import.meta.env', realMetaEnv as object);
+
+      // Fresh module evaluation: a switch read at load time is caught too.
+      vi.resetModules();
+      const fresh = await import('./timelineAeon');
+      expect(storageReads, 'storage read while timelineAeon loads').toEqual([]);
+      expect(envReads, 'process.env / import.meta.env read while timelineAeon loads').toEqual([]);
+
+      const stored = [...fresh.VALID_TIMELINE_MODES, 'track', 'aeon', 'axis', 'kanban-nonsense', '', null];
+      const visibility = fresh.VALID_TIMELINE_MODES.map((mode) => fresh.isTimelineModeVisible(mode));
+      const resolved = stored.map((value) => fresh.resolveVisibleTimelineMode(value));
+      process.env = realEnv;
+
+      expect(storageReads, 'storage read while resolving visibility').toEqual([]);
+      expect(envReads, 'process.env / import.meta.env read while resolving visibility').toEqual([]);
+      for (const spy of urlSpies) expect(spy).not.toHaveBeenCalled();
+      const pageReads = Object.fromEntries(
+        readSpies.filter(({ spy }) => spy.mock.calls.length > 0).map(({ label, spy }) => [label, spy.mock.calls.length]),
+      );
+      expect(pageReads, 'location / document.cookie / window.name read (label → count)').toEqual({});
+      // The answers are the shipped constant's, not a runtime override's.
+      expect(visibility).toEqual(fresh.VALID_TIMELINE_MODES.map((mode) => !fresh.HIDDEN_TIMELINE_MODES.has(mode)));
+      for (const value of resolved) expect(fresh.HIDDEN_TIMELINE_MODES.has(value)).toBe(false);
+    } finally {
+      process.env = realEnv;
+      if (worker && realMetaEnv) worker.metaEnv = realMetaEnv;
+      swap('localStorage', realLocal);
+      swap('sessionStorage', realSession);
+      for (const spy of urlSpies) spy.mockRestore();
+      for (const { spy } of readSpies) spy.mockRestore();
+      vi.resetModules();
     }
   });
 });

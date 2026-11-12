@@ -15,12 +15,12 @@
 // Usage: node e2e/fidelity/sky10508-m9-repass.mjs [--proto] [--app] [--montage]
 //        (no flags = all three phases; app phase needs a display — xvfb-run)
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { chromium, _electron as electron } from 'playwright';
 import { serveProto, outDir, chromiumLaunchOptions, mainJs as MAIN_JS, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 const OUT = outDir('sky10508-m9-repass');
 const flags = process.argv.slice(2);
@@ -28,6 +28,7 @@ const runAll = flags.length === 0;
 const doProto = runAll || flags.includes('--proto');
 const doApp = runAll || flags.includes('--app');
 const doMontage = runAll || flags.includes('--montage');
+ensureRunId();
 
 const checks = [];
 function check(name, ok, detail = '') {
@@ -100,9 +101,9 @@ const FOUNDING_EXCERPT = 'founded in 298 AG, before the Drowning';
 const WARD_EXCERPT = 'Ward Violet falls the night before the descent';
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-10508-ud-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-10508-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotes-10508-'));
+  const userData = makeTestTmp('10508-user');
+  const vaultDir = makeTestTmp('10508-vault');
+  const notesVaultDir = makeTestTmp('10508-notes');
   const ac = { enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 1e5, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 5e5 };
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '', onboardingComplete: true, notesTabUpgradeToastShown: true,
@@ -221,200 +222,206 @@ function seedFixture() {
 
 // ── app run ──────────────────────────────────────────────────────────────────
 if (doApp) {
-  const fx = seedFixture();
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fx.userData}`, '--no-sandbox'], timeout: 90000 });
-  const page = await app.firstWindow();
-  page.on('dialog', (x) => void x.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(3000);
-  for (const l of ['Not now', 'Dismiss', 'Got it', 'Skip']) {
-    const b = page.locator(`button:has-text("${l}")`).first();
-    if (await b.isVisible({ timeout: 500 }).catch(() => false)) { await b.click().catch(() => {}); await page.waitForTimeout(400); }
-  }
-  await page.keyboard.press('Escape').catch(() => {});
-
-  const openScene = async (title) => {
-    for (let i = 0; i < 3; i++) {
-      const btns = page.locator('.nav-expand-btn');
-      const n = await btns.count().catch(() => 0);
-      for (let j = 0; j < n; j++) await btns.nth(j).click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(400);
+  let app;
+  try {
+    const fx = seedFixture();
+    app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fx.userData}`, '--no-sandbox'], timeout: 90000 });
+    const page = await app.firstWindow();
+    page.on('dialog', (x) => void x.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+    for (const l of ['Not now', 'Dismiss', 'Got it', 'Skip']) {
+      const b = page.locator(`button:has-text("${l}")`).first();
+      if (await b.isVisible({ timeout: 500 }).catch(() => false)) { await b.click().catch(() => {}); await page.waitForTimeout(400); }
     }
-    const row = page.locator('.nav-scene-row', { hasText: title }).first();
-    if (await row.count().catch(() => 0) > 0) {
-      await row.click({ force: true, timeout: 6000 }).catch(() => {});
-      await page.waitForTimeout(2200);
-    }
-    return !/Select a scene|Welcome to Mythos/.test(await page.evaluate(() => document.body.innerText));
-  };
-  check('app: scene open', await openScene('Into the Undercity'));
+    await page.keyboard.press('Escape').catch(() => {});
 
-  // Right-panel tab click — right third of the window only (same filter the
-  // old harness used; the CAPTURES here are verified distinct below).
-  const clickRightTab = async (label) => {
-    const ok = await page.evaluate((l) => {
-      for (const el of document.querySelectorAll('button,[role="tab"],div,span')) {
-        if ((el.innerText || '').trim() !== l) continue;
-        const r = el.getBoundingClientRect();
-        if (r.left < 1400 || r.width < 8 || r.height < 8) continue;
-        el.click();
-        return true;
+    const openScene = async (title) => {
+      for (let i = 0; i < 3; i++) {
+        const btns = page.locator('.nav-expand-btn');
+        const n = await btns.count().catch(() => 0);
+        for (let j = 0; j < n; j++) await btns.nth(j).click({ timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(400);
       }
-      return false;
-    }, label);
-    await page.waitForTimeout(1700);
-    return ok;
-  };
-  const rightColumnText = () => page.evaluate(() => {
-    const out = [];
-    // SKY-10591: don't skip elements with children — an element with mixed
-    // (text + inline element) content is a container too, and skipping it
-    // drops its own text nodes entirely. Emit each element's OWN text nodes
-    // only; nested elements contribute their own words on their own pass.
-    document.querySelectorAll('body *').forEach((el) => {
-      const r = el.getBoundingClientRect();
-      if (r.left < 1500 || r.width < 4) return;
-      const t = [...el.childNodes].filter(n => n.nodeType === 3)
-        .map(n => n.textContent.trim()).filter(Boolean).join(' ');
-      if (t) out.push(t);
+      const row = page.locator('.nav-scene-row', { hasText: title }).first();
+      if (await row.count().catch(() => 0) > 0) {
+        await row.click({ force: true, timeout: 6000 }).catch(() => {});
+        await page.waitForTimeout(2200);
+      }
+      return !/Select a scene|Welcome to Mythos/.test(await page.evaluate(() => document.body.innerText));
+    };
+    check('app: scene open', await openScene('Into the Undercity'));
+
+    // Right-panel tab click — right third of the window only (same filter the
+    // old harness used; the CAPTURES here are verified distinct below).
+    const clickRightTab = async (label) => {
+      const ok = await page.evaluate((l) => {
+        for (const el of document.querySelectorAll('button,[role="tab"],div,span')) {
+          if ((el.innerText || '').trim() !== l) continue;
+          const r = el.getBoundingClientRect();
+          if (r.left < 1400 || r.width < 8 || r.height < 8) continue;
+          el.click();
+          return true;
+        }
+        return false;
+      }, label);
+      await page.waitForTimeout(1700);
+      return ok;
+    };
+    const rightColumnText = () => page.evaluate(() => {
+      const out = [];
+      // SKY-10591: don't skip elements with children — an element with mixed
+      // (text + inline element) content is a container too, and skipping it
+      // drops its own text nodes entirely. Emit each element's OWN text nodes
+      // only; nested elements contribute their own words on their own pass.
+      document.querySelectorAll('body *').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.left < 1500 || r.width < 4) return;
+        const t = [...el.childNodes].filter(n => n.nodeType === 3)
+          .map(n => n.textContent.trim()).filter(Boolean).join(' ');
+        if (t) out.push(t);
+      });
+      return [...new Set(out)].join('\n');
     });
-    return [...new Set(out)].join('\n');
-  });
-  const shootRight = (name) => page.screenshot({ path: `${OUT}/${name}.png`, clip: { x: 1520, y: 0, width: 400, height: 1080 } });
+    const shootRight = (name) => page.screenshot({ path: `${OUT}/${name}.png`, clip: { x: 1520, y: 0, width: 400, height: 1080 } });
 
-  // 1. References — all four typed roles + the unresolved [[New Thing]].
-  check('app: References tab', await clickRightTab('References'));
-  let refText = await rightColumnText();
-  fs.writeFileSync(`${OUT}/app-references.txt`, refText);
-  check('app: Location · pinned (The Sunken Gate)', refText.includes('The Sunken Gate') && refText.includes('Location · pinned'));
-  check('app: Character · POV (Mira Veynn)', refText.includes('Mira Veynn') && refText.includes('Character · POV'));
-  check('app: unresolved link (Tide Mechanics)', refText.includes('Tide Mechanics') && refText.includes('unresolved link'));
-  check('app: Location · hub (The Last City of Veynn)', refText.includes('The Last City of Veynn') && refText.includes('Location · hub'));
-  check('app: New Thing unresolved with Create', refText.includes('New Thing') && refText.includes('+ Create'));
-  await shootRight('app-references');
+    // 1. References — all four typed roles + the unresolved [[New Thing]].
+    check('app: References tab', await clickRightTab('References'));
+    let refText = await rightColumnText();
+    fs.writeFileSync(`${OUT}/app-references.txt`, refText);
+    check('app: Location · pinned (The Sunken Gate)', refText.includes('The Sunken Gate') && refText.includes('Location · pinned'));
+    check('app: Character · POV (Mira Veynn)', refText.includes('Mira Veynn') && refText.includes('Character · POV'));
+    check('app: unresolved link (Tide Mechanics)', refText.includes('Tide Mechanics') && refText.includes('unresolved link'));
+    check('app: Location · hub (The Last City of Veynn)', refText.includes('The Last City of Veynn') && refText.includes('Location · hub'));
+    check('app: New Thing unresolved with Create', refText.includes('New Thing') && refText.includes('+ Create'));
+    await shootRight('app-references');
 
-  // 2. Notes tab — prototype copy.
-  check('app: Notes tab', await clickRightTab('Notes'));
-  const notesText = await rightColumnText();
-  fs.writeFileSync(`${OUT}/app-notes.txt`, notesText);
-  check('app: scene-notes copy', /promote a note to the vault by dragging it onto the navigator/i.test(notesText));
-  await shootRight('app-notes');
+    // 2. Notes tab — prototype copy.
+    check('app: Notes tab', await clickRightTab('Notes'));
+    const notesText = await rightColumnText();
+    fs.writeFileSync(`${OUT}/app-notes.txt`, notesText);
+    check('app: scene-notes copy', /promote a note to the vault by dragging it onto the navigator/i.test(notesText));
+    await shootRight('app-notes');
 
-  // 3. Scenes tab — canvas boards (SKY-10503 copy already fixed; just capture).
-  check('app: Scenes tab', await clickRightTab('Scenes'));
-  const scenesText = await rightColumnText();
-  fs.writeFileSync(`${OUT}/app-scenes.txt`, scenesText);
-  check('app: canvas boards copy', /canvas board/i.test(scenesText));
-  await shootRight('app-scenes');
+    // 3. Scenes tab — canvas boards (SKY-10503 copy already fixed; just capture).
+    check('app: Scenes tab', await clickRightTab('Scenes'));
+    const scenesText = await rightColumnText();
+    fs.writeFileSync(`${OUT}/app-scenes.txt`, scenesText);
+    check('app: canvas boards copy', /canvas board/i.test(scenesText));
+    await shootRight('app-scenes');
 
-  // 4. Assistant — continuity flag cards, one per scope.
-  check('app: Assistant tab', await clickRightTab('Assistant'));
-  await page.locator('[data-testid="ic-scope-tag"]').first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-  const scopeTags = await page.locator('[data-testid="ic-scope-tag"]').allInnerTexts().catch(() => []);
-  check('app: 3 flag cards', scopeTags.length === 3, `scopes=[${scopeTags.join(', ')}]`);
-  check('app: scope Story ↔ Vault', scopeTags.some((t) => t.includes('Story') && t.includes('Vault')));
-  check('app: scope Vault internal', scopeTags.includes('Vault internal'));
-  check('app: scope Timeline', scopeTags.includes('Timeline'));
-  const contText = await rightColumnText();
-  fs.writeFileSync(`${OUT}/app-continuity.txt`, contText);
-  // M12.B3 (SKY-10738): owner's annotated-screenshot ruling replaces the
-  // prototype's three actions with two — "Suggest fix" / "Open sources".
-  check('app: two actions on cards (M12.B3)', contText.includes('Suggest fix') && contText.includes('Open sources'));
-  // Put the flag cards at the top of the sidebar viewport so all three are in
-  // frame (the Assistant tab stacks AGENTS/SUGGESTIONS/ANALYSIS above them).
-  await page.evaluate(() => {
-    document.querySelector('[data-testid="ic-scope-tag"]')
-      ?.closest('li')?.scrollIntoView({ block: 'start' });
-  });
-  await page.waitForTimeout(500);
-  await shootRight('app-continuity');
+    // 4. Assistant — continuity flag cards, one per scope.
+    check('app: Assistant tab', await clickRightTab('Assistant'));
+    await page.locator('[data-testid="ic-scope-tag"]').first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    const scopeTags = await page.locator('[data-testid="ic-scope-tag"]').allInnerTexts().catch(() => []);
+    check('app: 3 flag cards', scopeTags.length === 3, `scopes=[${scopeTags.join(', ')}]`);
+    check('app: scope Story ↔ Vault', scopeTags.some((t) => t.includes('Story') && t.includes('Vault')));
+    check('app: scope Vault internal', scopeTags.includes('Vault internal'));
+    check('app: scope Timeline', scopeTags.includes('Timeline'));
+    const contText = await rightColumnText();
+    fs.writeFileSync(`${OUT}/app-continuity.txt`, contText);
+    // M12.B3 (SKY-10738): owner's annotated-screenshot ruling replaces the
+    // prototype's three actions with two — "Suggest fix" / "Open sources".
+    check('app: two actions on cards (M12.B3)', contText.includes('Suggest fix') && contText.includes('Open sources'));
+    // Put the flag cards at the top of the sidebar viewport so all three are in
+    // frame (the Assistant tab stacks AGENTS/SUGGESTIONS/ANALYSIS above them).
+    await page.evaluate(() => {
+      document.querySelector('[data-testid="ic-scope-tag"]')
+        ?.closest('li')?.scrollIntoView({ block: 'start' });
+    });
+    await page.waitForTimeout(500);
+    await shootRight('app-continuity');
 
-  // 5. Exercise each per-flag action (acceptance box 3).
-  // 5a. Suggest fix → Update your notes → Apply Change → the Sunken Gate
-  // note is patched (M12.B3: "Suggest fix" opens the choice first).
-  await page.locator('button[aria-label^="Suggest fix"]').first().click({ timeout: 5000 });
-  await page.waitForTimeout(300);
-  await page.locator('button[aria-label="Update your notes to match the story"]').click({ timeout: 5000 });
-  await page.waitForTimeout(800);
-  await shootRight('app-action-match-expand');
-  await page.locator('button[aria-label="Apply vault change"]').click({ timeout: 5000 });
-  await page.waitForTimeout(1500);
-  const gateNote = fs.readFileSync(path.join(fx.vaultDir, 'entities/locations/The Sunken Gate.md'), 'utf8');
-  check('action: Edit notes to match patched the note', gateNote.includes('The inner passage opens at high tide.') && !gateNote.includes(GATE_EXCERPT));
+    // 5. Exercise each per-flag action (acceptance box 3).
+    // 5a. Suggest fix → Update your notes → Apply Change → the Sunken Gate
+    // note is patched (M12.B3: "Suggest fix" opens the choice first).
+    await page.locator('button[aria-label^="Suggest fix"]').first().click({ timeout: 5000 });
+    await page.waitForTimeout(300);
+    await page.locator('button[aria-label="Update your notes to match the story"]').click({ timeout: 5000 });
+    await page.waitForTimeout(800);
+    await shootRight('app-action-match-expand');
+    await page.locator('button[aria-label="Apply vault change"]').click({ timeout: 5000 });
+    await page.waitForTimeout(1500);
+    const gateNote = fs.readFileSync(path.join(fx.vaultDir, 'entities/locations/The Sunken Gate.md'), 'utf8');
+    check('action: Edit notes to match patched the note', gateNote.includes('The inner passage opens at high tide.') && !gateNote.includes(GATE_EXCERPT));
 
-  // 5b. Suggest fix → Suggest a story change → Apply Edit → suggestion row
-  // lands (verified from state.db after the app closes).
-  await page.locator('button[aria-label^="Suggest fix"]').nth(1).click({ timeout: 5000 });
-  await page.waitForTimeout(300);
-  await page.locator('button[aria-label="Suggest a change to the story"]').click({ timeout: 5000 });
-  await page.waitForTimeout(800);
-  await shootRight('app-action-suggest-expand');
-  await page.locator('button[aria-label="Apply suggested edit"]').click({ timeout: 5000 });
-  await page.waitForTimeout(1500);
+    // 5b. Suggest fix → Suggest a story change → Apply Edit → suggestion row
+    // lands (verified from state.db after the app closes).
+    await page.locator('button[aria-label^="Suggest fix"]').nth(1).click({ timeout: 5000 });
+    await page.waitForTimeout(300);
+    await page.locator('button[aria-label="Suggest a change to the story"]').click({ timeout: 5000 });
+    await page.waitForTimeout(800);
+    await shootRight('app-action-suggest-expand');
+    await page.locator('button[aria-label="Apply suggested edit"]').click({ timeout: 5000 });
+    await page.waitForTimeout(1500);
 
-  // 5c. Ignore → the last card leaves the open list.
-  await page.locator('button[aria-label^="Ignore"]').first().click({ timeout: 5000 });
-  await page.waitForTimeout(1500);
-  const remaining = await page.locator('[data-testid="ic-scope-tag"]').count().catch(() => 0);
-  check('action: all three flags resolved/ignored', remaining === 0, `remaining=${remaining}`);
-  await shootRight('app-continuity-after-actions');
+    // 5c. Ignore → the last card leaves the open list.
+    await page.locator('button[aria-label^="Ignore"]').first().click({ timeout: 5000 });
+    await page.waitForTimeout(1500);
+    const remaining = await page.locator('[data-testid="ic-scope-tag"]').count().catch(() => 0);
+    check('action: all three flags resolved/ignored', remaining === 0, `remaining=${remaining}`);
+    await shootRight('app-continuity-after-actions');
 
-  // 6. [[New Thing]] — create from the References row, then it resolves live.
-  check('app: References tab (again)', await clickRightTab('References'));
-  await page.locator('button[aria-label="New Thing — unresolved link, create the note"]').click({ timeout: 5000 });
-  await page.waitForTimeout(2500);
-  await page.screenshot({ path: `${OUT}/app-newthing-created.png` });
-  const noteOnDisk = fs.existsSync(path.join(fx.notesVaultDir, 'New Thing.md'));
-  check('action: + Create wrote New Thing.md to the Notes Vault', noteOnDisk);
+    // 6. [[New Thing]] — create from the References row, then it resolves live.
+    check('app: References tab (again)', await clickRightTab('References'));
+    await page.locator('button[aria-label="New Thing — unresolved link, create the note"]').click({ timeout: 5000 });
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: `${OUT}/app-newthing-created.png` });
+    const noteOnDisk = fs.existsSync(path.join(fx.notesVaultDir, 'New Thing.md'));
+    check('action: + Create wrote New Thing.md to the Notes Vault', noteOnDisk);
 
-  // Back to the story editor via the left nav rail's Story Writer entry,
-  // reopen the scene if the create-flow deselected it, and re-read References.
-  await page.evaluate(() => {
-    const hit = [...document.querySelectorAll('div,span,button,a')].filter((e) => {
-      const label = ((e.innerText || '') + ' ' + (e.getAttribute('title') || '')).trim();
-      if (!/Story Writer/i.test(label)) return false;
-      const r = e.getBoundingClientRect();
-      return r.left < 110 && r.width > 8 && r.height > 8;
-    }).sort((a, b) => a.getBoundingClientRect().height - b.getBoundingClientRect().height)[0];
-    if (hit) hit.click();
-  });
-  await page.waitForTimeout(2500);
-  // The create-flow deselects story/chapter/scene — always reopen the scene.
-  check('app: scene reopened after create', await openScene('Into the Undercity'));
-  await clickRightTab('References');
-  refText = await rightColumnText();
-  fs.writeFileSync(`${OUT}/app-references-resolved.txt`, refText);
-  // Tide Mechanics stays unresolved by design, so `+ Create` is still on the
-  // panel — the proof is the New Thing row's aria flipping to "Open New Thing"
-  // with a `Note · pinned` subtitle.
-  const newThingOpen = await page.locator('button[aria-label="Open New Thing"]').count().catch(() => 0);
-  const newThingCreate = await page.locator('button[aria-label="New Thing — unresolved link, create the note"]').count().catch(() => 0);
-  check('action: New Thing resolved live (Note · pinned, Create gone)',
-    newThingOpen === 1 && newThingCreate === 0 && /Note · pinned/.test(refText));
-  await shootRight('app-references-resolved');
+    // Back to the story editor via the left nav rail's Story Writer entry,
+    // reopen the scene if the create-flow deselected it, and re-read References.
+    await page.evaluate(() => {
+      const hit = [...document.querySelectorAll('div,span,button,a')].filter((e) => {
+        const label = ((e.innerText || '') + ' ' + (e.getAttribute('title') || '')).trim();
+        if (!/Story Writer/i.test(label)) return false;
+        const r = e.getBoundingClientRect();
+        return r.left < 110 && r.width > 8 && r.height > 8;
+      }).sort((a, b) => a.getBoundingClientRect().height - b.getBoundingClientRect().height)[0];
+      if (hit) hit.click();
+    });
+    await page.waitForTimeout(2500);
+    // The create-flow deselects story/chapter/scene — always reopen the scene.
+    check('app: scene reopened after create', await openScene('Into the Undercity'));
+    await clickRightTab('References');
+    refText = await rightColumnText();
+    fs.writeFileSync(`${OUT}/app-references-resolved.txt`, refText);
+    // Tide Mechanics stays unresolved by design, so `+ Create` is still on the
+    // panel — the proof is the New Thing row's aria flipping to "Open New Thing"
+    // with a `Note · pinned` subtitle.
+    const newThingOpen = await page.locator('button[aria-label="Open New Thing"]').count().catch(() => 0);
+    const newThingCreate = await page.locator('button[aria-label="New Thing — unresolved link, create the note"]').count().catch(() => 0);
+    check('action: New Thing resolved live (Note · pinned, Create gone)',
+      newThingOpen === 1 && newThingCreate === 0 && /Note · pinned/.test(refText));
+    await shootRight('app-references-resolved');
 
-  await app.close().catch(() => {});
-  // Suggestion row written by 5b — read state.db after the app has closed.
-  const db2 = new DatabaseSync(path.join(fx.vaultDir, '.mythos', 'state.db'));
-  const sugg = db2.prepare("SELECT source_agent, status, rationale FROM suggestions WHERE source_agent='archive'").all();
-  const iss = db2.prepare('SELECT id, status, resolved_action FROM continuity_issues ORDER BY id').all();
-  db2.close();
-  check('action: Suggest story change landed a proposed archive suggestion', sugg.length === 1 && sugg[0].status === 'proposed', JSON.stringify(sugg));
-  fs.writeFileSync(`${OUT}/app-db-after.json`, JSON.stringify({ suggestions: sugg, continuity: iss }, null, 2));
-  const byId = Object.fromEntries(iss.map((r) => [r.id, r]));
-  check('db: story_vault flag resolved via match', byId['fl-story-vault']?.status === 'resolved' && byId['fl-story-vault']?.resolved_action === 'match_archive_to_story');
-  check('db: vault_internal flag resolved via suggest', byId['fl-vault-internal']?.status === 'resolved' && byId['fl-vault-internal']?.resolved_action === 'suggest_story_change');
-  check('db: timeline flag ignored', byId['fl-timeline']?.status === 'ignored' && byId['fl-timeline']?.resolved_action === 'ignore');
+    await app.close().catch(() => {});
+    // Suggestion row written by 5b — read state.db after the app has closed.
+    const db2 = new DatabaseSync(path.join(fx.vaultDir, '.mythos', 'state.db'));
+    const sugg = db2.prepare("SELECT source_agent, status, rationale FROM suggestions WHERE source_agent='archive'").all();
+    const iss = db2.prepare('SELECT id, status, resolved_action FROM continuity_issues ORDER BY id').all();
+    db2.close();
+    check('action: Suggest story change landed a proposed archive suggestion', sugg.length === 1 && sugg[0].status === 'proposed', JSON.stringify(sugg));
+    fs.writeFileSync(`${OUT}/app-db-after.json`, JSON.stringify({ suggestions: sugg, continuity: iss }, null, 2));
+    const byId = Object.fromEntries(iss.map((r) => [r.id, r]));
+    check('db: story_vault flag resolved via match', byId['fl-story-vault']?.status === 'resolved' && byId['fl-story-vault']?.resolved_action === 'match_archive_to_story');
+    check('db: vault_internal flag resolved via suggest', byId['fl-vault-internal']?.status === 'resolved' && byId['fl-vault-internal']?.resolved_action === 'suggest_story_change');
+    check('db: timeline flag ignored', byId['fl-timeline']?.status === 'ignored' && byId['fl-timeline']?.resolved_action === 'ignore');
 
-  for (const d of [fx.userData, fx.vaultDir, fx.notesVaultDir]) fs.rmSync(d, { recursive: true, force: true });
+    for (const d of [fx.userData, fx.vaultDir, fx.notesVaultDir]) removeRecorded(d);
 
-  // Distinctness — the SKY-10504 failure mode was four identical screenshots.
-  const tabShots = ['app-references', 'app-notes', 'app-scenes', 'app-continuity'];
-  const hashes = tabShots.map((n) => crypto.createHash('sha1').update(fs.readFileSync(`${OUT}/${n}.png`)).digest('hex'));
-  check('captures: 4 app tab shots are pairwise distinct', new Set(hashes).size === tabShots.length,
-    tabShots.map((n, i) => `${n}=${hashes[i].slice(0, 8)}`).join(' '));
+    // Distinctness — the SKY-10504 failure mode was four identical screenshots.
+    const tabShots = ['app-references', 'app-notes', 'app-scenes', 'app-continuity'];
+    const hashes = tabShots.map((n) => crypto.createHash('sha1').update(fs.readFileSync(`${OUT}/${n}.png`)).digest('hex'));
+    check('captures: 4 app tab shots are pairwise distinct', new Set(hashes).size === tabShots.length,
+      tabShots.map((n, i) => `${n}=${hashes[i].slice(0, 8)}`).join(' '));
+  } finally {
+    await app?.close().catch(() => {});
+    cleanupTestTmp();
+  }
 }
 
 // ── side-by-sides ────────────────────────────────────────────────────────────

@@ -12,12 +12,13 @@
 //
 // Usage: xvfb-run node e2e/fidelity/sky10608-comments-ai-gate.mjs
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { outDir, mainJs as MAIN_JS, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('sky10608-comments-ai-gate');
 
 const checks = [];
@@ -36,8 +37,8 @@ const AGENT_TEXT = 'Continuity: check gate state in ch.2.';
 
 // One shared vault — both launches read the identical comments.json.
 function seedVault() {
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-10608-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotes-10608-'));
+  const vaultDir = makeTestTmp('10608-vault');
+  const notesVaultDir = makeTestTmp('10608-notes');
   fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify({
     version: '1', vaultRoot: vaultDir,
     stories: [{ id: SID, title: 'The Broken Gate', path: `stories/${SID}`, genre: 'Epic Fantasy', createdAt: NOW, updatedAt: NOW,
@@ -65,7 +66,7 @@ function seedVault() {
 }
 
 function seedUserData(vault, aiEnabled) {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), `mythos-10608-ud-${aiEnabled ? 'on' : 'off'}-`));
+  const userData = makeTestTmp(`10608-ud-${aiEnabled ? 'on' : 'off'}`);
   const ac = { enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 1e5, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 5e5 };
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '', onboardingComplete: true, notesTabUpgradeToastShown: true,
@@ -78,9 +79,11 @@ function seedUserData(vault, aiEnabled) {
   return userData;
 }
 
+let app;
+
 async function captureRun(vault, { aiEnabled, shotName }) {
   const userData = seedUserData(vault, aiEnabled);
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
+  app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
   const page = await app.firstWindow();
   page.on('dialog', (x) => void x.accept().catch(() => {}));
   await page.waitForLoadState('domcontentloaded');
@@ -114,24 +117,29 @@ async function captureRun(vault, { aiEnabled, shotName }) {
   }
   await page.screenshot({ path: `${OUT}/${shotName}.png` });
   await app.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
+  removeRecorded(userData);
 }
 
-const vault = seedVault();
-await captureRun(vault, { aiEnabled: false, shotName: 'ai-off-comments-gutter' });
-await captureRun(vault, { aiEnabled: true, shotName: 'ai-on-comments-gutter' });
+try {
+  const vault = seedVault();
+  await captureRun(vault, { aiEnabled: false, shotName: 'ai-off-comments-gutter' });
+  await captureRun(vault, { aiEnabled: true, shotName: 'ai-on-comments-gutter' });
 
-// "Hidden, not deleted" — the shared comments.json still holds both entries
-// after both runs (the filter is render-time only, no writes).
-const after = JSON.parse(fs.readFileSync(path.join(vault.vaultDir, 'stories', SID, 'comments.json'), 'utf8'));
-check('comments.json untouched (both comments persisted)',
-  Array.isArray(after.comments) && after.comments.length === 2,
-  `count=${after.comments?.length}`);
+  // "Hidden, not deleted" — the shared comments.json still holds both entries
+  // after both runs (the filter is render-time only, no writes).
+  const after = JSON.parse(fs.readFileSync(path.join(vault.vaultDir, 'stories', SID, 'comments.json'), 'utf8'));
+  check('comments.json untouched (both comments persisted)',
+    Array.isArray(after.comments) && after.comments.length === 2,
+    `count=${after.comments?.length}`);
 
-for (const d of [vault.vaultDir, vault.notesVaultDir]) fs.rmSync(d, { recursive: true, force: true });
+  cleanupTestTmp();
 
-fs.writeFileSync(`${OUT}/verify.json`, JSON.stringify(checks, null, 2));
-const failed = checks.filter((c) => !c.ok);
-console.log(`\n${checks.length - failed.length}/${checks.length} checks passed → ${OUT}`);
-if (failed.length) { console.log('FAILED: ' + failed.map((f) => f.name).join(' | ')); process.exitCode = 1; }
-console.log('DONE');
+  fs.writeFileSync(`${OUT}/verify.json`, JSON.stringify(checks, null, 2));
+  const failed = checks.filter((c) => !c.ok);
+  console.log(`\n${checks.length - failed.length}/${checks.length} checks passed → ${OUT}`);
+  if (failed.length) { console.log('FAILED: ' + failed.map((f) => f.name).join(' | ')); process.exitCode = 1; }
+  console.log('DONE');
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
+}

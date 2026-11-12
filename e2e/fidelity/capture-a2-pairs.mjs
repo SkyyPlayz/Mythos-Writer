@@ -1,12 +1,13 @@
 // A2 VERIFY pairs @ 1440×900 + 1280×720 (Neon Nebula 50 / glass 20).
 // Shots: rail order · writing chrome · Appearance · Shortcuts · Timeline.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 
 const OUT_ARG = process.argv.find((a) => a.startsWith('--out='));
 const OUT = OUT_ARG
@@ -22,9 +23,9 @@ const now = new Date().toISOString();
 const storyId = 'a2-story-001';
 
 function seed() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a2-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-'));
+  const userData = makeTestTmp('a2-user');
+  const vaultDir = makeTestTmp('a2-vault');
+  const notesVaultDir = makeTestTmp('a2-notes');
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
     apiKey: '', onboardingComplete: true, notesTabUpgradeToastShown: true,
     gettingStartedDismissed: true, vaultUpgradePromptShown: true,
@@ -93,87 +94,93 @@ async function openSettings(page, cat) {
   }
 }
 
-for (const { w, h } of VIEWPORTS) {
-  const fixture = seed();
-  const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
-    timeout: 90000,
-  });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize({ width: w, height: h });
-  try { await page.locator('.app-menu-bar, .wc-bar').first().waitFor({ state: 'visible', timeout: 25000 }); } catch { /* boot */ }
-  await page.waitForTimeout(2200);
-  await dismissToasts(page);
-  await page.waitForTimeout(400);
-
-  const tag = `${w}x${h}`;
-
-  // Quick Entry absent
-  const qe = await page.getByText('Quick Entry').count();
-  console.log(`  Quick Entry count @ ${tag}: ${qe}`);
-  if (qe !== 0) throw new Error(`Quick Entry still present: ${qe}`);
-
-  // A1 residual keep
-  if (await page.locator('.nav-rail__brand').count() !== 0) throw new Error('Rail brand M returned');
-  if (await page.locator('[data-testid="wc-demo-btn"]').count() !== 0) throw new Error('Demo btn returned');
-
-  // 1) Rail order
-  await page.screenshot({ path: path.join(OUT, `rail-order-${tag}.png`) });
-  console.log(`  shot rail-order-${tag}`);
-  const railText = await page.locator('.nav-rail, [data-testid="app-nav-rail"]').first().innerText().catch(() => '');
-  console.log(`  rail text sample: ${railText.replace(/\s+/g, ' ').slice(0, 160)}`);
-
-  // 2) Writing chrome (tabs in center)
-  await page.screenshot({ path: path.join(OUT, `writing-chrome-${tag}.png`) });
-  console.log(`  shot writing-chrome-${tag}`);
-
-  // 3) Appearance
-  await openSettings(page, 'appearance');
-  const appearance = page.locator('[data-settings-cat="appearance"], .lnas-root').first();
-  await appearance.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-  await page.screenshot({ path: path.join(OUT, `settings-appearance-${tag}.png`) });
-  console.log(`  shot settings-appearance-${tag}`);
-
-  // 4) Shortcuts
-  const shortcutsNav = page.locator('button:has-text("Shortcuts"), [data-settings-cat-btn="shortcuts"]').first();
-  if (await shortcutsNav.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await shortcutsNav.click().catch(() => {});
+let app;
+try {
+  for (const { w, h } of VIEWPORTS) {
+    const fixture = seed();
+    app = await electron.launch({
+      args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'],
+      timeout: 90000,
+    });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize({ width: w, height: h });
+    try { await page.locator('.app-menu-bar, .wc-bar').first().waitFor({ state: 'visible', timeout: 25000 }); } catch { /* boot */ }
+    await page.waitForTimeout(2200);
+    await dismissToasts(page);
     await page.waitForTimeout(400);
+
+    const tag = `${w}x${h}`;
+
+    // Quick Entry absent
+    const qe = await page.getByText('Quick Entry').count();
+    console.log(`  Quick Entry count @ ${tag}: ${qe}`);
+    if (qe !== 0) throw new Error(`Quick Entry still present: ${qe}`);
+
+    // A1 residual keep
+    if (await page.locator('.nav-rail__brand').count() !== 0) throw new Error('Rail brand M returned');
+    if (await page.locator('[data-testid="wc-demo-btn"]').count() !== 0) throw new Error('Demo btn returned');
+
+    // 1) Rail order
+    await page.screenshot({ path: path.join(OUT, `rail-order-${tag}.png`) });
+    console.log(`  shot rail-order-${tag}`);
+    const railText = await page.locator('.nav-rail, [data-testid="app-nav-rail"]').first().innerText().catch(() => '');
+    console.log(`  rail text sample: ${railText.replace(/\s+/g, ' ').slice(0, 160)}`);
+
+    // 2) Writing chrome (tabs in center)
+    await page.screenshot({ path: path.join(OUT, `writing-chrome-${tag}.png`) });
+    console.log(`  shot writing-chrome-${tag}`);
+
+    // 3) Appearance
+    await openSettings(page, 'appearance');
+    const appearance = page.locator('[data-settings-cat="appearance"], .lnas-root').first();
+    await appearance.waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+    await page.screenshot({ path: path.join(OUT, `settings-appearance-${tag}.png`) });
+    console.log(`  shot settings-appearance-${tag}`);
+
+    // 4) Shortcuts
+    const shortcutsNav = page.locator('button:has-text("Shortcuts"), [data-settings-cat-btn="shortcuts"]').first();
+    if (await shortcutsNav.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await shortcutsNav.click().catch(() => {});
+      await page.waitForTimeout(400);
+    }
+    await page.screenshot({ path: path.join(OUT, `settings-shortcuts-${tag}.png`) });
+    console.log(`  shot settings-shortcuts-${tag}`);
+
+    // Close settings
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
+    // 5) Timeline (Demo string gone)
+    const tl = page.locator('[data-testid="nav-rail-item-timeline"], .rail-item', { hasText: /Timeline/i }).first();
+    if (await tl.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await tl.click().catch(() => {});
+      await page.waitForTimeout(800);
+    }
+    await page.screenshot({ path: path.join(OUT, `timeline-${tag}.png`) });
+    console.log(`  shot timeline-${tag}`);
+    const demoOnTl = await page.getByText('Demo', { exact: true }).count();
+    console.log(`  Timeline Demo string count @ ${tag}: ${demoOnTl}`);
+    if (demoOnTl !== 0) throw new Error(`Timeline Demo placeholder still present: ${demoOnTl}`);
+
+    // Rounded chrome chase evidence
+    const radius = await page.evaluate(() => {
+      const el = document.querySelector('.desktop-shell');
+      return el ? getComputedStyle(el).borderRadius : 'missing';
+    });
+    console.log(`  .desktop-shell border-radius @ ${tag}: ${radius}`);
+    await page.screenshot({ path: path.join(OUT, `rounded-chrome-chase-${tag}.png`) });
+    console.log(`  shot rounded-chrome-chase-${tag}`);
+
+    await app.close();
+    for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
+      removeRecorded(p);
+    }
   }
-  await page.screenshot({ path: path.join(OUT, `settings-shortcuts-${tag}.png`) });
-  console.log(`  shot settings-shortcuts-${tag}`);
 
-  // Close settings
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(400);
-
-  // 5) Timeline (Demo string gone)
-  const tl = page.locator('[data-testid="nav-rail-item-timeline"], .rail-item', { hasText: /Timeline/i }).first();
-  if (await tl.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await tl.click().catch(() => {});
-    await page.waitForTimeout(800);
-  }
-  await page.screenshot({ path: path.join(OUT, `timeline-${tag}.png`) });
-  console.log(`  shot timeline-${tag}`);
-  const demoOnTl = await page.getByText('Demo', { exact: true }).count();
-  console.log(`  Timeline Demo string count @ ${tag}: ${demoOnTl}`);
-  if (demoOnTl !== 0) throw new Error(`Timeline Demo placeholder still present: ${demoOnTl}`);
-
-  // Rounded chrome chase evidence
-  const radius = await page.evaluate(() => {
-    const el = document.querySelector('.desktop-shell');
-    return el ? getComputedStyle(el).borderRadius : 'missing';
-  });
-  console.log(`  .desktop-shell border-radius @ ${tag}: ${radius}`);
-  await page.screenshot({ path: path.join(OUT, `rounded-chrome-chase-${tag}.png`) });
-  console.log(`  shot rounded-chrome-chase-${tag}`);
-
-  await app.close();
-  for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
-    fs.rmSync(p, { recursive: true, force: true });
-  }
+  console.log('A2 VERIFY pairs DONE →', OUT);
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
 }
-
-console.log('A2 VERIFY pairs DONE →', OUT);

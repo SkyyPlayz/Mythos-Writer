@@ -25,7 +25,7 @@ window wall clock, allow **exactly one emergency single-fix tip**:
 
 | Field | Rule |
 | --- | --- |
-| **Threshold** | **`vars.MYTHOS_TIP_FIX_WINDOW_MINUTES`** if set, else **20** minutes. Weekly audit may set this to **10** when CURRENT and PRIOR `gate_avg_proxy` both **> 1.5** (see [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md) · [TOKEN_AUDIT_LOUD_DIGEST.md](./TOKEN_AUDIT_LOUD_DIGEST.md)). |
+| **Threshold** | **`vars.MYTHOS_TIP_FIX_WINDOW_MINUTES`** if set, else **20** minutes. |
 | **Clock starts** | When CI **starts** on the batch tip (preferred: `workflow_run` / check-suite `created_at` / `started_at` for that head SHA). If start time is unavailable, use wall clock since the **first red conclusion** on that tip. |
 | **Allowance** | **One** narrowly scoped commit (single failure class / one root cause), then push once. |
 | **After** | **Resume batching** — next reds go back through full inventory → one batch tip. No drip stream. |

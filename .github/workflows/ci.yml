@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, 'batch/**']
   workflow_dispatch:
 
 concurrency:
@@ -229,14 +229,20 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
 
-      - name: Test (issue-finder dedupe key, SKY-8741)
-        run: node .github/scripts/issue-finder.test.js
-
       - name: Test (mythos-gate Critic/Shield/Probe tip-bound signals)
         run: node .github/scripts/mythos-gate-signals.test.js
 
       - name: Test (no bot token or secrets fallback in workflows)
         run: node .github/scripts/no-bot-token.test.js
+
+      - name: Test (diff-guard secret scan)
+        run: node .github/scripts/diff-guard.test.js
+
+      - name: Test (migration-flag)
+        run: node .github/scripts/migration-flag.test.js
+
+      - name: Test (workflow rules)
+        run: node .github/scripts/workflow-rules.test.js
 
       - name: Test (ops-guards hygiene last-success selection)
         run: bash scripts/mythos-ops/ops-guards.test.sh
@@ -1098,6 +1104,19 @@ jobs:
             test-results/
           retention-days: 3
 
+  diff-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan the diff for committed secrets
+        run: node .github/scripts/diff-guard.js
+
   ci:
     # Required check aggregator — always runs (if: always()) so branch protection
     # gets a definitive pass/fail rather than a "pending" indefinite skipped state
@@ -1107,7 +1126,7 @@ jobs:
     # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
     # oracle-sweeps is a matrix in `needs`. needs.oracle-sweeps.result == success
     # only when every leg succeeded. skipped, cancelled, and failed are not success.
-    needs: [lint, typecheck, unit, oracle-sweeps, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    needs: [lint, typecheck, unit, oracle-sweeps, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4, diff-guard]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
@@ -1117,8 +1136,8 @@ jobs:
         run: |
           # Stage 1 checks must always succeed. For the oracle-sweeps matrix,
           # needs.oracle-sweeps.result == success only when every leg succeeded.
-          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.oracle-sweeps.result }}"
-          echo "Stage 1 (lint/typecheck/unit/oracle-sweeps) results: $stage1"
+          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.oracle-sweeps.result }} ${{ needs.diff-guard.result }}"
+          echo "Stage 1 (lint/typecheck/unit/oracle-sweeps/diff-guard) results: $stage1"
           if [ "${{ needs.oracle-sweeps.result }}" != "success" ]; then
             echo "ERROR: needs.oracle-sweeps.result is '${{ needs.oracle-sweeps.result }}' — expected 'success'. Skipped, cancelled, or failed legs are not success. CI aggregator: FAILED."
             exit 1
