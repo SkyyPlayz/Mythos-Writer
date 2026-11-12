@@ -1,0 +1,85 @@
+name: Bug report (Ivy's team)
+description: Something in the app is broken. Use this form if Ivy's team should take it.
+title: "[Bug] "
+labels: ["type:bug", "team:ivy"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        File app bugs here in Mythos-Writer. Please search open issues first.
+
+        Use "Bug report (Killer's team)" if that team should take this bug.
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: I searched existing issues
+      options:
+        - label: I searched open Writer issues and did not find a duplicate.
+          required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: You can pick more than one if the bug happens on more than one system.
+      multiple: true
+      options:
+        - Mac
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: The Mythos Writer version you were using. If you are not sure, say which beta or date you installed.
+      placeholder: "Example: 0.5.7, or the 3 Nov 2026 beta"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, in order.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happens instead
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where in the app
+      description: The screen or tool, if you know it.
+      placeholder: "Example: Timeline, Notes, Book Builder"
+    validations:
+      required: false
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: A picture of the problem helps a lot. Images up to 10 MB. You can also paste a picture into the steps or "what happens" boxes.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or other detail
+      description: Paste any useful log text. This box will be formatted as code.
+      render: shell
+    validations:
+      required: false

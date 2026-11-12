@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: File an idea
+    url: https://github.com/SkyyPlayz/Mythos-Ops/issues/new?template=idea.yml
+    about: New ideas go in Mythos-Ops, not in this repo.
+  - name: Two-team desk
+    url: https://github.com/SkyyPlayz/Mythos-Ops/issues/34
+    about: Questions that are not one job, and pause or back notices.

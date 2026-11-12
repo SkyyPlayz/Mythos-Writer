@@ -1,0 +1,56 @@
+name: Job / task (Killer's team)
+description: A job for Killer's team. Use this for a feature, a build chore, or other app work that is not a bug.
+title: "[Task] "
+labels: ["team:brother"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for app work in Mythos-Writer. File ideas in Mythos-Ops, not here.
+
+        This form adds the `team:brother` label. If the kind is Feature, add the `type:feature` and `needs-plan` labels after you file (or ask Ivy to add them). If the kind is Build or chore, add `type:build`.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of work
+      options:
+        - Feature
+        - Build or chore
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: What should be done.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Why this matters now.
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: How we will know this job is finished.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where in the app
+      placeholder: "Example: Timeline, Notes, Book Builder"
+    validations:
+      required: false
+  - type: input
+    id: refined
+    attributes:
+      label: Refined file or plan (if any)
+      description: A link to a file in Mythos-Ops, if one exists.
+      placeholder: "https://github.com/SkyyPlayz/Mythos-Ops/blob/main/refined/..."
+    validations:
+      required: false
