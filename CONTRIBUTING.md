@@ -68,6 +68,8 @@ queue** (available on GitHub Team/Enterprise plans) rather than racing to merge
 first. The queue serialises merges and rebases each PR in order, so only one
 CI run is needed per merge slot.
 
+Not available: merge queues need an org-owned repo.
+
 To enqueue a PR: open the PR, click **"Merge when ready"** (or enable it via
 the merge queue button). GitHub will rebase, run CI, and merge automatically.
 
