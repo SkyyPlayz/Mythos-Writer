@@ -28,6 +28,7 @@ import {
   type KeyFieldPath,
 } from './settings-masking.js';
 import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSettingsMigration.js';
+import { normalizeIdleCatchUpSettings } from './idleCatchUpSettings.aug.js';
 
 /**
  * E3 / S-B11 / M29: set `onboardingComplete: true` via raw JSON read-modify-write.
@@ -398,6 +399,8 @@ export function loadAppSettingsFrom(
         base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
       }
       const rawRecord = raw as Record<string, unknown>;
+      // PLAN-IDLE-CATCH-UP: clamp only when saved, so files without the key load unchanged.
+      if (rawRecord.idleCatchUp !== undefined) base.idleCatchUp = normalizeIdleCatchUpSettings(rawRecord.idleCatchUp);
       const waPair = resolveWritingAssistantEnabledPair(rawRecord);
       base.waEnabled = waPair;
       base.agents.writingAssistant.enabled = waPair;
@@ -578,6 +581,9 @@ export function saveAppSettingsTo(
   opts?: { isCleared?: () => boolean },
 ): void {
   if (opts?.isCleared?.()) return;
+
+  // PLAN-IDLE-CATCH-UP: clamp before persist; absent stays absent.
+  if (settings.idleCatchUp !== undefined) settings = { ...settings, idleCatchUp: normalizeIdleCatchUpSettings(settings.idleCatchUp) };
 
   // R4-L: ignore any renderer-supplied keyReentryPaths; update held from values.
   // Mask-shaped values coerce to '' before persist (still no mask on disk).

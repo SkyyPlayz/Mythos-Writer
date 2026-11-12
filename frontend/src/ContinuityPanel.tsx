@@ -7,6 +7,8 @@ import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { DropdownSelect } from './components/ui/DropdownSelect';
+import { enqueueIdle } from './idleCatchUp/enqueueIdle';
+import { idleCatchUpGate } from './idleCatchUp/idleCatchUpGate';
 import './ContinuityPanel.css';
 
 export type { InconsistencyItem };
@@ -126,6 +128,20 @@ function formatScanAgo(scannedAt: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function scanErrorText(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string' && err) return err;
+  return 'unknown error';
+}
+
+/** PLAN-IDLE-CATCH-UP stop semantics: typing stops FURTHER submissions only. */
+const BG_SCAN_MAY_FINISH = 'If a background scan already started, it may finish after you start typing again.';
+
+function queuedBgScanCopy(minutes: number): string {
+  const unit = minutes === 1 ? 'minute' : 'minutes';
+  return `Background manuscript scan queued — it starts after you pause typing for ${minutes} ${unit}. ${BG_SCAN_MAY_FINISH}`;
+}
+
 function scenesFromStory(story: Story | null | undefined): Array<{ id: string; label: string; scene: Scene }> {
   if (!story) return [];
   const out: Array<{ id: string; label: string; scene: Scene }> = [];
@@ -220,6 +236,18 @@ export default function ContinuityPanel({
   const [globalCollapsed, setGlobalCollapsed] = useState(false);
   // M9d: visible failure line when a flag action couldn't do what it says.
   const [actionError, setActionError] = useState<string | null>(null);
+  // PLAN-IDLE-CATCH-UP: background manuscript scans waiting in the idle gate's
+  // staging buffer (optimistic — counted from `onStaged`, released when that
+  // same request settles). Never derived from a resolved "staged" value.
+  const [queuedBgScans, setQueuedBgScans] = useState(0);
+  // A staged scan can settle minutes later. If the panel unmounted meanwhile
+  // the outcome is dropped (plan pick: no global error sink, no setState
+  // after unmount).
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [footerExpanded, setFooterExpanded] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<GroupKey>>(new Set(['low', 'ignored']));
   const onCountChangeRef = useRef(onCountChange);
@@ -419,14 +447,40 @@ export default function ContinuityPanel({
     void window.api.archiveScanContinuity(scanScene.id, prose, LEGACY_SCAN_SCOPE[scanScope], checkType);
     // …and the M12.1 extraction queue gets the real scoped scene set —
     // identifiers only; main resolves them to paths from the manifest.
-    // Enqueue failures come back as { error } resolved values, not throws —
-    // surface them, or the panel would look busy while the pass never ran.
-    void window.api.jobs
-      ?.enqueue('manuscript-scan', { scope: { level: scanScope, sceneId: scanScene.id } })
+    // PLAN-IDLE-CATCH-UP: the extraction pass goes through the idle gate, which
+    // may hold it until the writer pauses typing. The promise settles only on a
+    // terminal outcome, so an enqueue failure that happens minutes later still
+    // lands here — surface it, or the panel would look busy while the pass
+    // never ran.
+    let staged = false;
+    const onStaged = () => {
+      if (!mountedRef.current) return;
+      staged = true;
+      setQueuedBgScans((n) => n + 1);
+    };
+    const release = () => {
+      if (!staged) return;
+      staged = false;
+      if (mountedRef.current) setQueuedBgScans((n) => Math.max(0, n - 1));
+    };
+    const report = (message: string) => {
+      if (mountedRef.current) setActionError(message);
+    };
+    void enqueueIdle('manuscript-scan', { scope: { level: scanScope, sceneId: scanScene.id } }, { onStaged })
       .then((res) => {
-        if (res?.error) setActionError(`Background scan didn’t start — ${res.error}`);
+        release();
+        if (res?.error) {
+          report(`Background scan didn’t start — ${res.error}`);
+        } else if (res?.reason === 'buffer-full') {
+          report('Too many background scans are waiting — pause typing so they can start, then try again.');
+        }
+        // 'coalesced' (a newer identical request replaced this one),
+        // 'vault-switch' and 'cleared' are not failures — no error line.
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        release();
+        report(`Background scan didn’t start — ${scanErrorText(err)}`);
+      });
   }, [scanScene, scanScope, checkType]);
 
   // M12.B3: switching "Continuity pass ▾" re-scans immediately with the
@@ -580,6 +634,15 @@ export default function ContinuityPanel({
           <span className="cp-spinner" aria-hidden="true" />
           Background scan {bgScan.completedUnits + bgScan.skippedUnits}
           {bgScan.totalUnits !== null ? `/${bgScan.totalUnits}` : ''}
+        </p>
+      )}
+
+      {/* PLAN-IDLE-CATCH-UP: the background manuscript scan is waiting for a
+          typing pause. The LLM continuity scan keeps its own "Scanning scene…"
+          banner — this line is only about the background extraction pass. */}
+      {queuedBgScans > 0 && (
+        <p className="cp-bg-scan-line" role="status" data-testid="cp-bg-scan-queued">
+          {queuedBgScanCopy(idleCatchUpGate.getSettings().minutes)}
         </p>
       )}
 
