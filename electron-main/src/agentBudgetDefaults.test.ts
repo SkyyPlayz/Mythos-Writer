@@ -9,9 +9,17 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { AGENT_BUDGET_DEFAULTS, SETTINGS_DEFAULTS, loadAppSettingsFrom } from './appSettingsLoad.js';
 import { SecretsStore } from './secrets/index.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const AGENT_KEYS = [
   'writingAssistant',
@@ -77,11 +85,8 @@ const slice2AutonomyOffMigrated = {
   },
 };
 
-const tempDirs: string[] = [];
-
 function mkSettingsStore() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-budget-defaults-'));
-  tempDirs.push(dir);
+  const dir = makeTestTmp('agent-budget-defaults');
   const settingsPath = path.join(dir, 'app-settings.json');
   const store = new SecretsStore({
     filePath: path.join(dir, 'secrets.json'),
@@ -95,9 +100,7 @@ function mkSettingsStore() {
 }
 
 afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  cleanupTestTmp();
 });
 
 describe('AGENT_BUDGET_DEFAULTS', () => {

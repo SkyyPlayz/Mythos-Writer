@@ -9,7 +9,6 @@
 // touch the wrong file.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   handleAgentSessionList,
@@ -27,16 +26,21 @@ import {
   SESSIONS_DIRNAME,
 } from './mythosFormat/agentSessions.js';
 import type { SessionTurn } from './mythosFormat/agentSessions.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const A_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 const B_ID = 'bbbbbbbb-2222-4222-8222-222222222222';
 
 function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-agent-sessions-ipc-'));
-}
-
-function cleanDir(dir: string) {
-  fs.rmSync(dir, { recursive: true, force: true });
+  return makeTestTmp('agent-sessions-ipc');
 }
 
 function sessionFiles(notesRoot: string): string[] {
@@ -76,7 +80,7 @@ function makePoisonedVault(notesRoot: string): { aAbs: string; bAbs: string; aBy
 let notesRoot: string;
 
 beforeEach(() => { notesRoot = makeTmpDir(); });
-afterEach(() => { cleanDir(notesRoot); });
+afterEach(() => { cleanupTestTmp(); });
 
 // ─── agentSession:list ────────────────────────────────────────────────────────
 

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { openDb, closeDb, getEntityIndex, searchEntityFts } from './db.js';
 import { defaultManifest } from './vault.js';
 import type { Manifest } from './ipc.js';
@@ -12,19 +11,28 @@ import {
   removeEntityFromIndex,
   syncAllEntitiesToIndex,
 } from './entitySync.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmpDir: string;
 let manifest: Manifest;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-entity-sync-'));
+  tmpDir = makeTestTmp('entity-sync');
   manifest = defaultManifest(tmpDir);
   openDb(tmpDir);
 });
 
 afterEach(() => {
   closeDb();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── buildEntityIndexRow ───

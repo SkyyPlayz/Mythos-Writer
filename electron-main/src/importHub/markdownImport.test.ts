@@ -4,7 +4,6 @@
 // entities, caps, links). Every folder is built in a temp dir by the test.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   MARKDOWN_IMPORT_MAX_DEPTH,
@@ -18,15 +17,24 @@ import {
 import type { ImportPlan } from './types.js';
 import { inlinesToMarkdown } from './blocks.js';
 import { assessImportPath } from './importSafety.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmp: string;
 
 beforeEach(() => {
-  tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'markdown-import-')));
+  tmp = makeTestTmp('markdown-import');
 });
 
 afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 /** Write `rel` (POSIX) under `root`, creating folders. */

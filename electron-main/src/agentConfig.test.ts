@@ -9,7 +9,6 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { openDb, closeDb, insertGenerationLog } from './db.js';
 import {
@@ -18,6 +17,15 @@ import {
   enforceSuggestionBudget,
 } from './budget.js';
 import type { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 let tmpDir: string;
 let db: DatabaseSync;
@@ -41,13 +49,13 @@ function makeGenLog(agent: string, tokens_in: number, createdAt: string, id?: st
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-agentcfg-'));
+  tmpDir = makeTestTmp('agentcfg');
   db = openDb(tmpDir);
 });
 
 afterEach(() => {
   closeDb();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTestTmp();
 });
 
 // ─── §1 assertAgentEnabled ────────────────────────────────────────────────────

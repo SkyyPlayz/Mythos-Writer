@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import {
   answerQuestion,
@@ -18,11 +17,20 @@ import {
   type DbContinuityIssue,
 } from './db.js';
 import type { ArchiveProposedQuestion } from './archiveAgent.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const NOW = '2026-06-15T12:00:00.000Z';
 
 function makeTmp(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return makeTestTmp(prefix);
 }
 
 function makeArchiveQuestion(overrides: Partial<ArchiveProposedQuestion> = {}): ArchiveProposedQuestion {
@@ -63,7 +71,7 @@ function makeContinuityIssue(overrides: Partial<DbContinuityIssue> = {}): DbCont
 
 describe('ingestArchiveQuestions', () => {
   it('lands a Check 2 gap question in the queue as its own artifact type, not a flag', () => {
-    const vault = makeTmp('mythos-question-queue-db-');
+    const vault = makeTmp('question-queue-db');
     openDb(vault);
     try {
       const queued = ingestArchiveQuestions([makeArchiveQuestion()]);
@@ -81,12 +89,12 @@ describe('ingestArchiveQuestions', () => {
       expect(listContinuityIssues()).toHaveLength(0);
     } finally {
       closeDb();
-      fs.rmSync(vault, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('does not re-queue the same entity+scene gap on a repeat scan', () => {
-    const vault = makeTmp('mythos-question-queue-dedup-db-');
+    const vault = makeTmp('question-queue-dedup-db');
     openDb(vault);
     try {
       ingestArchiveQuestions([makeArchiveQuestion()]);
@@ -95,14 +103,14 @@ describe('ingestArchiveQuestions', () => {
       expect(listBrainstormQuestions()).toHaveLength(1);
     } finally {
       closeDb();
-      fs.rmSync(vault, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   // SKY-11457: the self-building wiki asks about names with no entity row, so
   // the id-keyed guard above never fires for them. Scene scans run on a timer.
   it('does not re-queue an entity-less new-name question on a repeat scan', () => {
-    const vault = makeTmp('mythos-question-queue-name-dedup-db-');
+    const vault = makeTmp('question-queue-name-dedup-db');
     openDb(vault);
     try {
       const input = {
@@ -122,12 +130,12 @@ describe('ingestArchiveQuestions', () => {
       expect(listBrainstormQuestions()).toHaveLength(2);
     } finally {
       closeDb();
-      fs.rmSync(vault, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('negative control: a continuity-flag write does not create a queue entry', () => {
-    const vault = makeTmp('mythos-question-queue-negctrl-db-');
+    const vault = makeTmp('question-queue-negctrl-db');
     openDb(vault);
     try {
       insertContinuityIssue(makeContinuityIssue());
@@ -136,14 +144,14 @@ describe('ingestArchiveQuestions', () => {
       expect(listBrainstormQuestions()).toHaveLength(0);
     } finally {
       closeDb();
-      fs.rmSync(vault, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });
 
 describe('answerQuestion', () => {
   it('authors a vault note via Brainstorm and tombstones the question (durable, not deleted)', () => {
-    const root = makeTmp('mythos-question-queue-answer-');
+    const root = makeTmp('question-queue-answer');
     const notesRoot = path.join(root, 'Notes Vault');
     const storyRoot = path.join(root, 'Story Vault');
     fs.mkdirSync(notesRoot, { recursive: true });
@@ -180,12 +188,12 @@ describe('answerQuestion', () => {
       expect(listBrainstormQuestions()).toHaveLength(1);
     } finally {
       closeDb();
-      fs.rmSync(root, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('refuses to re-answer an already-answered question', () => {
-    const root = makeTmp('mythos-question-queue-reanswer-');
+    const root = makeTmp('question-queue-reanswer');
     const notesRoot = path.join(root, 'Notes Vault');
     const storyRoot = path.join(root, 'Story Vault');
     fs.mkdirSync(notesRoot, { recursive: true });
@@ -221,12 +229,12 @@ describe('answerQuestion', () => {
       expect(getBrainstormQuestion(row.id)?.answer).toBe('The hooded figure is Kael in disguise.');
     } finally {
       closeDb();
-      fs.rmSync(root, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 
   it('reports not_found for an unknown question id', () => {
-    const vault = makeTmp('mythos-question-queue-notfound-db-');
+    const vault = makeTmp('question-queue-notfound-db');
     openDb(vault);
     try {
       const result = answerQuestion({
@@ -239,7 +247,7 @@ describe('answerQuestion', () => {
       expect(result.status).toBe('not_found');
     } finally {
       closeDb();
-      fs.rmSync(vault, { recursive: true, force: true });
+      cleanupTestTmp();
     }
   });
 });

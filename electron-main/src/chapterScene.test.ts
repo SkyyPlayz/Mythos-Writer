@@ -2,7 +2,6 @@
 // Uses real temp directories; no Electron mocks needed.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import {
@@ -16,6 +15,16 @@ import {
   safePath,
 } from './vault.js';
 import type { Manifest, ChapterEntry, SceneEntry } from './ipc.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp, removeRecorded } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+  removeRecorded: (p: string) => void;
+};
 
 // ─── Helpers ───
 
@@ -75,14 +84,14 @@ describe('CHAPTER_LIST logic', () => {
   let manifestPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-chlist-'));
+    tmpDir = makeTestTmp('chlist');
     manifest = makeManifest(tmpDir);
     manifestPath = path.join(tmpDir, 'manifest.json');
     writeManifest(manifestPath, manifest);
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('returns chapters for a valid storyId', () => {
@@ -108,14 +117,14 @@ describe('CHAPTER_GET logic', () => {
   let manifestPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-chget-'));
+    tmpDir = makeTestTmp('chget');
     const manifest = makeManifest(tmpDir);
     manifestPath = path.join(tmpDir, 'manifest.json');
     writeManifest(manifestPath, manifest);
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('returns the chapter for a known chapterId', () => {
@@ -147,14 +156,14 @@ describe('CHAPTER_SAVE logic', () => {
   let manifestPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-chsave-'));
+    tmpDir = makeTestTmp('chsave');
     const manifest = makeManifest(tmpDir);
     manifestPath = path.join(tmpDir, 'manifest.json');
     writeManifest(manifestPath, manifest);
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('updates chapter title and persists atomically', () => {
@@ -214,14 +223,14 @@ describe('SCENE_LIST logic', () => {
   let manifestPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-slist-'));
+    tmpDir = makeTestTmp('slist');
     const manifest = makeManifest(tmpDir);
     manifestPath = path.join(tmpDir, 'manifest.json');
     writeManifest(manifestPath, manifest);
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('returns scenes for a known chapterId', () => {
@@ -255,14 +264,14 @@ describe('SCENE_GET logic', () => {
   let manifestPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sget-'));
+    tmpDir = makeTestTmp('sget');
     const manifest = makeManifest(tmpDir);
     manifestPath = path.join(tmpDir, 'manifest.json');
     writeManifest(manifestPath, manifest);
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('returns the scene and its prose', () => {
@@ -304,14 +313,14 @@ describe('SCENE_SAVE logic', () => {
   let manifestPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ssave-'));
+    tmpDir = makeTestTmp('ssave');
     const manifest = makeManifest(tmpDir);
     manifestPath = path.join(tmpDir, 'manifest.json');
     writeManifest(manifestPath, manifest);
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('writes new prose atomically and updates the manifest', () => {
@@ -381,11 +390,11 @@ describe('writeVaultFileAtomic', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-atomic-'));
+    tmpDir = makeTestTmp('atomic');
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   it('writes content and returns correct byte count', () => {
@@ -411,12 +420,12 @@ describe('writeVaultFileAtomic', () => {
   });
 
   it('rejects symlink escape during write', () => {
-    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-atomic-outside-'));
+    const outsideDir = makeTestTmp('atomic-outside');
     fs.symlinkSync(outsideDir, path.join(tmpDir, 'external'));
     try {
       expect(() => writeVaultFileAtomic(tmpDir, 'external/leak.txt', 'pwned')).toThrow('Path traversal denied');
     } finally {
-      fs.rmSync(outsideDir, { recursive: true, force: true });
+      removeRecorded(outsideDir);
     }
   });
 });

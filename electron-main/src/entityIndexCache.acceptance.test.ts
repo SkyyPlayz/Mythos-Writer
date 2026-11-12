@@ -21,11 +21,19 @@
 // implementation, not skeletons.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { openDb, closeDb, getVaultIndexCacheRows } from './db.js';
 import { loadEntityIndex, buildEntityIndex } from './vault/entityIndex.js';
 import * as frontmatterParser from './vault/entityFrontmatterParser.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 describe('M12.2 — persistent vault index cache (acceptance)', () => {
   let tmpDir: string;
@@ -33,7 +41,7 @@ describe('M12.2 — persistent vault index cache (acceptance)', () => {
   let entityPath: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-entity-cache-'));
+    tmpDir = makeTestTmp('entity-cache');
     notesVaultRoot = tmpDir;
     openDb(tmpDir);
 
@@ -45,7 +53,7 @@ describe('M12.2 — persistent vault index cache (acceptance)', () => {
 
   afterEach(() => {
     closeDb();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTestTmp();
     vi.restoreAllMocks();
   });
 

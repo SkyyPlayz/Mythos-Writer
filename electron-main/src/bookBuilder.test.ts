@@ -3,7 +3,6 @@
 // no SafeIpcError seam. IPC exhaust reporting is deferred to S3.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   BOOK_PRESET_IDS,
@@ -26,6 +25,15 @@ import {
   BookFileCasExhaustedError,
   BookFileIoError,
 } from './vault.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
 
 const CREATED = '2026-01-01T00:00:00.000Z';
 const UPDATED = '2026-01-02T00:00:00.000Z';
@@ -190,16 +198,13 @@ describe('validateBookProfile', () => {
 });
 
 describe('writeBookFileCas', () => {
-  const dirs: string[] = [];
-
   afterEach(() => {
     _setBookFileCasBeforeCompareForTests(null);
-    for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+    cleanupTestTmp();
   });
 
   function vault(): { root: string; abs: string } {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'book-cas-'));
-    dirs.push(root);
+    const root = makeTestTmp('book-cas');
     return { root, abs: path.join(root, 'book.md') };
   }
 
@@ -333,8 +338,7 @@ describe('writeBookFileCas', () => {
   });
 
   it('refuses a parent directory symlink that escapes the vault', () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'book-cas-parent-'));
-    dirs.push(parent);
+    const parent = makeTestTmp('book-cas-parent');
     const outside = path.join(parent, 'outside');
     fs.mkdirSync(outside);
     fs.writeFileSync(path.join(outside, 'book.md'), 'secret');
@@ -347,8 +351,7 @@ describe('writeBookFileCas', () => {
   });
 
   it('refuses a symlink book.md and leaves the link target unchanged', () => {
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'book-cas-link-'));
-    dirs.push(parent);
+    const parent = makeTestTmp('book-cas-link');
     const outside = path.join(parent, 'outside.md');
     fs.writeFileSync(outside, 'secret');
     const root = path.join(parent, 'vault');

@@ -5,10 +5,9 @@
 // SETTINGS_GET masking originally tracked in MYT-143 (Anthropic apiKey) and
 // extended in MYT-424 to also cover voice.openaiApiKey.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 import crypto from 'crypto';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { writeVaultFileUnsafe_testOnly } from './vault.js';
@@ -33,6 +32,20 @@ import {
 } from './appSettingsLoad.js';
 import { SecretsStore, type SafeStorageLike } from './secrets/store.js';
 import { persistSecretsAndStripSettings, migrateSecretsFromSettingsFile } from './secrets/migration.js';
+import { createRequire } from 'node:module';
+
+// Static import of ../test-utils would pull that .d.ts under tsconfig rootDir
+// (src) and break `tsc`. require() keeps the helper outside the program.
+const require = createRequire(import.meta.url);
+const { makeTestTmp, cleanupTestTmp } = require('../test-utils/tmpdir.mjs') as {
+  makeTestTmp: (name: string) => string;
+  cleanupTestTmp: () => void;
+};
+
+// mkStore() dirs and the describe-scope safePath dir live for the whole file.
+afterAll(() => {
+  cleanupTestTmp();
+});
 
 // A plausible-looking synthetic key — not a real credential.
 const FAKE_API_KEY = 'sk-ant-test-FakeKeyForTestingOnly000000000000000000000000000000';
@@ -48,7 +61,7 @@ function makeSafeStorage(): SafeStorageLike {
 }
 
 function mkStore(): { store: SecretsStore; settingsPath: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-leak-disk-'));
+  const dir = makeTestTmp('leak-disk');
   const settingsPath = path.join(dir, 'app-settings.json');
   const secretsPath = path.join(dir, 'secrets.json');
   return {
@@ -102,7 +115,7 @@ describe('.env.example — no real API key present', () => {
 describe('vault safePath errors — no API key in message', () => {
   let tmpDir: string;
 
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-leak-'));
+  tmpDir = makeTestTmp('leak');
 
   it('path traversal error message does not contain a key-like string', () => {
     let errorMsg = '';
@@ -114,7 +127,6 @@ describe('vault safePath errors — no API key in message', () => {
     expect(errorMsg).toContain('Path traversal denied');
     expect(errorMsg).not.toContain('sk-ant-');
     expect(errorMsg).not.toContain(FAKE_API_KEY);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
 
