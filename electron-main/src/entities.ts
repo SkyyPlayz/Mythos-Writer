@@ -208,19 +208,63 @@ export function readEntity(
   }
 }
 
+type EntityChanges = {
+  name?: string;
+  aliases?: string[];
+  tags?: string[];
+  relations?: EntityRelation[];
+  prose?: string;
+  properties?: Record<string, unknown>;
+};
+
+// AI callers must hand over the abs path assertAiWritable returned. A missing
+// or empty path is refused here, so the AI path can never fall back to the
+// unguarded vault writer.
+function requireCheckedAbs(writeAbs: string | undefined, id: string): string {
+  if (typeof writeAbs !== 'string' || writeAbs.length === 0) {
+    throw new Error(`AI entity write refused: no checked path for ${id}`);
+  }
+  return writeAbs;
+}
+
+/**
+ * User path (ENTITY_UPDATE) omits writeAbs and writes through the vault helper.
+ * A caller that passes writeAbs at all is on the AI path and is routed to
+ * updateEntityGuarded, so an empty checked path is refused, never written.
+ */
 export function updateEntity(
   vaultRoot: string,
   manifest: Manifest,
   id: string,
-  changes: {
-    name?: string;
-    aliases?: string[];
-    tags?: string[];
-    relations?: EntityRelation[];
-    prose?: string;
-    properties?: Record<string, unknown>;
-  },
+  changes: EntityChanges,
   writeAbs?: string,
+): EntityEntry {
+  if (writeAbs !== undefined) return updateEntityGuarded(vaultRoot, manifest, id, changes, writeAbs);
+  return writeEntityUpdate(vaultRoot, manifest, id, changes, (relPath, content) => {
+    writeVaultFileAtomic(vaultRoot, relPath, content);
+  });
+}
+
+/** AI path: writes only through aiGuard.writeAiCanonical at the checked abs. */
+export function updateEntityGuarded(
+  vaultRoot: string,
+  manifest: Manifest,
+  id: string,
+  changes: EntityChanges,
+  writeAbs: string,
+): EntityEntry {
+  const abs = requireCheckedAbs(writeAbs, id);
+  return writeEntityUpdate(vaultRoot, manifest, id, changes, (_relPath, content) => {
+    aiGuard.writeAiCanonical(abs, content);
+  });
+}
+
+function writeEntityUpdate(
+  vaultRoot: string,
+  manifest: Manifest,
+  id: string,
+  changes: EntityChanges,
+  write: (relPath: string, content: string) => void,
 ): EntityEntry {
   const entry = manifest.entities.find((e) => e.id === id);
   if (!entry) throw new Error(`Entity not found: ${id}`);
@@ -261,8 +305,7 @@ export function updateEntity(
 
   const prose = changes.prose !== undefined ? changes.prose : existingProse;
   const content = serializeEntityFrontmatter(updatedFm, prose);
-  if (writeAbs) aiGuard.writeAiCanonical(writeAbs, content);
-  else writeVaultFileAtomic(vaultRoot, entry.path, content);
+  write(entry.path, content);
 
   const updated = fmToEntry(updatedFm, entry.path);
 
@@ -286,9 +329,13 @@ export function applyTypedRelation(
   vaultRoot: string,
   manifest: Manifest,
   payload: { relationType: string; sourceEntityId: string; targetEntityId: string },
-  writeAbs?: { source?: string; target?: string },
+  writeAbs: { source: string; target: string },
 ): { sourceWritten: boolean; targetWritten: boolean } {
   const { relationType, sourceEntityId, targetEntityId } = payload;
+  // AI-only path: check both sides before any write so a half-guarded call
+  // can't write the source and then fail on the target.
+  const sourceAbs = requireCheckedAbs(writeAbs?.source, sourceEntityId);
+  const targetAbs = requireCheckedAbs(writeAbs?.target, targetEntityId);
 
   const sourceEntry = manifest.entities.find((e) => e.id === sourceEntityId);
   const targetEntry = manifest.entities.find((e) => e.id === targetEntityId);
@@ -302,9 +349,9 @@ export function applyTypedRelation(
     (r) => r.type === relationType && r.target === targetEntityId,
   );
   if (!sourceAlreadyHas) {
-    updateEntity(vaultRoot, manifest, sourceEntityId, {
+    updateEntityGuarded(vaultRoot, manifest, sourceEntityId, {
       relations: [...sourceExisting, { type: relationType, target: targetEntityId }],
-    }, writeAbs?.source);
+    }, sourceAbs);
     sourceWritten = true;
   }
 
@@ -318,9 +365,9 @@ export function applyTypedRelation(
     (r) => r.type === reciprocal && r.target === sourceEntityId,
   );
   if (!targetAlreadyHas) {
-    updateEntity(vaultRoot, manifest, targetEntityId, {
+    updateEntityGuarded(vaultRoot, manifest, targetEntityId, {
       relations: [...targetExisting, { type: reciprocal, target: sourceEntityId }],
-    }, writeAbs?.target);
+    }, targetAbs);
     targetWritten = true;
   }
 
