@@ -19,4 +19,29 @@ export default [
       ],
     },
   },
+  {
+    // Story-facts extractors are blind to stored facts: nothing under
+    // factLedger/extract/ (tests included) may import the DB or the ledger DB.
+    // This entry replaces the options above for these files, so it repeats
+    // the test-hook pattern. Dynamic imports are checked by
+    // src/factLedger/extract/blindness.test.ts.
+    files: ['src/factLedger/extract/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/noFollowWrite.testing', '**/noFollowWrite.testing.js'],
+              message: 'Test hooks must not be imported from production code.',
+            },
+            {
+              group: ['**/db', '**/db.js', '**/db.ts', '**/ledgerDb', '**/ledgerDb.js', '**/ledgerDb.ts'],
+              message: 'factLedger/extract must not import the DB or the ledger DB.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

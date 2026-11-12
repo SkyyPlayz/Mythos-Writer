@@ -448,6 +448,32 @@ function writeMigrationSnapshot(vaultRoot: string, legacy: LegacyTimelineData, n
 
 // ─── Corrupt-file recovery ────────────────────────────────────────────────────
 
+/**
+ * Replace the vault root in an error message with `<vault>`. fs errors
+ * (EACCES/EPERM/…) embed the ABSOLUTE path, which includes the user's home
+ * folder. Node reports the path as passed to the fs call, i.e. the NORMALIZED
+ * `path.join(vaultRoot, name)`, so a root saved with `.`/`..`/`//` segments
+ * must be masked in its normalized and resolved forms too. A Windows message
+ * may also spell the root with either separator, so every spelling is masked.
+ */
+function maskVaultRoot(message: string, vaultRoot: string): string {
+  if (vaultRoot === '') return message;
+  const spellings = new Set<string>();
+  for (const base of [vaultRoot, path.normalize(vaultRoot), path.resolve(vaultRoot)]) {
+    const root = base.replace(/[\\/]+$/, '');
+    if (root === '' || root === '.' || root === '..') continue;
+    spellings.add(root);
+    spellings.add(root.replace(/[\\/]/g, '/'));
+    spellings.add(root.replace(/[\\/]/g, '\\'));
+  }
+  // Longest first, so a spelling that contains another is masked whole.
+  let masked = message;
+  for (const spelling of [...spellings].sort((a, b) => b.length - a.length)) {
+    masked = masked.split(spelling).join('<vault>');
+  }
+  return masked;
+}
+
 function recoverFromBackup(
   vaultRoot: string,
   error: Error,
@@ -478,9 +504,12 @@ function recoverFromBackup(
   copyNoFollowAtomic(storePath, corruptPath, { durable: false, rel: corruptRel, mkdir: false });
   writeVaultFileAtomic(vaultRoot, TIMELINES_FILENAME, backupRaw);
 
+  // Log vault-relative names only: absolute paths embed the user's home folder,
+  // and so can `error.message` (fs read errors), hence the masking.
+  // (`onRecovered` below still receives the absolute paths — callers need them.)
   console.error(
-    `[timelines] ${storePath} was unreadable (${error.message}); ` +
-      `restored from ${backupPath} — corrupt file preserved at ${corruptPath}`,
+    `[timelines] ${TIMELINES_FILENAME} was unreadable (${maskVaultRoot(error.message, vaultRoot)}); ` +
+      `restored from ${path.basename(backupPath)} — corrupt file preserved at ${corruptRel}`,
   );
   options?.onRecovered?.({ corruptPath, backupPath, error });
   return backupStore;

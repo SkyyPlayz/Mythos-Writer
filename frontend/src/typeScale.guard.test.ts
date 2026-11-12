@@ -17,10 +17,13 @@
  *     `font-size` / `font` keys in object literals, computed string keys
  *     included (inline styles, `CSSProperties` consts); `fontSize` JSX
  *     attributes (SVG); assignments such as `el.style.fontSize = …`,
- *     `el.style['font-size'] += …` and `ctx.font = …`;
+ *     `el.style['font-size'] += …` and `ctx.font = …` (`font` / `fontSize`
+ *     only on a style object or canvas context, so `preferences.font = x`
+ *     is data, not a size);
  *     `setProperty('font-size' | 'font', …)` and `setAttribute('font-size', …)`;
  *     and CSS written inside string and template literals: inline `cssText`,
- *     injected `<style>` sheets, and `style="…"` / `font-size="…"` in markup.
+ *     injected `<style>` sheets, and `style="…"` / `font-size="…"` in markup
+ *     (quoted or bare; `data-style` / `data-font-size` are not those).
  *     Template holes count as unknown values. A TS `font` that carries no
  *     size (`{ font: 'Lora' }`) is a family choice, not a shorthand, so it is
  *     skipped.
@@ -37,9 +40,10 @@
  * scanner cannot prove are a step.
  *
  * The scale itself must not be redefined: declaring `--text-<step>`,
- * `--leading-<step>` or `--weight-<step>` anywhere but `tokens.css` (a CSS
- * rule, an inline style, `setProperty`) is red, because it would let a
- * `var(--text-sm)` quietly render 13px again.
+ * `--leading-<step>` or `--weight-<step>` anywhere but the top-level `:root`
+ * rule of `tokens.css` (a CSS rule elsewhere, a scoped rule such as
+ * `.compact { … }` inside tokens.css, an inline style, `setProperty`) is red,
+ * because it would let a `var(--text-sm)` quietly render 13px again.
  *
  * ## The two ledgers
  *
@@ -75,6 +79,11 @@
  *
  *   - object `font` from a variable: `{ font: someVar }` (indistinguishable
  *     from a font-family pick);
+ *   - `font` / `fontSize` assigned on a receiver the file doesn't tie to a
+ *     style object or canvas context by name (`…style`, `ctx`, `context`),
+ *     a declared type (`CSSStyleDeclaration`, `CSSProperties`,
+ *     `CanvasRenderingContext2D`) or an initializer (`el.style`,
+ *     `getContext(…)`), e.g. an untyped `g.font = …`;
  *   - string concatenation: CSS text assembled from pieces with `+` or helper
  *     calls, where the size or property only exists once the pieces are joined;
  *   - computed `--text-*` keys: style-object keys and property names computed
@@ -360,6 +369,11 @@ function cssPropertyOf(name: string | undefined): string | undefined {
 
 const isAssignment = (k: ts.SyntaxKind) => k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment;
 
+/** Declared types whose `font` / `fontSize` is a CSS font: a style declaration or object, or a canvas 2D context. */
+const FONT_TARGET_TYPE = /\b(CSSStyleDeclaration|CSSProperties|(Offscreen)?CanvasRenderingContext2D)\b/;
+/** Receiver names that read as a style object (`style`, `labelStyle`) or a canvas 2D context (`ctx`, `measureCtx`, `context2d`). */
+const FONT_TARGET_NAME = /style$|(ctx|context)(2d)?$/i;
+
 /**
  * A custom-property name built with `+` or a template: literal parts are kept and every unknown part becomes
  * HOLE (`'--text-' + step` → `--text-⟨expr⟩`). Only a name that starts with a scale family is returned, so a
@@ -414,12 +428,16 @@ function scanCssText(text: string, scope: string, line: number, cssDestination =
   // style attribute: a quoted "<" … ">" in CSS is text, and stripping it as a tag would delete the CSS between.
   if (!cssDestination && /<[a-zA-Z!/?]/.test(rest)) {
     // Markup: style="…" attributes are declaration lists; SVG font-size="…" is a size; <style> bodies are sheets.
-    rest = rest.replace(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/gi, (_, _q, body: string) => {
-      for (const d of scanCss(body, true, line)) out.push({ ...d, selector: scope + SCOPE_JOIN + 'style=""' });
+    // A value may be quoted or bare (`style=font-size:13px`, which runs to whitespace or `>` as in HTML), and an
+    // attribute name starts after whitespace, a quote, `/` or a hole, so `data-style` is not `style`.
+    const attr = (name: string, quoted: string) =>
+      new RegExp(`(?<=^|[\\s"'/]|${HOLE})${name}\\s*=\\s*(?:(["'])(${quoted})\\1|([^\\s"'>][^\\s>]*))`, 'gi');
+    rest = rest.replace(attr('style', '[\\s\\S]*?'), (_, _q, quoted: string | undefined, bare: string | undefined) => {
+      for (const d of scanCss(quoted ?? bare ?? '', true, line)) out.push({ ...d, selector: scope + SCOPE_JOIN + 'style=""' });
       return ' ';
     });
-    rest = rest.replace(/\bfont-size\s*=\s*(["'])([^"']*)\1/gi, (_, _q, value: string) => {
-      out.push({ selector: scope + SCOPE_JOIN + 'font-size=""', property: 'font-size', value, line });
+    rest = rest.replace(attr('font-size', `[^"']*`), (_, _q, quoted: string | undefined, bare: string | undefined) => {
+      out.push({ selector: scope + SCOPE_JOIN + 'font-size=""', property: 'font-size', value: quoted ?? bare ?? '', line });
       return ' ';
     });
     rest = rest.replace(/<[a-zA-Z!/?][^>]*>/g, ' ');
@@ -450,6 +468,43 @@ function scanTs(file: string, source: string): CssDecl[] {
     out.push({ selector: scopeChain(at), property, value, line: lineOf(at) });
   };
 
+  // `font` and `fontSize` are also plain data names (`preferences.font`, `documentModel.fontSize`). Assigned, they
+  // count only on a style object or a canvas 2D context: one named like one, built from `.style` / `getContext()`,
+  // or declared in this file with a style or canvas type, or given one (`const m = this.#measure`,
+  // `this.#m = c.getContext('2d')!`).
+  const fontTargets = new Set<string>();
+  /** `name` ← `value` from declarations and plain assignments: `name` is a font target once `value` is one. */
+  const bindings: [name: string, value: ts.Node][] = [];
+  const isFontTargetExpr = (e: ts.Node) => accessName(e) === 'style' || (ts.isCallExpression(e) && accessName(e.expression) === 'getContext');
+  const collectFontTargets = (node: ts.Node): void => {
+    // A `#private` field's name keeps its `#`, as does the `this.#field` access that reads it.
+    if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isPropertyDeclaration(node)) &&
+      (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))) {
+      if (node.type && FONT_TARGET_TYPE.test(node.type.getText(sf))) fontTargets.add(node.name.text);
+      else if (node.initializer) bindings.push([node.name.text, node.initializer]);
+    } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = unwrap(node.left);
+      const name = ts.isIdentifier(left) ? left.text : accessName(left);
+      if (name !== undefined) bindings.push([name, node.right]);
+    }
+    ts.forEachChild(node, collectFontTargets);
+  };
+  collectFontTargets(sf);
+  const isFontTarget = (receiver: ts.Node) => {
+    const e = unwrap(receiver);
+    const name = ts.isIdentifier(e) ? e.text : accessName(e);
+    return isFontTargetExpr(e) || (name !== undefined && (FONT_TARGET_NAME.test(name) || fontTargets.has(name)));
+  };
+  // Aliases chain and may come before what they alias (a method above the constructor that assigns the field), so
+  // follow bindings to a fixed point. A pass that changes nothing ends it, and every other pass adds a name, so it
+  // runs at most bindings.length + 1 times.
+  for (let pass = 0, grew = true; grew && pass <= bindings.length; pass++) {
+    grew = false;
+    for (const [name, value] of bindings) {
+      if (!fontTargets.has(name) && isFontTarget(value)) { fontTargets.add(name); grew = true; }
+    }
+  }
+
   const visit = (node: ts.Node): void => {
     // { fontSize: … } / { 'font-size': … } / { ['fontSize']: … } / { fontSize } / { font: '…' } / { '--text-sm': … }
     if (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) {
@@ -467,8 +522,12 @@ function scanTs(file: string, source: string): CssDecl[] {
     }
     // el.style.fontSize = … / el.style['font-size'] = … / ctx.font = … (any assignment operator)
     else if (ts.isBinaryExpression(node) && isAssignment(node.operatorToken.kind)) {
-      const property = cssPropertyOf(accessName(node.left));
-      if (property) push(node, property, node.right);
+      const name = accessName(node.left);
+      const property = cssPropertyOf(name);
+      // Kebab-case and custom-property names only mean CSS, so they count on any receiver.
+      const onTarget = (name !== 'font' && name !== 'fontSize') ||
+        isFontTarget((node.left as ts.PropertyAccessExpression | ts.ElementAccessExpression).expression);
+      if (property && onTarget) push(node, property, node.right);
     }
     // setProperty('font-size' | 'font' | '--text-sm', …) / setAttribute('font-size', …) / setAttributeNS(ns, 'font-size', …)
     else if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -860,8 +919,13 @@ function baselineProblems(found: Counts, ledger: Counts): string[] {
   return [...counts, ...ceilingProblems(ledger), ...baselineTotalsOver(ledger)];
 }
 
-/** Scale steps declared or registered anywhere but tokens.css, the one file allowed to define them. */
-const redefinitionsOutsideTokens = (us: readonly Usage[]) => us.filter((u) => u.verdict === 'redefine' && u.file !== 'tokens.css');
+/**
+ * Scale steps declared or registered anywhere but tokens.css's top level: its unconditional `:root` rule, or a
+ * top-level `@property`. A step redeclared in a scoped rule there (`.compact`, `@media … >> :root`) moves every
+ * descendant off the scale just as it would in any other file.
+ */
+const redefinitionsOutsideTokensRoot = (us: readonly Usage[]) =>
+  us.filter((u) => u.verdict === 'redefine' && !(u.file === 'tokens.css' && (u.selector === ':root' || u.selector === `@property ${u.property}`)));
 
 const where = (us: Usage[]) => us.map((u) => `    ${u.file}:${u.line}  ${u.selector}  { ${u.property}: ${u.value} }`).join('\n');
 
@@ -1172,6 +1236,100 @@ describe('#1773 type-scale guard — scanner', () => {
       ['Dense >> <div style>', '11px', 'redefine'],
     ]);
   });
+
+  it('reads unquoted style= and font-size= values in markup', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        el.innerHTML = '<span style=font-size:13px>x</span><svg><text font-size=9>A</text></svg>';
+        el.innerHTML = \`<b class=x style=color:red;font-size:\${n}px>y</b>\`;
+      }
+    `)).toEqual([
+      ['paint >> style=""', '13px', 'off'],
+      ['paint >> font-size=""', '9', 'off'],
+      ['paint >> style=""', `${HOLE}px`, 'off'],
+    ]);
+  });
+
+  it('does not take data-style or data-font-size for style or font-size', () => {
+    expect(tsx(`
+      function paint(el: HTMLElement) {
+        el.innerHTML = '<div data-style="font-size:13px" data-font-size="12" data-style=font-size:11px data-font-size=10>z</div>';
+        el.innerHTML = '<i data-style="x" style="font-size:8px">w</i>';
+      }
+    `)).toEqual([
+      ['paint >> style=""', '8px', 'off'],
+    ]);
+  });
+
+  it('counts a font / fontSize assignment only on a style object or canvas context, not on plain data', () => {
+    expect(tsx(`
+      class Painter { private measure: CanvasRenderingContext2D; draw() { this.measure.font = '11px serif'; } }
+      class Ruler { #measure!: CanvasRenderingContext2D; draw() { this.#measure.font = '10px serif'; } }
+      function apply(el: HTMLElement, preferences: Prefs, documentModel: Doc, canvas: HTMLCanvasElement, s: CSSStyleDeclaration) {
+        preferences.font = x;
+        documentModel.fontSize = 12;
+        documentModel['fontSize'] += 1;
+        el.style.fontSize = '13px';
+        const box = el.style;
+        box.fontSize = '12px';
+        s.fontSize = '10px';
+        canvas.getContext('2d')!.font = '9px serif';
+        labelStyle.fontSize = 8;
+        ctx.font = spec;
+        attrs['font-size'] = 7;
+      }
+    `)).toEqual([
+      ['Painter >> draw', '11px serif', 'off'],
+      ['Ruler >> draw', '10px serif', 'off'],
+      ['apply', '13px', 'off'],
+      ['apply', '12px', 'off'],
+      ['apply', '10px', 'off'],
+      ['apply', '9px serif', 'off'],
+      ['apply', '8', 'off'],
+      ['apply', 'spec', 'off'],
+      ['apply', '7', 'off'],
+    ]);
+  });
+
+  it('follows a style object or canvas context through aliases and assignments, but not plain data', () => {
+    // Font-target names are file-wide, so every case binds its own name and can only pass through its own path.
+    expect(tsx(`
+      class Ruler {
+        #measure!: CanvasRenderingContext2D;
+        #prefs: Prefs;
+        draw() { const m = this.#measure; m.font = '10px serif'; }
+        save() { const p = this.#prefs; p.font = x; p.fontSize = 12; }
+      }
+      class Painter { private measure: CanvasRenderingContext2D; draw() { const pen = this.measure; pen.font = '11px serif'; } }
+      class Gauge {
+        #m;
+        draw() { const g = this.#m; g.fontSize = 6; this.#m.font = '9px serif'; }
+        constructor(c: HTMLCanvasElement) { this.#m = c.getContext('2d')!; }
+      }
+      function late(canvas: HTMLCanvasElement, doc: Doc) {
+        let r;
+        r = canvas.getContext('2d');
+        r.font = '8px serif';
+        let d;
+        d = doc.settings;
+        d.font = y;
+      }
+    `)).toEqual([
+      ['Ruler >> draw', '10px serif', 'off'],
+      ['Painter >> draw', '11px serif', 'off'],
+      ['Gauge >> draw', '6', 'off'],
+      ['Gauge >> draw', '9px serif', 'off'],
+      ['late', '8px serif', 'off'],
+    ]);
+  });
+
+  it('counts a CSSProperties-typed receiver by its type, whatever it is called', () => {
+    expect(tsx(`
+      function tune(look: React.CSSProperties) { look.fontSize = 11; }
+    `)).toEqual([
+      ['tune', '11', 'off'],
+    ]);
+  });
 });
 
 describe('#1773 type-scale guard — ledgers are well-formed', () => {
@@ -1239,7 +1397,7 @@ describe('#1773 type-scale guard — ledgers are well-formed', () => {
 describe('#1773 type-scale guard — the scale is defined in tokens.css only', () => {
   const steps = ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl'];
   const redefined = (file: string, src: string) =>
-    redefinitionsOutsideTokens(scanFile(file, src, steps)).map((u) => [u.file, u.selector, u.property, u.value]);
+    redefinitionsOutsideTokensRoot(scanFile(file, src, steps)).map((u) => [u.file, u.selector, u.property, u.value]);
 
   it('flags theme.ts writing a step, through setProperty, a style object or cssText', () => {
     expect(redefined('theme.ts', `
@@ -1280,6 +1438,19 @@ describe('#1773 type-scale guard — the scale is defined in tokens.css only', (
     expect(redefined('components/Dense.css', rule)).toEqual([['components/Dense.css', '@property --text-sm', '--text-sm', '@property']]);
     expect(redefined('theme/inject.ts', `export const sheet = '${rule}';`)).toEqual([['theme/inject.ts', 'sheet >> @property --text-sm', '--text-sm', '@property']]);
     expect(redefined('tokens.css', `:root { --text-sm: 14px; } ${rule}`)).toEqual([]);
+  });
+
+  it('flags a step redefined in a scoped rule inside tokens.css: only its top-level :root defines the scale', () => {
+    expect(redefined('tokens.css', `
+      :root { --text-sm: 14px; --leading-sm: 1.5; }
+      .compact { --text-sm: 13px; }
+      @media (max-width: 600px) { :root { --leading-sm: 1.2; } }
+      :root[data-density="compact"] { --weight-sm: 500; --text-header: #fff; }
+    `)).toEqual([
+      ['tokens.css', '.compact', '--text-sm', '13px'],
+      ['tokens.css', '@media (max-width: 600px) >> :root', '--leading-sm', '1.2'],
+      ['tokens.css', ':root[data-density="compact"]', '--weight-sm', '500'],
+    ]);
   });
 });
 
@@ -1366,9 +1537,9 @@ describe('#1773 type-scale guard — a ledger edit cannot undo the ratchet', () 
 describe('#1773 type-scale guard — off-scale font sizes may only fall', () => {
   const usages = scanTree(scaleSteps());
 
-  it('no scale step is declared outside tokens.css', () => {
-    const redefined = redefinitionsOutsideTokens(usages);
-    expect(redefined, `The --text-*/--leading-*/--weight-* steps live in tokens.css only:\n${where(redefined)}`).toEqual([]);
+  it('no scale step is declared outside tokens.css\'s top-level :root', () => {
+    const redefined = redefinitionsOutsideTokensRoot(usages);
+    expect(redefined, `The --text-*/--leading-*/--weight-* steps live in tokens.css's top-level :root only:\n${where(redefined)}`).toEqual([]);
   });
 
   const off = usages.filter((u) => u.verdict === 'off');

@@ -5,14 +5,15 @@
 // Set MW_MAIN_JS to a sibling build's out/main/main.js to capture a "before"
 // from pre-SKY-11072 main. Harness rules: see lib.mjs header.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { chromium, _electron as electron } from 'playwright';
 import { mainJs, outDir, requireBuild, serveProto, chromiumLaunchOptions } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 const MAIN_JS = process.env.MW_MAIN_JS || mainJs;
 const TAG = process.env.MW_MAIN_JS ? 'before' : 'after';
 if (!process.env.MW_MAIN_JS) requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky11072-vault-ref-columns');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORT = { width: 1920, height: 1080 };
@@ -30,9 +31,9 @@ const NOTES = [
 ];
 
 function seedFixture() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11072-cap-user-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11072-cap-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-11072-cap-notes-'));
+  const userData = makeTestTmp('11072-cap-user');
+  const vaultDir = makeTestTmp('11072-cap-vault');
+  const notesVaultDir = makeTestTmp('11072-cap-notes');
   const agentCfg = (extra = {}) => ({
     enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
     maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5,
@@ -55,9 +56,9 @@ function seedFixture() {
 }
 
 function cleanup(fixture) {
-  fs.rmSync(fixture.userData, { recursive: true, force: true });
-  fs.rmSync(fixture.vaultDir, { recursive: true, force: true });
-  fs.rmSync(fixture.notesVaultDir, { recursive: true, force: true });
+  removeRecorded(fixture.userData);
+  removeRecorded(fixture.vaultDir);
+  removeRecorded(fixture.notesVaultDir);
 }
 
 /** Union bounding box of the three column headers → clip covering the columns. */
@@ -76,51 +77,57 @@ async function columnsClip(page, headers, pad = 16, height = 700) {
 }
 
 async function captureApp() {
-  const fixture = seedFixture();
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
-  const page = await app.firstWindow();
-  page.on('dialog', (d) => void d.accept().catch(() => {}));
-  await page.waitForLoadState('domcontentloaded');
-  await page.setViewportSize(VIEWPORT);
-  await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(1500);
+  let app;
+  try {
+    const fixture = seedFixture();
+    app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
+    const page = await app.firstWindow();
+    page.on('dialog', (d) => void d.accept().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await page.setViewportSize(VIEWPORT);
+    await page.locator('.app-menu-bar').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(1500);
 
-  // Instant-create (SKY-9021/9896): File → New story, no prompt.
-  const before = await page.locator('.nav-story-row').count();
-  await page.locator('.wc-menu', { hasText: 'File' }).click();
-  await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
-  await page.locator('.nav-story-row').nth(before).waitFor({ state: 'visible', timeout: 8000 });
-  await page.locator('.nav-story-title').nth(before).click();
-  await page.waitForTimeout(500);
+    // Instant-create (SKY-9021/9896): File → New story, no prompt.
+    const before = await page.locator('.nav-story-row').count();
+    await page.locator('.wc-menu', { hasText: 'File' }).click();
+    await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await page.locator('.nav-story-row').nth(before).waitFor({ state: 'visible', timeout: 8000 });
+    await page.locator('.nav-story-title').nth(before).click();
+    await page.waitForTimeout(500);
 
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
-  await page.locator('.sc-columns').waitFor({ state: 'visible', timeout: 10000 });
-  await page.waitForTimeout(700);
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+    await page.locator('.sc-columns').waitFor({ state: 'visible', timeout: 10000 });
+    await page.waitForTimeout(700);
 
-  await page.screenshot({ path: `${OUT}/app-setup-view-${TAG}.png` });
-  console.log(`  shot app-setup-view-${TAG}`);
+    await page.screenshot({ path: `${OUT}/app-setup-view-${TAG}.png` });
+    console.log(`  shot app-setup-view-${TAG}`);
 
-  const headers = TAG === 'after' ? ['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS'] : ['BEATS', 'CAST', 'PLACES'];
-  const clip = await columnsClip(page, headers);
-  if (clip) {
-    await page.screenshot({ path: `${OUT}/app-vault-columns-crop-${TAG}.png`, clip });
-    console.log(`  shot app-vault-columns-crop-${TAG}`);
-  } else {
-    console.log('  MISS column headers for crop');
+    const headers = TAG === 'after' ? ['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS'] : ['BEATS', 'CAST', 'PLACES'];
+    const clip = await columnsClip(page, headers);
+    if (clip) {
+      await page.screenshot({ path: `${OUT}/app-vault-columns-crop-${TAG}.png`, clip });
+      console.log(`  shot app-vault-columns-crop-${TAG}`);
+    } else {
+      console.log('  MISS column headers for crop');
+    }
+
+    if (TAG === 'after') {
+      // The + picker (same card family as the suggested rail).
+      await page.getByRole('button', { name: 'Add a note to CHARACTERS' }).click();
+      await page.locator('.sc-ref-picker').waitFor({ state: 'visible', timeout: 5000 });
+      await page.waitForTimeout(300);
+      const pickerClip = await columnsClip(page, ['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS']);
+      await page.screenshot({ path: `${OUT}/app-ref-picker-open-after.png`, clip: pickerClip ?? undefined });
+      console.log('  shot app-ref-picker-open-after');
+    }
+
+    await app.close().catch(() => {});
+    cleanup(fixture);
+  } finally {
+    await app?.close().catch(() => {});
+    cleanupTestTmp();
   }
-
-  if (TAG === 'after') {
-    // The + picker (same card family as the suggested rail).
-    await page.getByRole('button', { name: 'Add a note to CHARACTERS' }).click();
-    await page.locator('.sc-ref-picker').waitFor({ state: 'visible', timeout: 5000 });
-    await page.waitForTimeout(300);
-    const pickerClip = await columnsClip(page, ['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS']);
-    await page.screenshot({ path: `${OUT}/app-ref-picker-open-after.png`, clip: pickerClip ?? undefined });
-    console.log('  shot app-ref-picker-open-after');
-  }
-
-  await app.close().catch(() => {});
-  cleanup(fixture);
 }
 
 async function captureProto() {
