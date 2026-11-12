@@ -4,12 +4,16 @@
  * Slice D: Settings also syncs name/icon to Agents Vault partner.md.
  */
 
-import type {
-  PartnerAmbient,
-  PartnerRegister,
-  PartnerTeach,
-  PartnerTone,
-  PartnerVerbosity,
+import {
+  effectiveCoachingMode,
+  PARTNER_TRAIT_LABELS,
+  traitDetail,
+  type PartnerTraitKey,
+  type PartnerAmbient,
+  type PartnerRegister,
+  type PartnerTeach,
+  type PartnerTone,
+  type PartnerVerbosity,
 } from './partnerPersonality';
 import type { PartnerHandId } from '../agents/partnerIdentity';
 import type { PartnerQuickCommandId } from './partnerQuickCommands';
@@ -215,6 +219,34 @@ export function resolveWritingPartner(settings: AppSettings | undefined): Writin
     ...(raw as Partial<WritingPartnerSettings>),
     heartbeat: { ...DEFAULT_WRITING_PARTNER.heartbeat, ...(raw.heartbeat ?? {}) },
   };
+}
+
+/**
+ * PLAN-COACHING-OPT-IN — personality lines folded into coach prompts.
+ *
+ * - Coaching off → none (the quiet assistant default sends no personality).
+ * - Assistant → tone, verbosity and a Companion voice. Dual's "teacher in the
+ *   margins" and a stored Teacher register both collapse to Companion; the
+ *   teaching style is omitted.
+ * - Teacher → tone, verbosity, the stored register and the teaching style.
+ *
+ * Teaching traits are emitted only when effectiveCoachingMode === 'teacher'.
+ */
+export function buildPersonalityPromptAddenda(settings: AppSettings | null | undefined): string[] {
+  const mode = effectiveCoachingMode(settings);
+  if (mode === 'off') return [];
+  const partner = resolveWritingPartner(settings ?? undefined);
+  const line = (key: PartnerTraitKey, value: string): string => {
+    const detail = traitDetail(key, value);
+    return `- ${PARTNER_TRAIT_LABELS[key]} (${detail.selected}): ${detail.copy} ${detail.beh.join(' ')}`;
+  };
+  const lines = [
+    line('tone', partner.tone),
+    line('verbosity', partner.verbosity),
+    line('register', mode === 'teacher' ? partner.register : 'Companion'),
+  ];
+  if (mode === 'teacher') lines.push(line('teach', partner.teach));
+  return lines;
 }
 
 /** Scope a saved model to the active provider list; fall back to provider default. */

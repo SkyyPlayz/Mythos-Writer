@@ -249,3 +249,32 @@ describe('coachMessages', () => {
     expect(collapseCoachMessage({ kind: 'coach', text: 'hi', at: 'x' })).toBe('hi');
   });
 });
+
+// PLAN-COACHING-OPT-IN — drills are Teacher-only output. A drill footer from a
+// card made while Coaching was in Teacher mode must never ride back into the
+// model history after the writer switches to Assistant or turns Coaching off.
+describe('historyContentForModel — no drill re-emission (coaching opt-in pin)', () => {
+  const at = '2026-07-01T00:00:00.000Z';
+
+  it('structural lesson and analysis cards fold to title — body, never the drill', () => {
+    for (const card of [lesson, analysis]) {
+      expect(card.drill).toBeTruthy();
+      const content = historyContentForModel({
+        role: 'agent',
+        text: encodeCoachCard(card),
+        at,
+        cardKind: card.kind,
+        cardTitle: card.title,
+      });
+      expect(content).not.toContain(card.drill!);
+      expect(content).not.toMatch(/Drill:/);
+      expect(content.startsWith(card.title)).toBe(true);
+    }
+  });
+
+  it('legacy no-cardKind cards fold the same way (any session agent)', () => {
+    const content = historyContentForModel({ role: 'agent', text: encodeCoachCard(lesson), at });
+    expect(content).toBe(`${lesson.title} — ${lesson.text}`);
+    expect(content).not.toMatch(/Drill:/);
+  });
+});

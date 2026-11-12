@@ -61,9 +61,12 @@ describe('PLAN-058 L7 pins', () => {
     expect(wp).toContain('wp-prompt-timeline-to-notes');
   });
 
-  it('09:09 teaching mode chrome remains Lane A only (no invented behavior)', () => {
+  it('09:09 teaching modes are live only behind the Coaching opt-in (PLAN-COACHING-OPT-IN)', () => {
     const coach = readFileSync(resolve(__dirname, 'components/SettingsPanel/sections/WritingCoachSettingsSection.tsx'), 'utf8');
-    expect(coach).toContain('Mode behavior coming soon');
+    // The inert "coming soon" chrome is cut; the mode now writes settings.coaching.
+    expect(coach).not.toContain('Mode behavior coming soon');
+    expect(coach).toContain('patchCoaching({ mode: option.id })');
+    expect(coach).toContain('disabled={!coaching.optIn}');
     expect(coach).not.toContain('setTeachingMode');
   });
 });

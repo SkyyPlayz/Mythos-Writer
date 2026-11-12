@@ -5,12 +5,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   buildCoachInvokePrompt,
+  buildCoachModePrefix,
   COACH_INVOKE_PROVIDER_SLOT,
   COACH_PROMPT_CHAR_BUDGET,
+  CoachPromptBudgetError,
   formatHistoryForWritingAssistant,
   makeCoachInvoke,
   turnsToCoachHistory,
 } from './coachInvoke';
+import {
+  COACHING_ASSISTANT_MARKER,
+  COACHING_TEACHER_MARKER,
+  QUIET_ASSISTANT_DIRECTIVE,
+  TEACHER_DIRECTIVE,
+} from '../partner/partnerPersonality';
 import { encodeCoachCard } from '../coach/coachMessages';
 import { MAX_HISTORY_TURNS } from '../timeline2/panel/useMiniAgentChat';
 
@@ -204,5 +212,153 @@ describe('makeCoachInvoke — Shield batch R4 / residual 6', () => {
     await expect(invoke('hi', [])).resolves.toBe('coach reply');
     expect(agentWritingAssistant).toHaveBeenCalled();
     expect(agentBrainstorm).not.toHaveBeenCalled();
+  });
+});
+
+// ── PLAN-COACHING-OPT-IN — mode prefix inside the same budget ──────────────
+
+const READY_WA = {
+  provider: { kind: 'ollama', model: 'qwen' },
+  agents: {
+    writingAssistant: { enabled: true, model: 'qwen', provider: { kind: 'ollama', model: 'qwen' } },
+  },
+};
+
+function installWaApi(extra: Record<string, unknown> = {}) {
+  const agentWritingAssistant = vi.fn(async (_prompt: string, _context?: string) => ({ text: 'coach reply' }));
+  const settingsGet = vi.fn(async () => ({ ...READY_WA, ...extra }));
+  Object.defineProperty(window, 'api', {
+    value: { settingsGet, agentWritingAssistant },
+    writable: true,
+    configurable: true,
+  });
+  return { agentWritingAssistant, settingsGet };
+}
+
+describe('buildCoachInvokePrompt — coaching prefix budget', () => {
+  const history = [
+    { role: 'user' as const, content: 'earlier question' },
+    { role: 'assistant' as const, content: 'earlier answer' },
+  ];
+
+  it('empty prefix: legacy shape is byte-identical (no head, no reject)', () => {
+    expect(buildCoachInvokePrompt('hi', history, COACH_PROMPT_CHAR_BUDGET, ''))
+      .toBe(buildCoachInvokePrompt('hi', history));
+    expect(buildCoachInvokePrompt('hi', [])).toBe('hi');
+  });
+
+  it('prefix opens the prompt and the composed prompt stays within budget', () => {
+    const composed = buildCoachInvokePrompt('final', history, COACH_PROMPT_CHAR_BUDGET, 'PREFIX');
+    expect(composed.startsWith('PREFIX\n\n')).toBe(true);
+    expect(composed.endsWith('User: final')).toBe(true);
+    expect(composed).toContain('Coach: earlier answer');
+    expect(composed.length).toBeLessThanOrEqual(COACH_PROMPT_CHAR_BUDGET);
+  });
+
+  it('history is exhausted before the prefix or the message is dropped', () => {
+    const fat = 'X'.repeat(4_000);
+    const fatHistory = Array.from({ length: MAX_HISTORY_TURNS }, (_, i) => ({
+      role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: `${fat}-${i}`,
+    }));
+    const prefix = 'P'.repeat(COACH_PROMPT_CHAR_BUDGET - 2 - 'final'.length - 10);
+    const composed = buildCoachInvokePrompt('final', fatHistory, COACH_PROMPT_CHAR_BUDGET, prefix);
+    expect(composed).toBe(`${prefix}\n\nfinal`);
+    expect(composed.length).toBeLessThanOrEqual(COACH_PROMPT_CHAR_BUDGET);
+  });
+
+  it('exact fit: prefix + separator + message === budget is accepted', () => {
+    const budget = 100;
+    const user = 'u'.repeat(40);
+    const prefix = 'p'.repeat(budget - 2 - user.length);
+    const composed = buildCoachInvokePrompt(user, [], budget, prefix);
+    expect(composed).toHaveLength(budget);
+  });
+
+  it('over the limit by one character rejects before any request', () => {
+    const budget = 100;
+    const user = 'u'.repeat(41);
+    const prefix = 'p'.repeat(budget - 2 - 40);
+    expect(() => buildCoachInvokePrompt(user, [], budget, prefix)).toThrow(CoachPromptBudgetError);
+  });
+
+  it('every real mode prefix fits the budget with room for a normal message', () => {
+    const settings = [
+      undefined,
+      { coaching: { optIn: true, mode: 'assistant' } },
+      {
+        coaching: { optIn: true, mode: 'teacher' },
+        writingPartner: { register: 'Teacher', teach: 'Guided practice', verbosity: 'Thorough' },
+      },
+    ] as unknown as AppSettings[];
+    for (const s of settings) {
+      const prefix = buildCoachModePrefix(s);
+      expect(prefix.length).toBeGreaterThan(0);
+      expect(prefix.length).toBeLessThan(2_000);
+      const composed = buildCoachInvokePrompt('How is the pacing?', [], COACH_PROMPT_CHAR_BUDGET, prefix);
+      expect(composed.length).toBeLessThanOrEqual(COACH_PROMPT_CHAR_BUDGET);
+    }
+  });
+});
+
+describe('makeCoachInvoke — PLAN-COACHING-OPT-IN outbound prompt', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('Coaching off (default, stale Teacher register): quiet directive, no Teacher text', async () => {
+    const { agentWritingAssistant, settingsGet } = installWaApi({
+      writingPartner: { register: 'Teacher', teach: 'Socratic' },
+    });
+    await makeCoachInvoke(() => undefined)('How is the pacing?', []);
+    // Measure plan: still one settings read + one WA invoke per send.
+    expect(settingsGet).toHaveBeenCalledTimes(1);
+    expect(agentWritingAssistant).toHaveBeenCalledTimes(1);
+    const [prompt] = agentWritingAssistant.mock.calls[0];
+    expect(prompt.startsWith(QUIET_ASSISTANT_DIRECTIVE)).toBe(true);
+    expect(prompt.endsWith('How is the pacing?')).toBe(true);
+    expect(prompt).not.toContain(COACHING_TEACHER_MARKER);
+    expect(prompt).not.toContain(TEACHER_DIRECTIVE);
+    expect(prompt).not.toMatch(/Teaching style|Socratic/);
+  });
+
+  it('Coaching on, Teacher: teacher marker + directive + teaching style reach the request', async () => {
+    const { agentWritingAssistant } = installWaApi({
+      coaching: { optIn: true, mode: 'teacher' },
+      writingPartner: { teach: 'Socratic' },
+    });
+    await makeCoachInvoke(() => 'Scene: "X"')('How is the pacing?', []);
+    const [prompt, context] = agentWritingAssistant.mock.calls[0];
+    expect(prompt.startsWith(`${COACHING_TEACHER_MARKER}\n${TEACHER_DIRECTIVE}`)).toBe(true);
+    expect(prompt).toContain('Teaching style (Socratic)');
+    expect(context).toBe('Scene: "X"');
+  });
+
+  it('Coaching on, Assistant: assistant marker, no Teacher text', async () => {
+    const { agentWritingAssistant } = installWaApi({
+      coaching: { optIn: true, mode: 'assistant' },
+      writingPartner: { register: 'Teacher', teach: 'Socratic' },
+    });
+    await makeCoachInvoke(() => undefined)('How is the pacing?', []);
+    const [prompt] = agentWritingAssistant.mock.calls[0];
+    expect(prompt.startsWith(`${COACHING_ASSISTANT_MARKER}\n${QUIET_ASSISTANT_DIRECTIVE}`)).toBe(true);
+    expect(prompt).not.toContain(COACHING_TEACHER_MARKER);
+    expect(prompt).not.toMatch(/Teaching style|Register \(Teacher\)/);
+  });
+
+  it('over-budget message rejects before the WA invoke', async () => {
+    const { agentWritingAssistant } = installWaApi({ coaching: { optIn: true, mode: 'teacher' } });
+    const huge = 'w'.repeat(COACH_PROMPT_CHAR_BUDGET);
+    await expect(makeCoachInvoke(() => undefined)(huge, [])).rejects.toThrow(/too long/);
+    expect(agentWritingAssistant).not.toHaveBeenCalled();
+  });
+
+  it('AI Off: refuses before any request even with Teacher coaching on', async () => {
+    const { agentWritingAssistant } = installWaApi({
+      ai: { enabled: false },
+      coaching: { optIn: true, mode: 'teacher' },
+    });
+    await expect(makeCoachInvoke(() => undefined)('hi', [])).rejects.toThrow(/AI features are off/);
+    expect(agentWritingAssistant).not.toHaveBeenCalled();
   });
 });

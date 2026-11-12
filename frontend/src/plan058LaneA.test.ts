@@ -22,9 +22,9 @@ describe('PLAN-058 Lane A — Writing Coach settings', () => {
     expect(coach).toMatch(/aria-label="Enable Writing Coach"/);
   });
 
-  it('A-2: Teacher + Assistant teaching-mode name chrome only', () => {
+  it('A-2: Teacher + Assistant modes are a native radio pick behind the Coaching opt-in', () => {
     const coach = read('components/SettingsPanel/sections/WritingCoachSettingsSection.tsx');
-    expect(coach).toMatch(/Teaching modes/);
+    expect(coach).toMatch(/Coaching mode/);
     expect(coach).toMatch(/Teacher/);
     expect(coach).toMatch(/Assistant/);
     expect(coach).not.toMatch(/writingAssistantScan|agentWritingAssistant|writingScan/);
@@ -32,6 +32,14 @@ describe('PLAN-058 Lane A — Writing Coach settings', () => {
     expect(coach).not.toMatch(/useState/);
     expect(coach).not.toMatch(/aria-pressed/);
     expect(coach).not.toMatch(/<button/);
+    // PLAN-COACHING-OPT-IN cut check — the inert chrome cannot come back.
+    expect(coach).not.toMatch(/Mode behavior coming soon/);
+    expect(coach).not.toMatch(/TEACHING_MODE_LABELS/);
+    expect(coach).toMatch(/type="radio"/);
+    expect(coach).toMatch(/<fieldset/);
+    expect(coach).toMatch(/aria-label="Enable coaching"/);
+    // Mode applies only while Coaching is on.
+    expect(coach).toMatch(/disabled=\{!coaching\.optIn\}/);
   });
 
   it('A-3: disabled panel copy points at Writing partner settings', () => {

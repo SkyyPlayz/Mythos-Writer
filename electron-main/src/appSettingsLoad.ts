@@ -354,6 +354,35 @@ function rawWaPairNeedsRepair(rawRecord: Record<string, unknown>, resolved: bool
 /** True when the settings file existed but the JSON read block used parse-fallback defaults. */
 let settingsLoadUsedParseFallback = false;
 
+type CoachingSettings = NonNullable<AppSettings['coaching']>;
+
+/**
+ * PLAN-COACHING-OPT-IN: Coaching is off by default with a dormant Teacher
+ * mode, so the first time a writer turns Coaching on they land on Teacher.
+ */
+export const COACHING_DEFAULTS: Readonly<CoachingSettings> = {
+  optIn: false,
+  mode: 'teacher',
+};
+
+/**
+ * Normalize a stored `coaching` value. Only `optIn === true` turns Coaching
+ * on — a missing, partial or malformed value never enables teaching. A mode
+ * outside 'assistant' | 'teacher' falls back to 'teacher'. Always returns a
+ * fresh object (never a shared default reference). In memory only: never
+ * writes the file (H2 — no write on read).
+ */
+export function normalizeCoachingSettings(raw: unknown): CoachingSettings {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ...COACHING_DEFAULTS };
+  }
+  const record = raw as { optIn?: unknown; mode?: unknown };
+  return {
+    optIn: record.optIn === true,
+    mode: record.mode === 'assistant' ? 'assistant' : 'teacher',
+  };
+}
+
 export function settingsLoadUsedParseFallbackOnLastRead(): boolean {
   return settingsLoadUsedParseFallback;
 }
@@ -489,6 +518,10 @@ export function loadAppSettingsFrom(
     settingsLoadUsedParseFallback = settingsRead.status === 'denied';
     base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
+  // PLAN-COACHING-OPT-IN: default + normalize the coaching opt-in for every
+  // load path (file, parse fallback, no file). Never enables teaching from a
+  // missing or malformed value.
+  base.coaching = normalizeCoachingSettings(base.coaching);
   // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
   // of the main-process code keeps reading settings.apiKey / provider.apiKey /
   // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
