@@ -13,9 +13,10 @@
  *   §3  undo (rollback) — vault file restored from snapshot, DB status=rolled_back
  *   §4  non-vault suggestion — apply returns accepted without any file write
  *   §5  apply to a new (non-existent) file — originalContent captured as empty string
+ *   §6  failed target write — no snapshot left behind, original error rethrown
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -27,9 +28,11 @@ import {
   getSuggestion,
   insertAuditLog,
   listAuditLog,
+  getSuggestionSnapshot,
   type DbSuggestion,
 } from './db.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+import * as aiGuard from './vault/aiWriteGuard.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -334,5 +337,62 @@ describe('§5 apply to new vault file — originalContent is empty string', () =
 
     // Vault file must now exist.
     expect(fs.existsSync(path.join(vaultDir, 'entities/characters/brand-new.md'))).toBe(true);
+  });
+});
+
+// ─── §6 failed target write ──────────────────────────────────────────────────
+
+describe('§6 applyVaultWrite — target write fails', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function applyAndCatch(s: DbSuggestion): unknown {
+    try {
+      applyVaultWrite(s, vaultDir, new Date().toISOString());
+    } catch (err) {
+      return err;
+    }
+    throw new Error('applyVaultWrite should have thrown');
+  }
+
+  it('removes the snapshot this attempt wrote and rethrows the original error', () => {
+    const s = makeVaultSuggestion({ id: 'fail-1' });
+    upsertSuggestion(s);
+    const targetFullPath = path.join(vaultDir, s.target_path!);
+    fs.mkdirSync(path.dirname(targetFullPath), { recursive: true });
+    fs.writeFileSync(targetFullPath, 'ORIGINAL\n', 'utf-8');
+
+    const writeError = new Error('EIO: simulated target write failure');
+    vi.spyOn(aiGuard, 'writeAiCanonical').mockImplementation(() => {
+      throw writeError;
+    });
+
+    expect(applyAndCatch(s)).toBe(writeError);
+
+    const snapshotFile = path.join(vaultDir, '.mythos', 'suggestion-snapshots', `${s.id}.json`);
+    expect(fs.existsSync(snapshotFile)).toBe(false);
+    expect(fs.readFileSync(targetFullPath, 'utf-8')).toBe('ORIGINAL\n');
+    expect(getSuggestionSnapshot(s.id)).toBeNull();
+    expect(listAuditLog(s.id)).toHaveLength(0);
+    expect(getSuggestion(s.id)?.status).toBe('proposed');
+  });
+
+  it('leaves a pre-existing snapshot for the same suggestion byte-for-byte intact', () => {
+    const s = makeVaultSuggestion({ id: 'fail-2' });
+    upsertSuggestion(s);
+    const snapshotDir = path.join(vaultDir, '.mythos', 'suggestion-snapshots');
+    fs.mkdirSync(snapshotDir, { recursive: true });
+    const snapshotFile = path.join(snapshotDir, `${s.id}.json`);
+    const earlier = JSON.stringify({ originalContent: 'EARLIER\n', path: s.target_path });
+    fs.writeFileSync(snapshotFile, earlier, 'utf-8');
+
+    const writeError = new Error('EIO: simulated target write failure');
+    vi.spyOn(aiGuard, 'writeAiCanonical').mockImplementation(() => {
+      throw writeError;
+    });
+
+    expect(applyAndCatch(s)).toBe(writeError);
+    expect(fs.readFileSync(snapshotFile, 'utf-8')).toBe(earlier);
   });
 });
