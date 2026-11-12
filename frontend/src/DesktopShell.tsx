@@ -171,6 +171,19 @@ import {
   settingsSet,
   settingsSetIfPresent,
 } from './frame/storageAdapter';
+// W1 widget shell (beta flag): page-owned panels open inside their page; sidebars hold global panels.
+import {
+  EDITOR_INSPECTOR_TABS,
+  defaultGlobalSidebars,
+  isWidgetShellOn,
+  pageChromeDefaults,
+  pageViewFor,
+  type EditorInspectorTabId,
+} from './frame/pageShell';
+import { buildAddCatalog, isPanelInert } from './frame/globalCatalog';
+import { designPanel, type DesignPanelId } from './frame/panelRegistry';
+import { isGlobalScope, pageScope } from './frame/scopeModel';
+import { AddPanelMenu, PageDock } from './components/ui/PanelChrome';
 // SKY-1695: Panel content components for the unified sidebar renderer
 import StoryNavigator from './StoryNavigator';
 import EntityBrowser from './EntityBrowser';
@@ -790,6 +803,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // M12.B3 (SKY-10738): full flag list — feeds the Archive chat view's
   // composer quick-action chips (generated from the current flag set).
   const [continuityItems, setContinuityItems] = useState<InconsistencyItem[]>([]);
+  // W1 widget shell (beta flag only). In memory: saving this layout is W3.
+  const [edPanelCollapsed, setEdPanelCollapsed] = useState(false);
+  const [edPanelTab, setEdPanelTab] = useState<EditorInspectorTabId>('scenes');
+  const [addedGlobalPanels, setAddedGlobalPanels] = useState<DesignPanelId[]>([]);
+  const [collapsedGlobalPanels, setCollapsedGlobalPanels] = useState<DesignPanelId[]>([]);
   const [proposedCount, setProposedCount] = useState(0);
 
   // Poll proposed suggestion count every 30 s for nav badge
@@ -6287,6 +6305,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
   // when the master AI toggle is off (undefined handler = no mount).
   const aiEnabled = useAiEnabled();
+  // W1 widget shell (beta flag). Flag off = none of this renders and the old shell is unchanged.
+  const pageShellOn = isWidgetShellOn(appSettings);
+  const shellPage = pageViewFor({ activeTab: tabShell.activeTab, storySubView: view, settingsOpen, betaReaderOpen });
+  const shellPageDefaults = shellPage ? pageChromeDefaults(shellPage) : null;
+  const placedShellPanels: DesignPanelId[] = [
+    ...defaultGlobalSidebars().right,
+    // Bridge: today's partner panel (AgentHubPanel) still hosts the Suggestions tab, so the
+    // catalog must not offer a second copy until the partner panel is split (later lane).
+    'suggestions',
+    ...addedGlobalPanels,
+    ...(shellPageDefaults?.left ? [shellPageDefaults.left] : []),
+    ...(shellPageDefaults?.right ? [shellPageDefaults.right] : []),
+  ];
+  const shellAddCatalog = buildAddCatalog({ page: shellPage, placed: placedShellPanels, aiEnabled });
+  const handleAddShellPanel = (id: DesignPanelId) => {
+    // Page panels already open inside their page in W1; only global panels are added to the sidebar.
+    if (!isGlobalScope(designPanel(id).scope)) return;
+    setAddedGlobalPanels((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+  const toggleGlobalPanelCollapsed = (id: DesignPanelId) => {
+    setCollapsedGlobalPanels((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+  };
   // SKY-10573: the Coach sub-tab is also AI-bearing chrome — if it's active
   // when the master toggle flips off mid-session, fall back to Editor
   // (mirrors AgentHubPanel's assistant-tab redirect for the same toggle).
@@ -7055,6 +7095,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {showLeftSidebar && (
         <div
           className={`shell-left${leftSidebarEdgeCollapsed ? ' shell-left--edge' : ''}`}
+          data-panel-id={pageShellOn ? 'navEditor' : undefined}
+          data-scope={pageShellOn ? pageScope('editor') : undefined}
           style={{
             width: renderedLeftWidth,
             ...(leftSidebarEdgeCollapsed ? { ['--shell-left-peek-width' as string]: `${clampedLeftWidth}px` } : {}),
@@ -7523,6 +7565,31 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
         {/* F2#16: BottomBar moved out of center column — spans full shell-panels width */}
       </div>
+      {/* W1 widget shell (beta flag): the Story Editor's own inspector, inside the page window.
+          Its tabs are page tabs only (Scenes, Notes & Analysis); Findings and Suggestions are global. */}
+      {pageShellOn && (
+        <PageDock
+          panelId="edPanel"
+          scope={pageScope('editor')}
+          label={designPanel('edPanel').label}
+          side="right"
+          collapsed={edPanelCollapsed}
+          onToggleCollapsed={() => setEdPanelCollapsed((v) => !v)}
+          tabs={EDITOR_INSPECTOR_TABS}
+          activeTab={edPanelTab}
+          onTabChange={(id) => setEdPanelTab(id === 'notes-analysis' ? 'notes-analysis' : 'scenes')}
+          testId="page-panel-edPanel"
+        >
+          {edPanelTab === 'scenes' ? (
+            renderSidebarPanel('scenes')
+          ) : (
+            <>
+              {renderSidebarPanel('scene-notes')}
+              {renderSidebarPanel('references')}
+            </>
+          )}
+        </PageDock>
+      )}
       </div>{/* end shell-panels__row */}
 
       {showBottomBar && (
@@ -7708,6 +7775,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                the Boards tab; `Open` on a filed idea hands that folder to the
                Boards tab through the same deep-link seq the wiki-links use. */
             unifiedBoard={appSettings?.notesBoard?.brainstormUnified ?? false}
+            // W1 widget shell (beta flag): the page panel is the Idea Board only; the partner chat is global.
+            ideaBoardOnly={pageShellOn}
             notesVaultValid={vaultBinding.notesValid}
             boardMinZoom={appSettings?.notesBoard?.minZoom}
             onOpenBoardFolder={(folderPath) => {
@@ -7785,6 +7854,33 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         onVisibilityChange={handleGrsVisibilityChange}
         onWidthChange={handleGrsWidthChange}
         neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={3} delay={1.6} />}
+        addMenu={pageShellOn ? (
+          <AddPanelMenu catalog={shellAddCatalog} onAdd={handleAddShellPanel} testId="grs-add-panel" />
+        ) : undefined}
+        extraPanels={pageShellOn && addedGlobalPanels.length > 0 ? (
+          <>
+            {addedGlobalPanels.map((id) => {
+              const panel = designPanel(id);
+              // AI Off rule: an AI panel is hidden while AI is off, so it makes no AI calls.
+              if (panel.appAlias === null || isPanelInert(id, aiEnabled)) return null;
+              return (
+                <PageDock
+                  key={id}
+                  panelId={id}
+                  scope={panel.scope}
+                  label={panel.label}
+                  side="right"
+                  collapsed={collapsedGlobalPanels.includes(id)}
+                  onToggleCollapsed={() => toggleGlobalPanelCollapsed(id)}
+                  width={grsWidth}
+                  testId={`global-panel-${id}`}
+                >
+                  {renderSidebarPanel(panel.appAlias)}
+                </PageDock>
+              );
+            })}
+          </>
+        ) : undefined}
       >
         <AgentHubPanel
           scene={activeSceneForSidebar}

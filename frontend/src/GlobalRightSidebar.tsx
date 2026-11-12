@@ -32,6 +32,10 @@ interface Props {
   onDockAsTab?: unknown;
   /** Legacy — rendered above content if passed (backward compat during M6 transition). */
   headerContent?: ReactNode;
+  /** W1 widget shell (beta flag only): the scoped Add-panel control in the top bar. Absent = old shell. */
+  addMenu?: ReactNode;
+  /** W1 widget shell (beta flag only): global panels the writer added, below the main content. */
+  extraPanels?: ReactNode;
 }
 
 export default function GlobalRightSidebar({
@@ -42,6 +46,8 @@ export default function GlobalRightSidebar({
   neonOverlay,
   children,
   headerContent,
+  addMenu,
+  extraPanels,
 }: Props) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
@@ -106,6 +112,7 @@ export default function GlobalRightSidebar({
         aria-orientation="vertical"
       />
       <div className="grs-topbar">
+        {addMenu}
         <button
           className="grs-hide-btn"
           onClick={() => onVisibilityChange(false)}
@@ -124,6 +131,11 @@ export default function GlobalRightSidebar({
             and any active claim's portal — survives a claim flicker. */}
         <RightSidebarSlotTarget className={routeSlotOccupied ? 'grs-route-slot' : 'grs-route-slot grs-route-slot--empty'} />
         {!routeSlotOccupied && children}
+        {extraPanels !== undefined && (
+          <div className="grs-extra-panels" data-testid="grs-extra-panels" style={{ flexShrink: 0, maxHeight: '50%', overflow: 'auto' }}>
+            {extraPanels}
+          </div>
+        )}
       </div>
     </aside>
   );

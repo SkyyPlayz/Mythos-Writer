@@ -418,6 +418,13 @@ interface Props {
   onOpenBoardFolder?: (folderPath: string) => void;
   /** Slice B: partner display name (rename sync). */
   agentNames?: Partial<Record<import('./agents/agentIdentity').NamedAgentId, string>>;
+  /**
+   * W1 widget shell (beta flag only): the page panel shows the Idea Board face
+   * only. The partner chat face, and the board-side prompts that drive it,
+   * live in the global sidebar instead, and the page never claims that
+   * sidebar. Absent = today's Brainstorm, unchanged.
+   */
+  ideaBoardOnly?: boolean;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -431,7 +438,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…', unifiedBoard = false, notesVaultValid = false, boardMinZoom, onOpenBoardFolder, agentNames }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…', unifiedBoard = false, notesVaultValid = false, boardMinZoom, onOpenBoardFolder, agentNames, ideaBoardOnly = false }: Props) {
   const partnerName = resolvePartnerDisplayName(agentNames);
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -507,11 +514,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  // W1: with `ideaBoardOnly` the chat face is never offered, exactly like AI Off.
+  const chatFaceOn = aiEnabled && !ideaBoardOnly;
   const visibleModes = useMemo(
-    () => (aiEnabled ? BRAINSTORM_MODES : BRAINSTORM_MODES.filter((m) => m !== 'chat')),
-    [aiEnabled],
+    () => (chatFaceOn ? BRAINSTORM_MODES : BRAINSTORM_MODES.filter((m) => m !== 'chat')),
+    [chatFaceOn],
   );
-  const effectiveMode: BrainstormMode = aiEnabled ? mode : 'board';
+  const effectiveMode: BrainstormMode = chatFaceOn ? mode : 'board';
   // M20: board search ("Search ideas…" in the Board-page header).
   const [ideaQuery, setIdeaQuery] = useState('');
   // M20 (B4-4): capture the legacy draft ONCE, synchronously, before any
@@ -3511,7 +3520,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             prompts, quick-generate. Every action runs through the real chat
             streaming path, so the whole aside is AI-bearing chrome: R11/SKY-10359
             shows an EmptyState with an Open Settings CTA when AI is off. */}
-        {!compact && !aiEnabled && (
+        {!compact && !ideaBoardOnly && !aiEnabled && (
           <aside className="bs-board-side bs-board-side--ai-off" data-testid="bs-board-side">
             <EmptyState
               icon={
@@ -3528,7 +3537,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             />
           </aside>
         )}
-        {!compact && aiEnabled && (
+        {!compact && !ideaBoardOnly && aiEnabled && (
           <aside className="bs-board-side" data-testid="bs-board-side">
             <div className="bs-board-side-head">
               <span className="bs-activity-dot" aria-hidden="true" />
