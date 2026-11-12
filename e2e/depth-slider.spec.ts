@@ -272,6 +272,49 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
     await expect(page.getByTestId('msv-tb-read')).toHaveCount(1);
   });
 
+  // ─── TC-DS-03b: kept manuscript-wrap container classes (#1694 gap) ───────
+  // #1694 kept `chapter-continuous-view` / `book-outline-view` on the
+  // ManuscriptView wrap and kept their two CSS rules. The wrap also carries
+  // `shell-editor-scene-wrap` (overflow: hidden); the kept rules come later
+  // and make it the column's flex child with `overflow-y: auto`. Pin that
+  // layout at chapter and book depth so a later sweep can't drop either half.
+
+  test('TC-DS-03b: the kept container classes still lay out the manuscript wrap at chapter and book depth', async () => {
+    const wrap = page.locator('.shell-depth-view-wrap');
+    for (const depth of ['chapter', 'book'] as const) {
+      await page.getByTestId(`msv-zoom-${depth}`).click();
+      await expect(page.getByTestId(`msv-zoom-${depth}`)).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
+      await expect(wrap).toHaveCount(1);
+      await expect(wrap).toHaveClass(/(^|\s)chapter-continuous-view(\s|$)/);
+      await expect(wrap).toHaveClass(/(^|\s)book-outline-view(\s|$)/);
+      const layout = await wrap.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        const parent = (el.parentElement as HTMLElement).getBoundingClientRect();
+        return {
+          display: cs.display,
+          flexDirection: cs.flexDirection,
+          flexGrow: cs.flexGrow,
+          minHeight: cs.minHeight,
+          overflowY: cs.overflowY,
+          height: box.height,
+          bottomOverflow: box.bottom - parent.bottom,
+          holdsManuscript: el.querySelector('.msv-body') !== null,
+        };
+      });
+      expect(layout, `${depth} depth`).toMatchObject({
+        display: 'flex',
+        flexDirection: 'column',
+        flexGrow: '1',
+        minHeight: '0px',
+        overflowY: 'auto',
+        holdsManuscript: true,
+      });
+      expect(layout.height, `${depth} depth: wrap has height`).toBeGreaterThan(0);
+      expect(layout.bottomOverflow, `${depth} depth: wrap stays inside its column`).toBeLessThanOrEqual(1);
+    }
+  });
+
   // ─── TC-DS-04 ─────────────────────────────────────────────────────────────
 
   test('TC-DS-04: clicking "Scene" zoom button returns to block editor', async () => {
