@@ -6529,7 +6529,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       } },
       { label: 'New story', run: () => { void createStory(); } },
       { label: 'New note…', run: () => handleNavSectionChange('notes') },
-      { label: 'Import vault / story…', run: () => setSettingsOpen(true) },
+      { label: 'Import vault / story…', run: () => { setSettingsInitialCategory('vaults'); setSettingsOpen(true); } },
       { label: 'Export…', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
       { label: 'Prompt history…', run: () => setHistoryOpen(true) },
     ] },

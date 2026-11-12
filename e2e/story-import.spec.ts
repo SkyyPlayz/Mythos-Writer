@@ -61,7 +61,22 @@ test('pick a multi-chapter .docx → preview → import writes chapters/scenes w
   const docxPath = path.join(workDir, `${outline.title}.docx`);
   fs.writeFileSync(docxPath, await buildHeadedManuscriptDocx());
 
-  const section = await openImportSection(page);
+  for (let visit = 0; visit < 2; visit += 1) {
+    await page.getByRole('button', { name: 'File', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Import vault / story…' }).click();
+    await expect(page.getByRole('tab', { name: 'Vault & Files' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('import-section')).toBeVisible();
+    await page.getByTestId('settings-close').click();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
+  }
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Appearance' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByTestId('settings-close').click();
+  await page.getByRole('button', { name: 'File', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Import vault / story…' }).click();
+  const section = page.getByTestId('import-section');
+  await expect(section).toBeVisible();
+  await section.scrollIntoViewIfNeeded();
   await expect(section.getByText('Drop a file or folder here')).toBeVisible();
   await shot(page, '01-import-idle');
 
