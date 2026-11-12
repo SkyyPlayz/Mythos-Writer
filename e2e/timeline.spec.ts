@@ -311,11 +311,13 @@ async function openSpreadsheet(pg: Page, sceneTitle: string): Promise<void> {
 }
 
 /** Same as openSpreadsheet, but lets the caller pick which timeline view mode
- *  to land on — the M23 lane-row suite below stays on the 'progress' default. */
+ *  to land on — the M23 lane-row suite below stays on the 'progress' default.
+ *  'saved' clicks no mode button, so the view opens on whatever mode the
+ *  profile has persisted (B3). */
 async function openTimeline(
   pg: Page,
   sceneTitle: string,
-  mode: 'spreadsheet' | 'progress' | 'structure' = 'spreadsheet',
+  mode: 'spreadsheet' | 'progress' | 'structure' | 'saved' = 'spreadsheet',
 ): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
@@ -339,6 +341,8 @@ async function openTimeline(
   } else if (mode === 'progress') {
     await pg.locator('[data-testid="view-mode-progress"]').click();
     await expect(pg.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 8_000 });
+  } else if (mode === 'saved') {
+    // Leave the persisted mode alone.
   } else {
     await pg.locator('[data-testid="view-mode-structure"]').click();
     await expect(pg.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 8_000 });
@@ -1243,4 +1247,65 @@ test.describe('Archive Agent chat — SKY-8886 (removed S2-6 / Slice E)', () => 
     await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="trp-archive-chat-input"]')).toHaveCount(0);
   });
+});
+
+// ─── B3: saved hidden mode falls back to Structure on the built app ──────────
+//
+// A profile that saved a mode which is now hidden (Spreadsheet / Subway were
+// pickable in builds that showed them) must reopen on Structure, never on the
+// hidden surface, and the stored key must be rewritten. The saved value comes
+// from a real click in the revealed build (no localStorage seeding); the
+// relaunch uses the product build `out/main/main.js` with the same profile.
+test.describe('B3 — saved hidden mode falls back to Structure (built app)', () => {
+  const HIDDEN_SURFACE: Record<'spreadsheet' | 'subway', string> = {
+    spreadsheet: 'timeline-spreadsheet-root',
+    subway: 'timeline-subway',
+  };
+
+  for (const mode of ['spreadsheet', 'subway'] as const) {
+    test(`TC-TL-B3-${mode}: a saved ${mode} mode reopens on Structure and rewrites the stored mode`, async () => {
+      // Two real launches of the built app (revealed, then product) — one test.
+      test.setTimeout(150_000);
+      const ud = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-tl-b3-user-'));
+      const vd = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-tl-b3-vault-'));
+      const nd = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-tl-b3-notes-'));
+      seedUserData(ud, vd, nd);
+      seedVault(vd, STORY_ID, STORY_TITLE, CHAPTER_ID, CHAPTER_TITLE, [ANCHOR_SCENE]);
+      seedTimelinesStore(vd, 'tl-story', STORY_TITLE, [EV_1, EV_2, EV_3]);
+      let b3App: ElectronApplication | undefined;
+      try {
+        // 1. Revealed build: the writer picks the mode, which persists it.
+        b3App = await launchApp(ud, revealedTimelineMainJs());
+        let pg = await firstWindow(b3App);
+        await openTimeline(pg, ANCHOR_SCENE.title, 'structure');
+        await pg.locator(`[data-testid="view-mode-${mode}"]`).click();
+        await expect(pg.locator(`[data-testid="view-mode-${mode}"]`)).toHaveAttribute('aria-pressed', 'true');
+        await expect(pg.locator(`[data-testid="${HIDDEN_SURFACE[mode]}"]`)).toBeVisible({ timeout: 8_000 });
+        expect(await pg.evaluate(() => localStorage.getItem('timeline:viewMode'))).toBe(mode);
+        await b3App.close();
+        b3App = undefined;
+
+        // 2. Product build, same profile: the saved mode is hidden now.
+        b3App = await launchApp(ud);
+        pg = await firstWindow(b3App);
+        await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+        // The shell may restore the Timeline on its own; otherwise navigate.
+        if (!(await pg.locator('[data-testid="timeline-root"]').isVisible())) {
+          await openTimeline(pg, ANCHOR_SCENE.title, 'saved');
+        }
+        await expect(pg.locator('[data-testid="timeline-root"]')).toBeVisible({ timeout: 8_000 });
+        const modeBar = pg.getByRole('group', { name: 'Timeline view mode' });
+        await expect(modeBar.getByRole('button', { name: 'Structure', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(pg.locator(`[data-testid="view-mode-${mode}"]`)).toHaveCount(0);
+        await expect(pg.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 8_000 });
+        await expect(pg.locator(`[data-testid="${HIDDEN_SURFACE[mode]}"]`)).toHaveCount(0);
+        expect(await pg.evaluate(() => localStorage.getItem('timeline:viewMode'))).toBe('structure');
+      } finally {
+        await b3App?.close().catch(() => {});
+        fs.rmSync(ud, { recursive: true, force: true });
+        fs.rmSync(vd, { recursive: true, force: true });
+        fs.rmSync(nd, { recursive: true, force: true });
+      }
+    });
+  }
 });
