@@ -67,7 +67,7 @@ function run(over = {}) {
       GH_TOKEN: 'fake',
       GH_REPO: 'o/r',
       PR: '7',
-      EVENT_BASE: 'batch/b1',
+      EVENT_BASE: over.eventBase || 'batch/b1',
       EVENT_HEAD: SHA,
       FAKE_LOG: path.join(dir, 'log'),
       FAKE_RULES: path.join(dir, 'rules.json'),
@@ -90,11 +90,11 @@ function run(over = {}) {
 }
 
 // ---- static rules ----------------------------------------------------------------------------
-test('triggers: pull_request only, four types, batch/** base only', () => {
+test('triggers: pull_request only, five types, no branches filter', () => {
   const on = DOC.on || DOC[true];
   assert.deepEqual(Object.keys(on), ['pull_request']);
-  assert.deepEqual(on.pull_request.types, ['opened', 'reopened', 'ready_for_review', 'synchronize']);
-  assert.deepEqual(on.pull_request.branches, ['batch/**']);
+  assert.deepEqual(on.pull_request.types, ['opened', 'reopened', 'ready_for_review', 'synchronize', 'edited']);
+  assert.equal(on.pull_request.branches, undefined);
   assert.equal(TEXT.includes('pull_request_target'), false);
 });
 
@@ -140,19 +140,47 @@ test('clean case: arms squash auto-merge pinned to the head', () => {
   assert.deepEqual(r.merges, [`pr merge 7 --auto --squash --match-head-commit ${SHA}`]);
 });
 
-test('draft, closed, fork, other base, moved head, moved base: skip with no merge call', () => {
+test('draft, closed, fork, moved head, moved batch base: skip with no merge call', () => {
   for (const over of [
     { live: live({ draft: 'true' }) },
     { live: live({ state: 'CLOSED' }) },
     { live: live({ cross: 'true' }) },
-    { live: live({ base: 'main' }) },
-    { live: live({ base: 'batch/' }) },
     { live: live({ base: 'batch/b2' }) },
     { live: live({ head: 'b'.repeat(40) }) },
   ]) {
     const r = run(over);
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(r.merges, [], JSON.stringify(over));
+  }
+});
+
+test('retarget batch/** to main disables auto-merge and never enables', () => {
+  for (const over of [
+    { live: live({ base: 'main' }), eventBase: 'main' },
+    { live: live({ base: 'main' }), eventBase: 'batch/b1' },
+    { live: live({ base: 'main' }), eventBase: 'main', disableRc: 1 },
+  ]) {
+    const r = run(over);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(r.merges, ['pr merge 7 --disable-auto'], JSON.stringify(over));
+  }
+});
+
+test('edited title on a batch/** base re-evaluates and arms', () => {
+  const r = run({ eventBase: 'batch/b1', live: live({ base: 'batch/b1' }) });
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.merges, [`pr merge 7 --auto --squash --match-head-commit ${SHA}`]);
+});
+
+test('non-batch base on opened disables auto-merge and does not enable', () => {
+  for (const over of [
+    { live: live({ base: 'main' }), eventBase: 'main' },
+    { live: live({ base: 'batch/' }), eventBase: 'batch/' },
+    { live: live({ base: 'main' }), eventBase: 'main', disableRc: 1 },
+  ]) {
+    const r = run(over);
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(r.merges, ['pr merge 7 --disable-auto'], JSON.stringify(over));
   }
 });
 

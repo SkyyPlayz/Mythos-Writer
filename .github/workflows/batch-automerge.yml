@@ -8,6 +8,9 @@ name: batch-automerge
 #
 # Safety rules (each one is pinned by .github/scripts/batch-automerge.test.js):
 #   - Same-repo head only (never a fork). Not a draft. Not a Dependabot PR.
+#   - A live base that is not batch/** (a retarget to main, or a PR opened elsewhere)
+#     disables auto-merge and exits. It never arms. `edited` is included so a
+#     title or body edit on a batch/** base re-evaluates the same way synchronize does.
 #   - Fails closed unless the base branch ruleset already requires mythos/final-gate
 #     from the Mythos gate App (integration 5736520). Without that rule, auto-merge
 #     on a clean PR merges at once with no gate at all.
@@ -21,8 +24,9 @@ name: batch-automerge
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
-    branches: ['batch/**']
+    # No branches filter. A filter matches the new base, so a retarget to main
+    # would never run this job. The script gates on the live base instead.
+    types: [opened, reopened, ready_for_review, synchronize, edited]
 
 permissions: {}
 
@@ -65,7 +69,14 @@ jobs:
           IFS=$'\t' read -r state draft cross base head mstate <<<"$live"
           if [ "$state" != "OPEN" ] || [ "$draft" != "false" ]; then echo "skip #$PR: not an open ready PR"; exit 0; fi
           if [ "$cross" != "false" ]; then echo "skip #$PR: head is from a fork"; exit 0; fi
-          case "$base" in batch/?*) ;; *) echo "skip #$PR: base $base is not batch/**"; exit 0 ;; esac
+          case "$base" in
+            batch/?*) ;;
+            *)
+              echo "skip #$PR: base $base is not batch/**; disabling auto-merge"
+              gh pr merge "$PR" --disable-auto || true
+              exit 0
+              ;;
+          esac
           if [ "$base" != "$EVENT_BASE" ]; then echo "skip #$PR: base changed since the event"; exit 0; fi
           if [ "$head" != "$EVENT_HEAD" ]; then echo "skip #$PR: head moved since the event; the next event arms it"; exit 0; fi
 
