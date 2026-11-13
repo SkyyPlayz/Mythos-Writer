@@ -1,0 +1,126 @@
+name: batch-automerge
+
+# Arms GitHub-native auto-merge (squash) on a ready PR into a batch/** branch.
+# GitHub then merges it when every required check on the branch ruleset is green
+# on the PR's exact head, including mythos/final-gate (the Mythos gate App's
+# check run). This workflow never decides that a PR is good. It only presses the
+# "auto-merge" button, so no bot has to be awake.
+#
+# Safety rules (each one is pinned by .github/scripts/batch-automerge.test.js):
+#   - Same-repo head only (never a fork). Not a draft. Not a Dependabot PR.
+#   - A live base that is not batch/** (a retarget to main, or a PR opened elsewhere)
+#     disables auto-merge and exits. It never arms. `edited` is included so a
+#     title or body edit on a batch/** base re-evaluates the same way synchronize does.
+#   - Fails closed unless the base branch ruleset already requires mythos/final-gate
+#     from the Mythos gate App (integration 5736520). Without that rule, auto-merge
+#     on a clean PR merges at once with no gate at all.
+#   - Skips protected-path PRs (workflows, migrations, auth, secrets, release config,
+#     dependency files, agent config) and disables auto-merge on them. Skyy merges those.
+#   - The token is the built-in GITHUB_TOKEN with contents: write and pull-requests: write only.
+#     No PAT, no App key, no repo secret. No third-party actions, so there is nothing to pin.
+#   - Runs on the plain pull_request event and never checks out PR code. It reads the PR through the API.
+# A merge made with GITHUB_TOKEN does not start push workflows. That is fine on batch/**:
+# no workflow has a push trigger for batch/** (ci.yml push is main only).
+
+on:
+  pull_request:
+    # No branches filter. A filter matches the new base, so a retarget to main
+    # would never run this job. The script gates on the live base instead.
+    types: [opened, reopened, ready_for_review, synchronize, edited]
+
+permissions: {}
+
+concurrency:
+  group: batch-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  arm-auto-merge:
+    name: arm-auto-merge
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Arm squash auto-merge when the base requires the gate and no protected path is touched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EVENT_BASE: ${{ github.event.pull_request.base.ref }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Protected paths: precheck.RISKY + nogrok_worklist.PROTECTED in SkyyPlayz/Mythos-Ops
+          # plus the carve-out-check.yml patterns. ERE, case-insensitive. Keep in sync.
+          PROTECTED_RE='(^|/)auth|payment|billing|stripe|(^|/)migrations?/|schema|^\.github/|(^|/)release|electron-builder|\.nsh$|(^|/)scripts/verify-fuses\.mjs$|(^|/)scripts/fuses\.expected\.json$|^electron-main/src/db\.ts$|(^|/)secrets?\.(ts|js|json|yml|yaml)$|(^|/)\.env(\..+)?$|(^|/)agents\.md$|(^|/)claude\.md$|(^|/)\.claude/|(^|/)\.codex/|(^|/)\.mcp\.json$|(^|/)\.npmrc$|(^|/)\.yarnrc[^/]*$|(^|/)\.husky/|(^|/)\.gitmodules$|(^|/)[^/]+\.config\.[^/]+$|(^|/)(yarn|cargo|poetry|pipfile|uv|pdm|gemfile|composer|podfile|mix|pubspec|flake)\.lock$|(^|/)(package-lock|npm-shrinkwrap|packages\.lock)\.json$|(^|/)pnpm-lock\.yaml$|(^|/)bun\.lockb?$|(^|/)go\.sum$|(^|/)gradle\.lockfile$|(^|/)package\.json$|(^|/)cargo\.toml$|(^|/)go\.mod$|(^|/)gemfile$|(^|/)composer\.json$|(^|/)pyproject\.toml$|(^|/)pipfile$|(^|/)requirements[^/]*\.txt$|(^|/)pom\.xml$|(^|/)build\.gradle[^/]*$|^(docs/)?codeowners$|(^|/)deno\.lock$|(^|/)package\.resolved$|(^|/)\.terraform\.lock\.hcl$|(^|/)dev-requirements[^/]*\.txt$|(^|/)setup\.py$'
+          GATE_NAME='mythos/final-gate'
+          GATE_APP_ID=5736520
+
+          # 1. Read the PR live. Never trust the event payload alone.
+          live=$(gh pr view "$PR" --json state,isDraft,isCrossRepository,baseRefName,headRefOid,mergeStateStatus \
+            --jq '[.state,(.isDraft|tostring),(.isCrossRepository|tostring),.baseRefName,.headRefOid,.mergeStateStatus]|@tsv')
+          IFS=$'\t' read -r state draft cross base head mstate <<<"$live"
+          if [ "$state" != "OPEN" ] || [ "$draft" != "false" ]; then echo "skip #$PR: not an open ready PR"; exit 0; fi
+          if [ "$cross" != "false" ]; then echo "skip #$PR: head is from a fork"; exit 0; fi
+          case "$base" in
+            batch/?*) ;;
+            *)
+              echo "skip #$PR: base $base is not batch/**; disabling auto-merge"
+              gh pr merge "$PR" --disable-auto || true
+              exit 0
+              ;;
+          esac
+          if [ "$base" != "$EVENT_BASE" ]; then echo "skip #$PR: base changed since the event"; exit 0; fi
+          if [ "$head" != "$EVENT_HEAD" ]; then echo "skip #$PR: head moved since the event; the next event arms it"; exit 0; fi
+
+          # 2. Fail closed unless the base branch ruleset requires the gate, pinned to the gate App.
+          rules=$(gh api "repos/$GH_REPO/rules/branches/$base")
+          if ! jq -e --arg c "$GATE_NAME" --argjson app "$GATE_APP_ID" \
+            'any(.[]; .type == "required_status_checks"
+               and any(.parameters.required_status_checks[]?; .context == $c and .integration_id == $app))' \
+            <<<"$rules" >/dev/null; then
+            echo "::error::refusing to arm #$PR: $base has no rule requiring $GATE_NAME from app $GATE_APP_ID"
+            exit 1
+          fi
+
+          # 3. Protected paths (new and old names of renames) stay with Skyy. Fail closed on any read gap.
+          total=$(gh api "repos/$GH_REPO/pulls/$PR" --jq .changed_files)
+          files=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          count=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files?per_page=100" --jq '.[] | .filename' | wc -l)
+          case "$total" in ''|*[!0-9]*) total=bad ;; esac
+          if [ -z "$files" ] || [ "$total" = bad ] || [ "$count" -ne "$total" ]; then
+            echo "::error::file list for #$PR is empty or incomplete ($count of $total); not arming"
+            exit 1
+          fi
+          if hits=$(grep -E -i -m 5 -e "$PROTECTED_RE" <<<"$files"); then
+            echo "::notice::#$PR touches protected paths; auto-merge not armed (Skyy merges it)"
+            printf '%s\n' "$hits" | sed 's/^/  /'
+            gh pr merge "$PR" --disable-auto || true
+            exit 0
+          fi
+
+          # 4. Arm. GitHub merges when the required checks are green on exactly this head.
+          if gh pr merge "$PR" --auto --squash --match-head-commit "$head"; then
+            echo "armed squash auto-merge on #$PR @ ${head:0:8}"
+            exit 0
+          fi
+          # Arming is refused when the PR is already clean (every required check, including the gate, is green).
+          # Then merge now, still pinned to this head and still squash.
+          now=$(gh pr view "$PR" --json state,headRefOid,mergeStateStatus \
+            --jq '[.state,.headRefOid,.mergeStateStatus]|@tsv')
+          IFS=$'\t' read -r state2 head2 mstate2 <<<"$now"
+          if [ "$state2" = "OPEN" ] && [ "$head2" = "$head" ] && [ "$mstate2" = "CLEAN" ]; then
+            gh pr merge "$PR" --squash --match-head-commit "$head"
+            echo "merged #$PR @ ${head:0:8} (already clean)"
+            exit 0
+          fi
+          echo "::error::could not arm auto-merge on #$PR (merge state $mstate2)"
+          exit 1

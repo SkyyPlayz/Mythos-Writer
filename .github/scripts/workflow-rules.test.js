@@ -167,3 +167,6 @@ test('deleted workflows are absent', () => {
     assert.equal(fs.existsSync(path.join(REPO, rel)), false, rel);
   }
 });
+
+// batch-automerge.yml rules and run-step behavior (kept in its own file; loaded here so CI runs it).
+require('./batch-automerge.test.js');
