@@ -121,6 +121,36 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(within(card).getByRole('button', { name: /Session:/ }).closest('[aria-hidden="true"]')).toBeNull();
   });
 
+  // B1: aria-controls must name an element that is actually in the DOM — an
+  // attribute pointing at nothing leaves screen readers with no target.
+  it('past chats aria-controls names one in-DOM element inside past chats, closed and open', async () => {
+    render(<AgentHubPanel scene={null} onOpenPartnerHistory={() => {}} />);
+    const card = await screen.findByTestId('partner-card');
+    const pastChats = within(card).getByTestId('ahp-past-chats');
+    const toggle = within(card).getByTestId('ahp-past-chats-toggle');
+
+    const controlled = (): HTMLElement[] => {
+      const ids = (toggle.getAttribute('aria-controls') ?? '').split(/\s+/).filter(Boolean);
+      expect(ids.length).toBeGreaterThan(0);
+      return ids.map((id) => {
+        expect(document.querySelectorAll(`[id="${id}"]`), `exactly one #${id}`).toHaveLength(1);
+        const target = document.getElementById(id);
+        expect(target, `aria-controls target #${id} is in the DOM`).not.toBeNull();
+        expect(pastChats).toContainElement(target);
+        return target as HTMLElement;
+      });
+    };
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    for (const target of controlled()) expect(target.hidden).toBe(true);
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const open = controlled();
+    for (const target of open) expect(target.hidden).toBe(false);
+    expect(open.some((target) => target.contains(within(card).getByTestId('ahp-partner-history-link')))).toBe(true);
+  });
+
   it('tab order is header controls, then past chats, in both call layouts', async () => {
     render(<AgentHubPanel scene={null} onOpenPartnerHistory={() => {}} />);
     const card = await screen.findByTestId('partner-card');
