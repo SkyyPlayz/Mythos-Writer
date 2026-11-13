@@ -96,6 +96,22 @@ function lineValue(out: string, label: string): string {
   return line.slice(label.length + 1).trim();
 }
 
+/**
+ * #1758 follow-up: a refusal must name the exact reason. The child prints
+ * `<label>-dir <path>` and `<label>-msg <message>`; the message must equal
+ * `expected(path)` in full, so a mutant that refuses for a different reason
+ * (or silently succeeds) is red.
+ */
+function expectRefusal(out: string, label: string, expected: (dir: string) => string): string {
+  const dir = lineValue(out, `${label}-dir`);
+  expect(lineValue(out, `${label}-msg`), `${label} refusal message`).toBe(expected(dir));
+  return dir;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 describe('makeTestTmp / removeRecorded', () => {
   it('(j) rejects bad names', () => {
     for (const name of ['', 'A', 'HasCap', 'a_b', 'a.b', '../x', 'has space', 'a'.repeat(41)]) {
@@ -186,6 +202,47 @@ describe('refusal cases also run in the child with rm calls 0', () => {
     expect(result.out).toContain('case-e survived');
     expect(result.out).toContain('case-f new-dir-survived');
     expect(result.out).toContain('rm calls 0');
+    // #1758 follow-up: each refusal names its exact reason.
+    expectRefusal(result.out, 'case-a', (dir) => `parent outside tmpdir: ${dir}`);
+    expectRefusal(result.out, 'case-b', (dir) => `basename prefix mismatch: ${path.basename(dir)}`);
+    expectRefusal(result.out, 'case-c', (dir) => `refusing to remove symlink or non-directory: ${dir}`);
+    expectRefusal(result.out, 'case-d', (dir) => `unrecorded tmp path: ${dir}`);
+    expectRefusal(result.out, 'case-e', (dir) => `parent outside tmpdir: ${dir}`);
+    expectRefusal(result.out, 'case-f', (dir) => `dev/ino mismatch: ${dir}`);
+  });
+
+  it('(M3) a recorded path replaced by a regular file is refused as not a directory, rm calls 0', async () => {
+    const result = await runNode([childPath, 'not-a-dir'], childEnv({ MYTHOS_TEST_NO_FALLBACK: '1' }));
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).not.toContain('m3 removed');
+    expectRefusal(result.out, 'm3', (dir) => `refusing to remove symlink or non-directory: ${dir}`);
+    expect(result.out).toContain('m3 file-intact yes');
+    expect(result.out).toContain('rm calls 0');
+  });
+
+  it('(M16) a failed delete keeps the record so a retry removes the directory', async () => {
+    const result = await runNode([childPath, 'retry-after-failed-rm'], childEnv({ MYTHOS_TEST_NO_FALLBACK: '1' }));
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain('hook hit');
+    expect(lineValue(result.out, 'first-msg')).toBe('failRm');
+    expect(result.out).toContain('exists-after-fail yes');
+    // A mutant that drops the record before (or regardless of) the rm makes the
+    // retry throw "unrecorded tmp path" instead.
+    expect(result.out).not.toContain('retry-msg');
+    expect(result.out).toContain('retry ok');
+    expect(result.out).toContain('exists-after-retry no');
+    expect(result.out).toContain('cleanup ok');
+  });
+
+  it('(dotdot) a literal ../ is refused as a tmp name and as a path to remove, rm calls 0', async () => {
+    const result = await runNode([childPath, 'dotdot'], childEnv({ MYTHOS_TEST_NO_FALLBACK: '1' }));
+    expect(result.code, result.out).toBe(0);
+    expect(lineValue(result.out, 'name-msg')).toBe('bad tmp name: ../x');
+    expect(result.out).not.toContain('sneaky removed');
+    const sneaky = expectRefusal(result.out, 'sneaky', (dir) => `unrecorded tmp path: ${dir}`);
+    expect(sneaky).toContain(`${path.sep}..${path.sep}`);
+    expect(result.out).toContain('rm calls 0');
+    expect(result.out).toContain('dotdot survived yes');
   });
 });
 
@@ -493,6 +550,40 @@ describe('tmp guard', () => {
       env,
     );
     expect(ok.code).toBe(0);
+  });
+
+  it('(M21) a planted leak makes the guard teardown set a non-zero exit code', async () => {
+    // Outside a vitest worker (the real globalSetup host) the teardown must set
+    // process.exitCode = 1, because vitest logs a teardown throw and still exits 0.
+    // Run in-process with VITEST_WORKER_ID cleared; exitCode is restored in finally
+    // so this worker's own exit code is untouched.
+    process.env.MYTHOS_TEST_RUN_ID = 'e5f6a7b8';
+    const { default: setup } = await import('../test-utils/tmp-guard.setup.mjs');
+    const teardown = await setup();
+    const leak = path.join(os.tmpdir(), 'mythos-test-e5f6a7b8-m21leak');
+    fs.mkdirSync(leak);
+    const savedWorker = process.env.VITEST_WORKER_ID;
+    const savedExit = process.exitCode;
+    let observed: typeof process.exitCode;
+    let thrown: unknown;
+    try {
+      delete process.env.VITEST_WORKER_ID;
+      process.exitCode = undefined;
+      try {
+        await teardown();
+      } catch (err) {
+        thrown = err;
+      }
+      observed = process.exitCode;
+    } finally {
+      process.exitCode = savedExit;
+      if (savedWorker === undefined) delete process.env.VITEST_WORKER_ID;
+      else process.env.VITEST_WORKER_ID = savedWorker;
+      fs.rmSync(leak, { recursive: true, force: true });
+    }
+    expect(observed).toBe(1);
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(new RegExp(`^mythos-test guard leak: ${escapeRe(leak)}$`));
   });
 
   it('(r) SIGKILL skips the child fallback and the teardown is red', async () => {
