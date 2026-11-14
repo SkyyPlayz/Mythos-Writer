@@ -346,6 +346,21 @@ describe('assertAiWritable class C (M-B2i)', () => {
     return parts.join('/');
   }
 
+  it('allows only the 4-segment depth and refuses a deeper note inside a class C kind', () => {
+    const { story, notes } = pair();
+    const opts = { classC: { notesRoot: notes, storyRoot: story } };
+    // A folder named like a note keeps every other check true, so only the
+    // segment count can refuse it. A `< 4` depth check would let it through.
+    const deepDir = path.join(notes, 'Universes/My First Universe/Characters/hero-notes.md');
+    fs.mkdirSync(deepDir, { recursive: true });
+    fs.writeFileSync(path.join(deepDir, 'secret.md'), 'secret\n');
+    expect(assertAiWritable(notes, 'Universes/My First Universe/Characters/hero.md', opts).ok).toBe(true);
+    expect(assertAiWritable(notes, 'Universes/My First Universe/Characters/hero-notes.md/secret.md', opts)).toEqual({
+      ok: false,
+      reason: 'not_allowlisted',
+    });
+  });
+
   it('refuses a universe Scenes note (M-B2i)', () => {
     const { story, notes } = pair();
     const rel = writeUniverseNote(notes, 'Scenes');

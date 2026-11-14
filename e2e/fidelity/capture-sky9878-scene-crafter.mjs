@@ -8,21 +8,23 @@
 // render real content with no AI call.
 // Harness rules: see lib.mjs header.
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-sky9878-scene-crafter');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORT = { width: 1920, height: 1080 };
 const STORY_TITLE = 'The Last City of Veynn';
+let app;
 
 function seedFixture(aiEnabled) {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-9878-cap-user-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-9878-cap-vault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-9878-cap-notes-'));
+  const userData = makeTestTmp('9878-cap-user');
+  const vaultDir = makeTestTmp('9878-cap-vault');
+  const notesVaultDir = makeTestTmp('9878-cap-notes');
 
   const agentCfg = (extra = {}) => ({
     enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
@@ -56,9 +58,9 @@ function seedFixture(aiEnabled) {
 }
 
 function cleanup(fixture) {
-  fs.rmSync(fixture.userData, { recursive: true, force: true });
-  fs.rmSync(fixture.vaultDir, { recursive: true, force: true });
-  fs.rmSync(fixture.notesVaultDir, { recursive: true, force: true });
+  removeRecorded(fixture.userData);
+  removeRecorded(fixture.vaultDir);
+  removeRecorded(fixture.notesVaultDir);
 }
 
 async function fillPrompt(page, response) {
@@ -71,7 +73,7 @@ async function fillPrompt(page, response) {
 
 async function run(aiEnabled, shotPrefix) {
   const fixture = seedFixture(aiEnabled);
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
+  app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${fixture.userData}`, '--no-sandbox'], timeout: 90000 });
   const page = await app.firstWindow();
   page.on('dialog', (d) => void d.accept().catch(() => {}));
   await page.waitForLoadState('domcontentloaded');
@@ -137,6 +139,11 @@ async function run(aiEnabled, shotPrefix) {
   cleanup(fixture);
 }
 
-await run(true, 'ai-on-');
-await run(false, 'ai-off-');
-console.log('DONE');
+try {
+  await run(true, 'ai-on-');
+  await run(false, 'ai-off-');
+  console.log('DONE');
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
+}
