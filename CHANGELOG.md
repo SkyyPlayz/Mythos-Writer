@@ -17,6 +17,7 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
 
 ### Fixed
+- **Auto-linker Accept links the name again.** Clicking Accept on an auto-linker hint turns that name into a wiki-link in the scene; one Undo puts the plain text back. AI wiki-link suggestions still never edit the scene. ([#1831](https://github.com/SkyyPlayz/Mythos-Writer/pull/1831))
 - Screenshot fidelity scripts now clean up their temporary folders, even when interrupted ([#1802](https://github.com/SkyyPlayz/Mythos-Writer/pull/1802))
 - **A title that mentions a book marker does not block the next save.** The book file stays writable, and opening a story list that cannot be read says so instead of saying a save failed. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **A story-list save that cannot be written says so.** The previous story list stays in place, and the notice does not include the file path. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))

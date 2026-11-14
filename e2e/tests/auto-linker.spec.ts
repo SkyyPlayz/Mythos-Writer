@@ -5,8 +5,8 @@
  *   AL-01  Type a known character name in a scene editor
  *          → auto-linker hint decoration appears inline
  *   AL-02  Hover over the hint → tooltip appears with Accept / Reject buttons
- *   AL-03  Click Accept → the scene text stays as typed. Accept no longer
- *          inserts a [[wikilink]] or writes the manuscript.
+ *   AL-03  Click Accept → the hovered name becomes a [[wikilink]] in the editor
+ *          (one transaction, so one Undo restores the plain text)
  *
  * The test pre-seeds a vault manifest with one character entity ("Elara Voss")
  * and her entity file. The app loads entities on mount, so the linker can match
@@ -161,7 +161,7 @@ test.afterAll(async () => {
 
 // ─── AL-01 + AL-02 + AL-03 ───────────────────────────────────────────────────
 
-test('AL-01–03: type entity name → hint appears → accept leaves the sentence unchanged', async () => {
+test('AL-01–03: type entity name → hint appears → accept links the name', async () => {
   // Wait for shell to render
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
@@ -210,14 +210,17 @@ test('AL-01–03: type entity name → hint appears → accept leaves the senten
   await expect(tooltip).toBeVisible({ timeout: 4_000 });
   await expect(tooltip.locator('.wl-hint-accept')).toBeVisible();
 
-  // AL-03: Accept leaves the typed sentence in place. The manuscript write
-  // and the editor insertion are both gone, so the hint stays on the plain text.
-  const before = await editor.innerText();
+  // AL-03: Accept turns the hovered name into a wiki-link in the editor (a
+  // local edit, no suggestion row), and one Undo restores the plain text.
   const acceptBtn = tooltip.locator('.wl-hint-accept');
   await acceptBtn.click({ force: true });
 
-  await expect(editor.locator(`[data-wiki-link="${ENTITY_NAME}"]`)).toHaveCount(0);
+  await expect(editor.locator(`[data-wiki-link="${ENTITY_NAME}"]`)).toHaveCount(1);
+  await expect(editor.locator('.archive-wl-hint')).toHaveCount(0);
   await expect(editor).toContainText(`${ENTITY_NAME} walked through the door.`);
-  expect(await editor.innerText()).toBe(before);
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(editor.locator('[data-wiki-link]')).toHaveCount(0);
+  await expect(editor).toContainText(`${ENTITY_NAME} walked through the door.`);
   await expect(hint).toBeVisible();
 });

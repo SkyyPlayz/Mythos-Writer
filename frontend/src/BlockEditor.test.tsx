@@ -6,10 +6,11 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import BlockEditor, { blocksToMarkdownBody } from './BlockEditor';
-import type { Block, Scene } from './types';
+import type { Block, EntityEntry, Scene } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import { installActWarningGuard } from './testActWarningGuard';
 import { __resetPrismStoresForTests, prismLiveStore, prismSettingsStore } from './prism/store';
+import { PRISM_RESCAN_DEBOUNCE_MS } from './prism/PrismExtension';
 
 installActWarningGuard();
 
@@ -510,6 +511,93 @@ describe('BlockEditor empty-scene entry', () => {
 
     expect(screen.getByText(/start with a sentence/i)).toBeInTheDocument();
     await act(async () => {});
+  });
+});
+
+describe('BlockEditor wiki-link hint Accept', () => {
+  const elara: EntityEntry = {
+    id: 'ent-elara',
+    name: 'Elara Voss',
+    type: 'character',
+    path: 'entities/characters/elara-voss.md',
+    createdAt: '2026-11-09T00:00:00.000Z',
+    updatedAt: '2026-11-09T00:00:00.000Z',
+  };
+
+  function sceneWith(content: string): Scene {
+    return {
+      ...makeBlankScene(),
+      blocks: [{ id: 'b1', type: 'prose', content, order: 0, updatedAt: '2026-11-09T00:00:00.000Z' }],
+    };
+  }
+
+  beforeEach(() => {
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  it('auto-linker Accept links only the hovered name in the editor and makes no suggestion call', async () => {
+    const onAcceptWikiLink = vi.fn();
+    let editorApi: { getMarkdown: () => string } | undefined;
+    const { container } = render(
+      <BlockEditor
+        scene={sceneWith('Elara Voss walked in. Later Elara Voss left.')}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        onEditorReady={(api) => { editorApi = api; }}
+        onAcceptWikiLink={onAcceptWikiLink}
+        autoLinkerEntities={[elara]}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelectorAll('.archive-wl-hint')).toHaveLength(2));
+    const second = container.querySelectorAll('.archive-wl-hint')[1] as HTMLElement;
+    expect(second.dataset.wlId).toBe('autolink:ent-elara');
+
+    fireEvent.mouseOver(second);
+    fireEvent.mouseDown(await screen.findByRole('button', { name: 'Accept wiki-link [[Elara Voss]]' }));
+
+    expect(editorApi!.getMarkdown()).toContain('Elara Voss walked in. Later [[Elara Voss]] left.');
+    expect(container.querySelectorAll('[data-wiki-link="Elara Voss"]')).toHaveLength(1);
+    expect(onAcceptWikiLink).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Accept wiki-link/ })).not.toBeInTheDocument();
+    // Let Prism's debounced rescan land before cleanup unmounts the editor: an
+    // unmount inside that window after any doc-shrinking edit trips a separate,
+    // pre-existing Prism snippet bug (stale scan offsets on plugin-view rebuild).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, PRISM_RESCAN_DEBOUNCE_MS + 50));
+    });
+  });
+
+  it('AI wiki-link Accept stays status-only: calls onAcceptWikiLink and leaves the text unchanged', async () => {
+    const onAcceptWikiLink = vi.fn();
+    let editorApi: { getMarkdown: () => string } | undefined;
+    const { container } = render(
+      <BlockEditor
+        scene={sceneWith('Elara Voss walked through the door.')}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        onEditorReady={(api) => { editorApi = api; }}
+        onAcceptWikiLink={onAcceptWikiLink}
+        wikiLinkSuggestions={[{ id: 'sugg-ai-1', anchorText: 'Elara Voss', wikiLink: '[[Elara Voss]]' }]}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector('.archive-wl-hint')).not.toBeNull());
+    await waitFor(() => expect(editorApi).toBeDefined());
+    const before = editorApi!.getMarkdown();
+
+    fireEvent.mouseOver(container.querySelector('.archive-wl-hint') as HTMLElement);
+    fireEvent.mouseDown(await screen.findByRole('button', { name: 'Accept wiki-link [[Elara Voss]]' }));
+
+    expect(onAcceptWikiLink).toHaveBeenCalledTimes(1);
+    expect(onAcceptWikiLink).toHaveBeenCalledWith('sugg-ai-1', '[[Elara Voss]]', 'Elara Voss');
+    expect(editorApi!.getMarkdown()).toBe(before);
+    expect(container.querySelector('[data-wiki-link]')).toBeNull();
   });
 });
 
