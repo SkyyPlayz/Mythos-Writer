@@ -41,6 +41,10 @@ export default function AgentSessionPicker({ store, className = '', busy = false
   const [renameValue, setRenameValue] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const pillRef = useRef<HTMLButtonElement>(null);
+  // Set when Escape cancels a rename: focus goes back to the pill once the
+  // rename input has unmounted, so its blur can't commit the discarded name.
+  const refocusPillRef = useRef(false);
 
   const { sessions, activeSessionId, newSession, renameSession, duplicateSession, deleteSession, switchSession } = store;
   const active = sessions.find((s) => s.id === activeSessionId);
@@ -64,11 +68,14 @@ export default function AgentSessionPicker({ store, className = '', busy = false
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Focus rename input when renaming starts
+  // Focus rename input when renaming starts; back to the pill after Escape.
   useEffect(() => {
     if (renamingId && renameInputRef.current) {
       renameInputRef.current.focus();
       renameInputRef.current.select();
+    } else if (!renamingId && refocusPillRef.current) {
+      refocusPillRef.current = false;
+      pillRef.current?.focus();
     }
   }, [renamingId]);
 
@@ -107,8 +114,23 @@ export default function AgentSessionPicker({ store, className = '', busy = false
 
   const handleRenameKey = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') { e.preventDefault(); void commitRename(); }
-    if (e.key === 'Escape') { setRenamingId(null); }
+    if (e.key === 'Escape') {
+      // Cancel only the rename — not the list or a parent panel.
+      e.preventDefault();
+      e.stopPropagation();
+      refocusPillRef.current = true;
+      setRenamingId(null);
+    }
   }, [commitRename]);
+
+  // Escape closes only the open list; the parent panel must not see it.
+  const handleRootKey = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!open || e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(false);
+    pillRef.current?.focus();
+  }, [open]);
 
   const label = (() => {
     const base = active?.title ?? 'Session 1';
@@ -117,8 +139,9 @@ export default function AgentSessionPicker({ store, className = '', busy = false
   })();
 
   return (
-    <div className={`asp-root${className ? ` ${className}` : ''}`} ref={dropdownRef}>
+    <div className={`asp-root${className ? ` ${className}` : ''}`} ref={dropdownRef} onKeyDown={handleRootKey}>
       <button
+        ref={pillRef}
         type="button"
         className="asp-pill"
         onClick={toggleOpen}
