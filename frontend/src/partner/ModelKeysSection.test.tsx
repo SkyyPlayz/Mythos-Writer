@@ -1,9 +1,11 @@
 /**
  * F5 Critic Path A — Hands & files via agentsVault:* + modelKeysShowItemInFolder.
  */
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ModelKeysSection from './ModelKeysSection';
+import type { ProviderKind } from '../components/SettingsPanel/settingsPanelTypes';
 
 function baseSettings(): AppSettings {
   return {
@@ -172,5 +174,59 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
     renderSection();
     expect(await screen.findByTestId('mk-keys-error')).toHaveTextContent('No Mythos vault open');
     expect(screen.getByTestId('mk-keys-path')).toHaveTextContent('—');
+  });
+});
+
+describe('ModelKeysSection endpoint placeholder', () => {
+  beforeEach(() => {
+    (window as unknown as { api: unknown }).api = {
+      agentsVaultStats: vi.fn().mockResolvedValue({ ok: false, error: 'No Mythos vault open' }),
+    };
+  });
+
+  // Mirrors SettingsPanel: a bucket click updates settings and provider kind.
+  function Harness() {
+    const [settings, setSettings] = useState<AppSettings>(baseSettings());
+    const [providerKind, setProviderKind] = useState<ProviderKind>('anthropic');
+    return (
+      <ModelKeysSection
+        settings={settings}
+        setSettings={setSettings}
+        onTestConnection={vi.fn()}
+        testStatus="idle"
+        testMsg=""
+        providerApiKey=""
+        setProviderApiKey={vi.fn()}
+        providerApiKeyDirty={false}
+        setProviderApiKeyDirty={vi.fn()}
+        providerBaseUrl=""
+        setProviderBaseUrl={vi.fn()}
+        showApiKey={false}
+        setShowApiKey={vi.fn()}
+        setSavedOk={vi.fn()}
+        providerKind={providerKind}
+        onSelectProviderKind={setProviderKind}
+      />
+    );
+  }
+
+  function endpointInput(): HTMLInputElement {
+    const input = screen.getByTestId('mk-endpoint').querySelector('input');
+    if (!input) throw new Error('endpoint input missing');
+    return input;
+  }
+
+  it('shows the OpenRouter URL when OpenRouter is selected', async () => {
+    render(<Harness />);
+    await screen.findByTestId('mk-keys-error');
+    fireEvent.click(screen.getByTestId('mk-prov-openrouter'));
+    expect(endpointInput()).toHaveAttribute('placeholder', 'https://openrouter.ai/api/v1');
+  });
+
+  it('keeps the Ollama placeholder unchanged', async () => {
+    render(<Harness />);
+    await screen.findByTestId('mk-keys-error');
+    fireEvent.click(screen.getByTestId('mk-prov-ollama'));
+    expect(endpointInput()).toHaveAttribute('placeholder', 'http://127.0.0.1:11434/v1');
   });
 });
