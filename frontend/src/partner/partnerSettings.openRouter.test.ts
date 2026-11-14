@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { GoogleModelExcludedError } from '@mythos-writer/shared/openRouterPolicy';
 import {
   buildPartnerOpenRouterRequest,
@@ -79,6 +79,29 @@ describe('partner OpenRouter model selection', () => {
     expect(scopedModel('openrouter', 'openai/gpt-5.1')).toBe('openai/gpt-5.1');
     expect(scopedModel('claude', 'claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
     expect(scopedModel('openrouter', 'OpenAI/GPT-5.1')).toBe('anthropic/claude-sonnet-4.5');
+  });
+
+  describe('modelsForProvider with an injected google/* id', () => {
+    const originalOpenRouterList = PROVIDER_MODEL_LISTS.openrouter;
+    afterEach(() => {
+      PROVIDER_MODEL_LISTS.openrouter = originalOpenRouterList;
+    });
+
+    it('drops google/* ids (any case) and keeps the non-google ids in order', () => {
+      PROVIDER_MODEL_LISTS.openrouter = [
+        'anthropic/claude-sonnet-4.5',
+        'google/gemini-2.5-pro',
+        'openai/gpt-5.1',
+        '  Google/Gemma-2 ',
+      ];
+      const models = modelsForProvider('openrouter');
+      expect(models).toEqual(['anthropic/claude-sonnet-4.5', 'openai/gpt-5.1']);
+      expect(models.some((m) => m.trim().toLowerCase().startsWith('google/'))).toBe(false);
+    });
+
+    it('returns the configured list untouched when it holds no google/* id', () => {
+      expect(modelsForProvider('openrouter')).toBe(originalOpenRouterList);
+    });
   });
 
   it('hides google/* ids from every provider model list', () => {

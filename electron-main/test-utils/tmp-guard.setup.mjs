@@ -1,34 +1,23 @@
 /**
- * Vitest globalSetup wrapper: leak guard plus the uninstall-nsh integrity setup.
- * A tmpdir that cannot be read logs a skip and does not fail the run.
+ * Vitest globalSetup for electron-main: the leak guard from
+ * tmp-guard-only.setup.mjs plus the uninstall-nsh integrity setup. The nsh
+ * teardown runs even when the leak check throws; a leak is raised after it.
  */
-import { ensureRunId } from './tmpdir.mjs';
-import { snapshot, verify } from './tmp-guard.mjs';
+import { failOnLeak, startTmpGuard } from './tmp-guard-only.setup.mjs';
 
 export default async function setup() {
-  console.log('mythos-test globalSetup guard');
-  ensureRunId();
-  snapshot();
+  const leakError = startTmpGuard();
   const nsh = await import('../vitest.uninstallVaultsNshBuildIntegrity.global.ts');
   const nshTeardown = nsh.default();
   return async () => {
     let leakErr = null;
     try {
-      const result = verify();
-      if (!result.skipped && result.leaks.length > 0) {
-        leakErr = new Error(`mythos-test guard leak: ${result.leaks.join(', ')}`);
-      }
+      leakErr = leakError();
     } finally {
       if (typeof nshTeardown === 'function') {
         await nshTeardown();
       }
     }
-    if (leakErr) {
-      // Vitest logs a globalSetup teardown throw as "error during close" and
-      // still exits 0. The main process has no VITEST_WORKER_ID; a worker
-      // calling setup() directly (the SIGKILL case) must keep its own exit code.
-      if (process.env.VITEST_WORKER_ID === undefined) process.exitCode = 1;
-      throw leakErr;
-    }
+    if (leakErr) failOnLeak(leakErr);
   };
 }

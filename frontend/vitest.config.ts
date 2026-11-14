@@ -13,7 +13,9 @@ export default mergeConfig(
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/setupTests.ts'],
-      globalSetup: ['../electron-main/test-utils/tmp-guard.setup.mjs'],
+      // Leak guard only: the uninstall-nsh integrity guard belongs to the
+      // electron-main run (tmp-guard.setup.mjs composes both there).
+      globalSetup: ['../electron-main/test-utils/tmp-guard-only.setup.mjs'],
       // Async UI tests use waitFor({timeout:15000+}); 5000ms default times out on loaded runners
       testTimeout: 30000,
       // Keep coverage writes deterministic on busy self-hosted runners. The V8 provider

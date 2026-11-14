@@ -12,14 +12,13 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 ([#1663](https://github.com/SkyyPlayz/Mythos-Writer/pull/1663))._
 
 ### Added
+- **Groundwork for story-fact checks.** The checking core is in place but not switched on yet: nothing in the app uses it, and nothing is sent anywhere. ([#1832](https://github.com/SkyyPlayz/Mythos-Writer/pull/1832))
 - **Book profiles stay in the book file.** A book's print profiles are saved inside the book file and kept the next time the story is saved. The panel for editing them comes later. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **Accent breathe** — panel glow and border colors now drift slowly through your theme's six colors (about 48 s per loop). Turn it off under Settings → Appearance → Motion; it's on by default, pauses while the window is hidden or idle, stays off with reduced motion, and isn't included in exported theme presets ([#1779](https://github.com/SkyyPlayz/Mythos-Writer/pull/1779)).
 
-### Removed
-- **Branded cloud/sync surface** — the Move Vault wizard's cloud destination (Dropbox, iCloud Drive, OneDrive, Google Drive), the vault sync badge, cloud-provider detection on the vault path, and the conflicted-copy scanner that silently rearranged files matching those providers' naming patterns. Mythos Writer is local-first: a vault is plain files in a folder you choose. Moving a vault to a different local folder is unchanged and remains the default. The concurrent-session lockfile stays — it guards against a second Mythos session holding the same vault, which is a local concern. (SKY-11804)
-
 ### Fixed
 - Settings → Model Keys: with OpenRouter selected, the Endpoint field's hint now shows `https://openrouter.ai/api/v1` instead of the local Ollama address.
+- Screenshot fidelity scripts now clean up their temporary folders, even when interrupted ([#1802](https://github.com/SkyyPlayz/Mythos-Writer/pull/1802))
 - **A title that mentions a book marker does not block the next save.** The book file stays writable, and opening a story list that cannot be read says so instead of saying a save failed. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **A story-list save that cannot be written says so.** The previous story list stays in place, and the notice does not include the file path. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
 - **A story save tells you when the book file was left unchanged.** If the book file is busy, unreadable, or not one this version can safely rewrite, that story's file stays as it is, the rest of the save continues, and the notice says the next save will try again. ([#1794](https://github.com/SkyyPlayz/Mythos-Writer/pull/1794))
@@ -51,11 +50,9 @@ _No git tag and no GitHub release for 0.5.8. The version on main is still 0.5.7 
 - **Graph filters sit at the top-right of the graph card** — the category chips and depth control are a compact bar on the card, and Tab still reaches them after the header controls. ([PR #1715](https://github.com/SkyyPlayz/Mythos-Writer/pull/1715))
 - Electron 44.9.0 (from 42). macOS 13+ required. File dialogs remember the last folder again. Client-certificate requests are declined, not auto-answered. ([#1728](https://github.com/SkyyPlayz/Mythos-Writer/pull/1728))
 - **Theme "Neon Classic" is now "Neon Nebula"** — display name only; the stored preset key is unchanged. (SKY-11589)
-- **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
 
 ### Added
 - **Import your writing** — Settings → Vault & Files has one drop zone (plus Choose a file… / Choose a folder…) for Word, Google Docs, Markdown files and folders (Obsidian, iA Writer and other Markdown apps), Scrivener, ePub, RTF and plain text. You see a preview of the chapters, scenes, notes and characters before anything is saved. Word imports keep chapters, scenes, bold, italics and breaks. Programs, scripts and macro files are refused. ([#1785](https://github.com/SkyyPlayz/Mythos-Writer/pull/1785))
-- **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
 
 ## [0.5.7] — 2026-10-03
 

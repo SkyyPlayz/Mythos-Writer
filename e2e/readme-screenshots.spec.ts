@@ -301,11 +301,19 @@ test('screenshot: demo window', async () => {
     await saveShot(page, 'story-writer');
 
     await page.locator('[data-testid="nav-rail-notes"]').click();
+    const characters = page.locator('[data-testid="vb-row-Characters"]');
     const mira = page.locator('[data-testid="vb-row-Characters/Mira Veynn.md"]');
-    if (!(await mira.isVisible().catch(() => false))) {
-      await page.locator('[data-testid="vb-row-Characters"]').click();
-    }
-    await expect(mira).toBeVisible({ timeout: 15_000 });
+    // The Notes tree auto-expands root folders one commit after its first
+    // render (useTreeState.initExpand). A blind click on Characters races that
+    // and can collapse the folder it meant to open, so Mira never appears.
+    // Click only while the folder reads collapsed, and retry until it is
+    // expanded with Mira rendered.
+    await expect(characters).toBeVisible({ timeout: 15_000 });
+    await expect(async () => {
+      if ((await characters.getAttribute('aria-expanded')) !== 'true') await characters.click();
+      await expect(characters).toHaveAttribute('aria-expanded', 'true', { timeout: 2_000 });
+      await expect(mira).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 15_000 });
     await mira.click();
     await expect(page.locator('[data-testid="note-title"]')).toHaveText('Mira Veynn', { timeout: 15_000 });
     await saveShot(page, 'notes');

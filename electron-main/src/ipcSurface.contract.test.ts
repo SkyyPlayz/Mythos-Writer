@@ -953,6 +953,56 @@ describe('ipc surface contract', () => {
     console.log(`[mutant fs] RED ${added.join(', ')}`);
   });
 
+  // #1747 Critic N2: channelsIn reads string-literal channels only. A key that
+  // calls ipcRenderer with an IPC_CHANNELS.X constant is not resolved, so it
+  // must fail SAFE: it becomes a NON_IPC line, which drifts from the freeze
+  // and turns this suite red, instead of silently matching nothing.
+  const IPC_CHANNELS_HINT =
+    'channelsIn does not resolve IPC_CHANNELS.X constants: an exposed key that uses one is scanned as NON_IPC. '
+    + 'Use a string-literal channel in preload.ts, or teach channelsIn to resolve the constant and update this pin.';
+
+  it('channelsIn treats IPC_CHANNELS.X arguments as no channel (NON_IPC), never as a match', () => {
+    for (const call of ['ipcRenderer.invoke', 'ipcRenderer.send', 'ipcRenderer.on', 'invokeEnvelope']) {
+      expect(channelsIn(`() => ${call}(IPC_CHANNELS.VAULT_READ, { path: p })`), `${call}: ${IPC_CHANNELS_HINT}`).toEqual([]);
+      expect(channelsIn(`() => ${call}(IPC_CHANNELS['VAULT_READ'])`), `${call}: ${IPC_CHANNELS_HINT}`).toEqual([]);
+    }
+    // Control: the same call with a literal channel is resolved.
+    expect(channelsIn("() => ipcRenderer.invoke('vault:read', { path: p })")).toEqual(['vault:read']);
+  });
+
+  it('goes red (NON_IPC) when an existing exposed key switches to an IPC_CHANNELS.X constant', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const from = "readVault: (filePath: string) => ipcRenderer.invoke('vault:read', { path: filePath }),";
+    expect(preload.text.includes(from), 'preload.ts anchor moved — update this pin').toBe(true);
+    preload.text = preload.text.replace(
+      from,
+      'readVault: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.VAULT_READ, { path: filePath }),',
+    );
+    const mutated = scanSources(files);
+    expect(surface.exposed).toContain('api readVault vault:read');
+    expect(mutated.exposed, IPC_CHANNELS_HINT).toContain(`api readVault ${NON_IPC}`);
+    expect(mutated.exposed, IPC_CHANNELS_HINT).not.toContain('api readVault vault:read');
+    expect(mutated.exposed, IPC_CHANNELS_HINT).not.toEqual(FREEZE.exposed);
+    console.log(`[mutant IPC_CHANNELS key] RED api readVault ${NON_IPC}`);
+  });
+
+  it('goes red (NON_IPC) when a new exposed key uses an IPC_CHANNELS.X constant', () => {
+    const files = productionCopies();
+    const preload = sourceFile(files, 'preload.ts');
+    const anchor = "isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',";
+    expect(preload.text.includes(anchor)).toBe(true);
+    preload.text = preload.text.replace(
+      anchor,
+      `constRead: () => ipcRenderer.invoke(IPC_CHANNELS.VAULT_READ, { path: '' }),\n  ${anchor}`,
+    );
+    const mutated = scanSources(files);
+    const added = mutated.exposed.filter((line) => !surface.exposed.includes(line));
+    expect(added, IPC_CHANNELS_HINT).toEqual([`api constRead ${NON_IPC}`]);
+    expect(mutated.exposed).not.toEqual(FREEZE.exposed);
+    console.log(`[mutant IPC_CHANNELS new key] RED ${added.join(', ')}`);
+  });
+
   it('goes red when a channel is renamed even though the counts stay the same', () => {
     const files = productionCopies();
     const ipc = sourceFile(files, 'ipc.ts');
