@@ -63,6 +63,22 @@ describe('BUNDLED_TEMPLATES', () => {
       expect(t.notes.length).toBeGreaterThan(0);
     }
   });
+
+  it('Novel (3-Act) numbers its chapters 1, 2, 3 with the act in each name', () => {
+    const novel = BUNDLED_TEMPLATES.find((t) => t.id === 'bundled:novel-3act');
+    const manuscript = novel?.story.find((n) => n.name === 'Manuscript');
+    const chapters = (manuscript?.children ?? []).flatMap((act) => act.children ?? []);
+    expect(chapters.map((c) => c.name)).toEqual([
+      'Chapter 1 — Act I',
+      'Chapter 2 — Act II',
+      'Chapter 3 — Act III',
+    ]);
+    expect(chapters.map((c) => c.starterNote)).toEqual([
+      'Scene 1 — Opening Hook',
+      'Scene 1 — Rising Action',
+      'Scene 1 — Climax',
+    ]);
+  });
 });
 
 describe('scaffoldNodes', () => {

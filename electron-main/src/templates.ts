@@ -38,15 +38,15 @@ const NOVEL_3ACT: TemplateDefinition = {
       children: [
         {
           name: 'Act 1 — Setup',
-          children: [{ name: 'Chapter 1', starterNote: 'Scene 1 — Opening Hook' }],
+          children: [{ name: 'Chapter 1 — Act I', starterNote: 'Scene 1 — Opening Hook' }],
         },
         {
           name: 'Act 2 — Confrontation',
-          children: [{ name: 'Chapter 4', starterNote: 'Scene 1 — Rising Action' }],
+          children: [{ name: 'Chapter 2 — Act II', starterNote: 'Scene 1 — Rising Action' }],
         },
         {
           name: 'Act 3 — Resolution',
-          children: [{ name: 'Chapter 8', starterNote: 'Scene 1 — Climax' }],
+          children: [{ name: 'Chapter 3 — Act III', starterNote: 'Scene 1 — Climax' }],
         },
       ],
     },
