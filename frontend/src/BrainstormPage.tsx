@@ -545,6 +545,19 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const lastPersistedBoardRef = useRef<string | null>(null);
   // M20: chat-page Board toggle — canvas stacked under the chat, drag-bar height.
   const [chatBoardOpen, setChatBoardOpen] = useState(false);
+  // The Board toggle mirrors what the writer sees: the board is ON on the full
+  // Board page (placing / filing / opening an idea jumps there) as well as when
+  // stacked under the chat. OFF clears BOTH, so a chat-only view is always one
+  // click away; it used to flip only chatBoardOpen and vanished on the Board page.
+  const boardShown = effectiveMode === 'board' || chatBoardOpen;
+  const toggleBoard = useCallback(() => {
+    if (boardShown) {
+      setMode('chat');
+      setChatBoardOpen(false);
+    } else {
+      setChatBoardOpen(true);
+    }
+  }, [boardShown]);
   const [chatBoardHeight, setChatBoardHeight] = useState(CHAT_BOARD_DEFAULT_H);
   // M20: vault-note titles on cards underline + open the note.
   const [noteIndex, setNoteIndex] = useState<Map<string, string>>(new Map());
@@ -2352,21 +2365,26 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 ))}
               </div>
             )}
-            {/* M20: chat-page Board toggle — stacks the canvas under the chat
-                with a drag-bar height (prototype bsBoardToggle). */}
-            {!compact && effectiveMode === 'chat' && (
+            {/* M20: Board toggle — stacks the canvas under the chat with a
+                drag-bar height (prototype bsBoardToggle). Also shown on the
+                Board page (checked) so OFF returns to chat-only; hidden when
+                AI is off because there is no chat to return to (R11). On the
+                legacy Board page the visible label is dropped: the pressed
+                "Idea Board" segment beside it already says it, and the header
+                there also carries + Idea and search, so this keeps it narrow. */}
+            {!compact && aiEnabled && (
               <div
                 className="bs-board-toggle-wrap bs-board-toggle-wrap--standalone-inline"
-                title="Show the Idea Board below the chat"
+                title={effectiveMode === 'board' ? 'Turn the Idea Board off and go back to the chat' : 'Show the Idea Board below the chat'}
               >
-                <span>Idea Board</span>
+                {(effectiveMode === 'chat' || unifiedBoard) && <span>Idea Board</span>}
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={chatBoardOpen}
-                  aria-label="Show Idea Board under chat"
-                  className={`bs-board-toggle${chatBoardOpen ? ' bs-board-toggle--on' : ''}`}
-                  onClick={() => setChatBoardOpen((v) => !v)}
+                  aria-checked={boardShown}
+                  aria-label="Idea Board"
+                  className={`bs-board-toggle${boardShown ? ' bs-board-toggle--on' : ''}`}
+                  onClick={toggleBoard}
                   data-testid="bs-chat-board-toggle"
                 >
                   <span className="bs-board-toggle-knob" aria-hidden="true" />
@@ -2396,7 +2414,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   onAction={(id) => {
                     if (id === 'mode-chat') setMode('chat');
                     else if (id === 'mode-board') setMode('board');
-                    else if (id === 'board-toggle') setChatBoardOpen((v) => !v);
+                    else if (id === 'board-toggle') toggleBoard();
                     else if (id === 'add-idea') addLooseIdea();
                   }}
                   items={[
@@ -2410,11 +2428,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                       // reachability after opening ⋯ @≤999 (ruling 4).
                       testId: `bsc-mode-${m}`,
                     })),
-                    ...(effectiveMode === 'chat'
+                    ...(aiEnabled
                       ? [{
                           id: 'board-toggle',
-                          label: chatBoardOpen ? 'Hide Idea Board under chat' : 'Show Idea Board under chat',
-                          checked: chatBoardOpen,
+                          label: boardShown ? 'Hide Idea Board' : 'Show Idea Board under chat',
+                          checked: boardShown,
                         }]
                       : []),
                     ...(!unifiedBoard && effectiveMode === 'board'
