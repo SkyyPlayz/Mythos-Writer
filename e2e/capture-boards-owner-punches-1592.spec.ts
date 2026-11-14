@@ -95,7 +95,7 @@ test('capture Boards top chrome + folder glyph + note thumb', async () => {
     await expect(page.locator('.boards-tab-panel__breadcrumb-current')).toContainText('Characters', {
       timeout: 10_000,
     });
-    await expect(page.getByRole('button', { name: /Note card:/ })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('article', { name: /Note card:/ })).toBeVisible({ timeout: 10_000 });
 
     const thumbPath = path.join(OUT_DIR, 'boards-note-thumb.png');
     await page.screenshot({ path: thumbPath, fullPage: false });

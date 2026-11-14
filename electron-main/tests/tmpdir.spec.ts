@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cleanupTestTmp,
   ensureRunId,
@@ -17,6 +17,7 @@ import {
   sameDir,
 } from '../test-utils/tmpdir.mjs';
 import { snapshot, verify } from '../test-utils/tmp-guard.mjs';
+import { MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV } from '../src/uninstallVaultsNsh.path.js';
 
 const origRmSync = fs.rmSync;
 const childPath = fileURLToPath(new URL('./fixtures/tmpdir-child.mjs', import.meta.url));
@@ -530,5 +531,59 @@ describe('tmp guard', () => {
     const dir = lineValue(result.out, 'ready');
     await expect(teardown()).rejects.toThrow(/mythos-test guard leak/);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('globalSetup split', () => {
+  function leakDir(id: string, tag: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `mythos-test-${id}-${tag}-`));
+    scratch.push(dir);
+    return dir;
+  }
+
+  function logged(log: { mock: { calls: unknown[][] } }): string[] {
+    return log.mock.calls.map((call) => String(call[0]));
+  }
+
+  it('(y) the frontend guard-only setup fails a leak and never loads the nsh guard', async () => {
+    process.env.MYTHOS_TEST_RUN_ID = 'e5f6a7b8';
+    const savedSnap = process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV];
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const { default: setup } = await import('../test-utils/tmp-guard-only.setup.mjs');
+      await expect(setup()()).resolves.toBeUndefined();
+      const teardown = setup();
+      expect(process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV]).toBe(savedSnap);
+      leakDir('e5f6a7b8', 'y');
+      await expect(teardown()).rejects.toThrow(/mythos-test guard leak: .*mythos-test-e5f6a7b8-y-/);
+      expect(logged(log)).toContain('mythos-test globalSetup guard');
+      expect(logged(log)).not.toContain('mythos-test globalSetup nsh');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('(z) the electron-main setup runs both guards and finishes the nsh teardown before raising a leak', async () => {
+    process.env.MYTHOS_TEST_RUN_ID = 'f6a7b8c9';
+    const savedSnap = process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV];
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const { default: setup } = await import('../test-utils/tmp-guard.setup.mjs');
+      const teardown = await setup();
+      const lines = logged(log);
+      expect(lines.indexOf('mythos-test globalSetup guard')).toBeGreaterThanOrEqual(0);
+      expect(lines.indexOf('mythos-test globalSetup nsh')).toBeGreaterThan(lines.indexOf('mythos-test globalSetup guard'));
+      const snapFile = process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV];
+      expect(snapFile).toBeTruthy();
+      expect(fs.existsSync(String(snapFile))).toBe(true);
+      leakDir('f6a7b8c9', 'z');
+      await expect(teardown()).rejects.toThrow(/mythos-test guard leak: .*mythos-test-f6a7b8c9-z-/);
+      expect(fs.existsSync(String(snapFile))).toBe(false);
+      expect(process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV]).toBeUndefined();
+    } finally {
+      log.mockRestore();
+      if (savedSnap === undefined) delete process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV];
+      else process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV] = savedSnap;
+    }
   });
 });

@@ -7,7 +7,6 @@ workflows. Does **not** collapse Critic/Shield/Probe, skip the tip-SHA gate,
 auto-close drafts, shorten audit lookback, or ban Other Models.
 
 Related: [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md) ·
-[TOKEN_AUDIT_LOUD_DIGEST.md](./TOKEN_AUDIT_LOUD_DIGEST.md) ·
 [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md) ·
 [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md)
 
@@ -32,9 +31,6 @@ Related: [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENC
    `MYTHOS_AUTOFIX_MODE=shadow` and `MYTHOS_AUTOFIX_SHADOW_UNTIL=<now+7d>` (needs
    vars:write). Actions no longer reads a bot PAT for that write; if the var
    cannot be set from Actions, Ivy sets it in the UI.
-
-Flip helpers: `scripts/mythos-autofix/shadow-mode.mjs` · wired from
-`scripts/mythos-token-audit/loud-digest.mjs` and `.github/workflows/mythos-pr-hygiene.yml`.
 
 ## Coordination (priority / mutual exclusion)
 
@@ -64,7 +60,7 @@ Rules:
 ## Rollback (one command each)
 
 Repo: `SkyyPlayz/Mythos-Writer`. Copy-paste; no agent turn required.
-Also: `scripts/mythos-autofix/rollback.sh <action>`.
+Also: `scripts/mythos-autofix/rollback.sh <action>`. The `loop-*` actions are inert.
 
 ### Circuit breaker
 
@@ -101,12 +97,8 @@ gh variable set MYTHOS_AUTOFIX_MODE -R SkyyPlayz/Mythos-Writer -b disabled
 
 | Path | Role |
 | --- | --- |
-| `.github/workflows/mythos-token-audit.yml` | Weekly audit + loud digest (breaker + throttle + **loop**) |
 | `.github/workflows/mythos-pr-hygiene.yml` | Auto-rebase + draft-CI comment + draft→ready |
-| `scripts/mythos-autofix/shadow-mode.mjs` | Resolve mode / flip / shadow-log append |
-| `scripts/mythos-autofix/loop.mjs` | Allow-listed self-improvement propose / shadow / APPLY / MISS |
-| `scripts/mythos-autofix/rollback.sh` | One-command rollbacks |
-| `scripts/mythos-token-audit/loud-digest.mjs` | Executes or shadows breaker + throttle + loop APPLY |
+| `scripts/mythos-autofix/rollback.sh` | One-command rollbacks. The `loop-*` actions are inert. |
 
 ## Self-improvement loop (Wed audit)
 
