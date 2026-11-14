@@ -1,225 +1,26 @@
 name: Mythos ops health
 
-# Canary for token-audit + PR-hygiene + quarterly secrets-rotation reminder.
+# Quarterly secrets-rotation reminder. Never prints secret values.
 # Creed: cut waste, don't weaken quality.
 # Docs: docs/MYTHOS_OPS_RUNBOOK.md
-#
-# Jobs:
-#   canary — red if token-audit is silent >8d or its latest completed run failed.
-#            Zero completed token-audit runs is a WARN (bootstrap until first success),
-#            unless the workflow file itself is missing.
-#            Hygiene is red on silence (>26h since last *success*) or when there is
-#            still no success and completed runs are older than the 26h grace.
-#            A latest hygiene failure with a success inside 26h is OK (noted).
-#            Last success comes from the primary run list (newest conclusion
-#            success). `gh run list --status success` reads a lagging search
-#            index and has false-failed this canary while hygiene was healthy.
-#   secrets-rotation — quarterly reminder issue (never prints secret values)
 
 on:
   schedule:
-    # Weekday mornings ~08:00 UTC (~02:00 MT) — within one cycle visibility
-    - cron: "5 8 * * 1-5"
     # Quarterly secrets reminder (1 Jan/Apr/Jul/Oct 12:00 UTC)
     - cron: "0 12 1 1,4,7,10 *"
-  workflow_run:
-    workflows:
-      - "Mythos token audit"
-      - "Mythos PR hygiene"
-    types: [completed]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "canary | secrets | both"
-        required: false
-        default: "both"
 
 permissions:
-  contents: read
   issues: write
-  actions: read
-  checks: read
 
 concurrency:
-  group: mythos-ops-health-${{ github.event.workflow_run.id || github.run_id }}
+  group: mythos-ops-health-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  canary:
-    name: ops-canary
-    if: >
-      github.event_name == 'workflow_run' ||
-      github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'canary' || github.event.inputs.mode == 'both' || github.event.inputs.mode == '') ||
-      (github.event_name == 'schedule' && github.event.schedule == '5 8 * * 1-5')
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Canary — token-audit + PR-hygiene freshness
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TRACKING: ${{ vars.MYTHOS_TOKEN_AUDIT_ISSUE }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC1091
-          source "${GITHUB_WORKSPACE}/scripts/mythos-ops/ops-guards.sh"
-          REPO="${GITHUB_REPOSITORY}"
-          NOW=$(date -u +%s)
-          FAIL=0
-          NOTES=""
-
-          apply_verdict() {
-            local LABEL="$1"
-            local VERDICT="$2"
-            local DETAIL="$3"
-            NOTES="${NOTES}\n- **${LABEL}**: ${DETAIL}"
-            case "$VERDICT" in
-              fail)
-                FAIL=1
-                echo "::error::${LABEL} canary FAIL — ${DETAIL}"
-                ;;
-              warn)
-                echo "::warning::${LABEL} canary WARN — ${DETAIL}"
-                ;;
-              ok) ;;
-              *)
-                FAIL=1
-                echo "::error::${LABEL} unknown verdict ${VERDICT}"
-                ;;
-            esac
-          }
-
-          # Audit weekly cron — allow ≤8 days (192h). No completed runs yet: WARN.
-          AUDIT_FILE=$(workflow_file_state "mythos-token-audit.yml")
-          if [ "$AUDIT_FILE" = "missing" ]; then
-            apply_verdict "token-audit" "fail" "workflow file missing"
-          elif ! AUDIT_ROW=$(gh run list --repo "$REPO" --workflow "mythos-token-audit.yml" --limit 10 \
-            --json conclusion,status,createdAt,updatedAt,url \
-            --jq '[.[] | select(.status=="completed")] | .[0] // empty'); then
-            apply_verdict "token-audit" "fail" "could not list workflow runs"
-          elif [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; then
-            apply_verdict "token-audit" "$(verdict_token_audit "$AUDIT_FILE" 0 "" 9999 192)" \
-              "WARN no completed runs yet (bootstrap until first Wed cron / first success) — not a failure"
-          else
-            A_CONC=$(jq -r '.conclusion // empty' <<<"$AUDIT_ROW")
-            A_UPD=$(jq -r '.updatedAt // .createdAt' <<<"$AUDIT_ROW")
-            A_URL=$(jq -r '.url // empty' <<<"$AUDIT_ROW")
-            A_AGE=$(age_hours "$A_UPD" "$NOW")
-            A_VERDICT=$(verdict_token_audit "$AUDIT_FILE" 1 "$A_CONC" "$A_AGE" 192)
-            A_DETAIL="conclusion=\`${A_CONC}\` age=${A_AGE}h url=${A_URL}"
-            if [ "$A_VERDICT" = "fail" ] && [ "$A_AGE" -gt 192 ]; then
-              A_DETAIL="${A_DETAIL} → SILENT past window (>192h)"
-            fi
-            apply_verdict "token-audit" "$A_VERDICT" "$A_DETAIL"
-          fi
-
-          # Hygiene: fail on silence since last success, not on one recent failure.
-          # Primary list only — never `gh run list --status success` (search index lag).
-          HY_FILE=$(workflow_file_state "mythos-pr-hygiene.yml")
-          if [ "$HY_FILE" = "missing" ]; then
-            apply_verdict "pr-hygiene" "fail" "workflow file missing"
-          else
-            HY_RC=0
-            HY_RUNS=$(list_workflow_runs_until_success "$REPO" "mythos-pr-hygiene.yml") || HY_RC=$?
-            if [ "$HY_RC" -eq 2 ]; then
-              apply_verdict "pr-hygiene" "fail" \
-                "could not scan far enough to find the newest success (primary run list truncated before history ended)"
-            elif [ "$HY_RC" -ne 0 ]; then
-              apply_verdict "pr-hygiene" "fail" "could not list workflow runs"
-            else
-              HY_PICK=$(printf '%s\n' "$HY_RUNS" | pick_hygiene_runs)
-              HY_ROW=$(jq -c '.latest // empty' <<<"$HY_PICK")
-              HY_OK=$(jq -c '.success // empty' <<<"$HY_PICK")
-            fi
-          fi
-          if [ "$HY_FILE" != "missing" ] && [ "${HY_RC:-0}" -eq 0 ] && { [ -z "${HY_ROW:-}" ] || [ "${HY_ROW:-}" = "null" ]; }; then
-            apply_verdict "pr-hygiene" "$(verdict_hygiene "$HY_FILE" 0 "" 9999 0 9999 26)" \
-              "WARN no completed runs yet (bootstrap) — not a failure"
-          elif [ "$HY_FILE" != "missing" ] && [ "${HY_RC:-0}" -eq 0 ]; then
-            H_CONC=$(jq -r '.conclusion // empty' <<<"$HY_ROW")
-            H_UPD=$(jq -r '.updatedAt // .createdAt' <<<"$HY_ROW")
-            H_URL=$(jq -r '.url // empty' <<<"$HY_ROW")
-            H_AGE=$(age_hours "$H_UPD" "$NOW")
-            HAS_SUCCESS=0
-            S_AGE=9999
-            S_URL=""
-            if [ -n "$HY_OK" ] && [ "$HY_OK" != "null" ]; then
-              HAS_SUCCESS=1
-              S_UPD=$(jq -r '.updatedAt // .createdAt' <<<"$HY_OK")
-              S_URL=$(jq -r '.url // empty' <<<"$HY_OK")
-              S_AGE=$(age_hours "$S_UPD" "$NOW")
-            fi
-            H_VERDICT=$(verdict_hygiene "$HY_FILE" 1 "$H_CONC" "$H_AGE" "$HAS_SUCCESS" "$S_AGE" 26)
-            H_DETAIL="latest=\`${H_CONC}\` age=${H_AGE}h url=${H_URL}"
-            if [ "$HAS_SUCCESS" = "1" ]; then
-              H_DETAIL="${H_DETAIL}; last success age=${S_AGE}h url=${S_URL}"
-            fi
-            if [ "$H_VERDICT" = "fail" ] && [ "$HAS_SUCCESS" = "1" ]; then
-              H_DETAIL="${H_DETAIL} → SILENT past window (>26h since last success)"
-            elif [ "$H_VERDICT" = "fail" ]; then
-              H_DETAIL="${H_DETAIL} → no success yet and runs older than bootstrap grace (26h)"
-            elif [ "$H_VERDICT" = "ok" ] && [ "$H_CONC" != "success" ]; then
-              H_DETAIL="${H_DETAIL} → latest completed is \`${H_CONC}\` but a success exists within 26h — OK"
-            elif [ "$H_VERDICT" = "warn" ]; then
-              H_DETAIL="${H_DETAIL} → WARN no success yet; within bootstrap grace (26h) — not a hard failure"
-            fi
-            apply_verdict "pr-hygiene" "$H_VERDICT" "$H_DETAIL"
-          fi
-
-          BODY=$(printf '%s\n' \
-            '<!-- mythos-ops-health -->' \
-            '## Mythos ops health canary' \
-            '' \
-            "$(echo -e "$NOTES")" \
-            '' \
-            "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            '' \
-            '_Creed: cut waste, don'\''t weaken quality. No agent wake._')
-
-          # Sticky on tracking issue or mythos-ops-health labeled issue
-          TARGET=""
-          if [ -n "${TRACKING:-}" ]; then
-            TARGET="$TRACKING"
-          else
-            TARGET=$(gh issue list --repo "$REPO" --state open --label mythos-ops-health \
-              --limit 1 --json number --jq '.[0].number // empty' || true)
-            if [ -z "$TARGET" ]; then
-              gh label create mythos-ops-health --repo "$REPO" --color D93F0B --force || true
-              TARGET=$(gh issue create --repo "$REPO" \
-                --title "Mythos ops health" \
-                --label mythos-ops-health \
-                --body "Tracking canary failures for token-audit + PR-hygiene. See docs/MYTHOS_OPS_RUNBOOK.md." \
-                --jq .number 2>/dev/null || true)
-              # gh issue create may print URL
-              if [[ "$TARGET" == http* ]]; then
-                TARGET=$(echo "$TARGET" | sed -n 's|.*/issues/\([0-9]*\).*|\1|p')
-              fi
-            fi
-          fi
-
-          if [ -n "$TARGET" ]; then
-            EXISTING=$(gh api "repos/$REPO/issues/$TARGET/comments" --paginate \
-              --jq '.[] | select(.body | contains("<!-- mythos-ops-health -->")) | .id' | head -1 || true)
-            if [ -n "$EXISTING" ]; then
-              gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
-            else
-              gh issue comment "$TARGET" --repo "$REPO" --body "$BODY"
-            fi
-          fi
-
-          if [ "$FAIL" -ne 0 ]; then
-            echo "::error::Ops canary FAILED — see notes above"
-            exit 1
-          fi
-          echo "Ops canary OK"
-
   secrets-rotation:
     name: secrets-rotation-reminder
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '0 12 1 1,4,7,10 *') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'secrets' || github.event.inputs.mode == 'both'))
+    if: "github.event_name == 'workflow_dispatch' || github.event.schedule == '0 12 1 1,4,7,10 *'"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

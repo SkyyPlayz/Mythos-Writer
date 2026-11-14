@@ -18,10 +18,8 @@ paste full history.
 | `docs/archive/standing-briefs/YYYY-MM.md` | Archived detail for the month |
 | `docs/archive/standing-briefs/CURRENT.md` | Optional pointer / latest compressed summary |
 
-Optional monthly workflow:
-[`.github/workflows/mythos-standing-context-compress.yml`](../.github/workflows/mythos-standing-context-compress.yml)
-opens a **draft PR** or posts a checklist for Ivy — **does not auto-delete**
-agent memory. Repo docs only unless Ivy owns Grok Bot memory separately.
+Monthly compression is done by hand. It does not auto-delete agent memory.
+Repo docs only unless Ivy owns Grok Bot memory separately.
 
 ## Compression recipe (Ivy / standing agent)
 

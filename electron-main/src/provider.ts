@@ -692,6 +692,13 @@ export interface StreamRequest {
    */
   reserveThinkingTokens?: boolean;
   /**
+   * Opt-in redirect refusal for the OpenAI-compatible chat request. `'error'`
+   * makes a 3xx fail the request instead of following it, so a 307/308 cannot
+   * carry the POST body to another host. Omitted keeps the default behaviour.
+   * Not used by the Anthropic SDK path.
+   */
+  redirect?: 'error';
+  /**
    * SKY-11220: invoked with each non-empty reasoning delta the model streams
    * *before* (or instead of) visible answer content. Local reasoning models
    * (qwen3, DeepSeek-R1, gpt-oss on LM Studio) can think for minutes, emitting
@@ -1104,6 +1111,7 @@ async function* runOpenAICompatibleStream(
     headers,
     body,
     signal: req.signal,
+    ...(req.redirect === 'error' ? { redirect: 'error' as const } : {}),
   });
 
   if (!res.ok) {

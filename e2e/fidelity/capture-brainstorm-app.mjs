@@ -1,18 +1,20 @@
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+import { cleanupTestTmp, ensureRunId, makeTestTmp, removeRecorded } from '../../electron-main/test-utils/tmpdir.mjs';
 
 requireBuild();
+ensureRunId();
 const OUT = outDir('capture-brainstorm-app');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORT = { width: 1920, height: 1080 };
+let app;
 
 async function run(label, aiEnabled) {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bs-'));
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
-  const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-'));
+  const userData = makeTestTmp('bs-user');
+  const vaultDir = makeTestTmp('bs-vault');
+  const notesVaultDir = makeTestTmp('bs-notes');
 
   const agentCfg = (extra = {}) => ({
     enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
@@ -36,7 +38,7 @@ async function run(label, aiEnabled) {
     entities: [], suggestions: [], scenes: [], chapters: [],
   }, null, 2));
 
-  const app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
+  app = await electron.launch({ args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox'], timeout: 90000 });
   const page = await app.firstWindow();
   page.on('dialog', d => void d.accept().catch(() => {}));
   await page.waitForLoadState('domcontentloaded');
@@ -99,11 +101,16 @@ async function run(label, aiEnabled) {
 
   fs.writeFileSync(`${OUT}/${label}-text.json`, JSON.stringify(texts, null, 1));
   await app.close().catch(() => {});
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
-  fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  removeRecorded(userData);
+  removeRecorded(vaultDir);
+  removeRecorded(notesVaultDir);
 }
 
-await run('ai-on', true);
-await run('ai-off', false);
-console.log('DONE');
+try {
+  await run('ai-on', true);
+  await run('ai-off', false);
+  console.log('DONE');
+} finally {
+  await app?.close().catch(() => {});
+  cleanupTestTmp();
+}
